@@ -1,0 +1,10 @@
+CLAUDE.md
+AGENTS.md
+CODEX_CHANGELOG.md
+.claude/
+.codex/
+node_modules/
+dist/
+*.bak
+.DS_Store
+Thumbs.db

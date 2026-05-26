@@ -1,0 +1,13 @@
+{
+  "name": "glp-enhanced-userscript",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Premium declutter, theming, and reading tools for Godlike Productions.",
+  "scripts": {
+    "check": "node --check GLP_Enhanced_-_Godlike_Productions_Declutter.user.js && node --check extension/content/gm-shim.js && node scripts/build-userscript.mjs --check-only",
+    "build": "node scripts/build-userscript.mjs",
+    "verify:captures": "node scripts/verify-captures.mjs",
+    "verify": "npm run check && npm run verify:captures && npm run build"
+  }
+}

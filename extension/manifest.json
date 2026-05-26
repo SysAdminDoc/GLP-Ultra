@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "GLP Enhanced",
+  "version": "2.1.0",
+  "description": "Premium declutter, theming, and reading tools for Godlike Productions.",
+  "permissions": [],
+  "host_permissions": [
+    "https://www.godlikeproductions.com/*",
+    "https://godlikeproductions.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.godlikeproductions.com/*",
+        "https://godlikeproductions.com/*"
+      ],
+      "css": [
+        "content/early.css"
+      ],
+      "js": [
+        "content/gm-shim.js",
+        "content/glp-enhanced.user.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}

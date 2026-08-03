@@ -95,9 +95,13 @@
         widerContent: true,
         smallerAvatars: true,
         collapseLongQuotes: true,
+        readerMode: false,
+        hideRelatedThreads: true,
 
         // Quote Styling
         compactQuotes: true,
+        quoteDepthBadges: true,
+        collapseNestedQuotes: true,
         quoteBorderColor: '#4a90d9',
 
         // Visual Enhancements
@@ -187,6 +191,10 @@
         compactPosts: 'Tightens thread pages for sustained reading.',
         widerContent: 'Lets posts use more horizontal space.',
         collapseLongQuotes: 'Keeps deeply nested quotes from overwhelming posts.',
+        readerMode: 'Distraction-free reading surface: hides author metadata, sidebar, and non-essential chrome.',
+        hideRelatedThreads: 'Hides the related threads section at the bottom of thread pages.',
+        quoteDepthBadges: 'Shows quote nesting depth with a small numbered badge.',
+        collapseNestedQuotes: 'Collapses quote chains deeper than two levels with an expand toggle.',
         darkModeEnhance: 'Applies the selected GLP Enhanced dark theme.',
         smoothScrolling: 'Uses smoother page movement where supported.',
         dimVisitedThreads: 'Makes already-read topics quieter.',
@@ -1309,6 +1317,45 @@ tr:has(.ifr img[src*="superpin"]) {
 `;
         }
 
+        if (settings.readerMode) {
+            css += `
+body.glpx-reader-active .messageauthor,
+body.glpx-reader-active .replyauthor { display: none !important; }
+body.glpx-reader-active .msg colgroup col.msgcol_author { width: 0 !important; }
+body.glpx-reader-active .messagecontent,
+body.glpx-reader-active .replycontent {
+    padding: 16px 20px !important;
+    max-width: 720px !important;
+    margin: 0 auto !important;
+    font-size: 15px !important;
+    line-height: 1.6 !important;
+}
+body.glpx-reader-active .msgtitle { text-align: center !important; padding: 16px 20px !important; }
+body.glpx-reader-active .msgtitle h1 { font-size: 20px !important; }
+body.glpx-reader-active #rightpanel_wrap,
+body.glpx-reader-active .rightpanel_ipad,
+body.glpx-reader-active .post_report_links,
+body.glpx-reader-active .author_karma,
+body.glpx-reader-active .post_actions,
+body.glpx-reader-active .author_meta_pre,
+body.glpx-reader-active .author_meta_post,
+body.glpx-reader-active table.threads.related { display: none !important; }
+body.glpx-reader-active .msg tr + tr[id^="post_"] > td {
+    border-top: 1px solid rgba(255,255,255,0.06) !important;
+    padding-top: 14px !important;
+}
+body.glpx-reader-active .post_hdr {
+    font-size: 11px !important; color: #9aa8c7 !important;
+    margin-bottom: 8px !important; padding-bottom: 6px !important;
+    border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+}
+body.glpx-reader-active .glp-reader-byline {
+    display: block; font-size: 12px; color: #9aa8c7;
+    margin-bottom: 4px; font-weight: 600;
+}
+`;
+        }
+
         if (settings.highlightOP) {
             css += `
 .glp-op-badge { color: #e6a820 !important; font-weight: bold !important; }
@@ -1371,6 +1418,42 @@ tr:has(.ifr img[src*="superpin"]) {
 .quoteo { margin: 6px 0 !important; padding: 6px 10px !important; }
 .quotei { padding: 0 !important; }
 .quoteo font[size="1"] { font-size: 11px !important; opacity: 0.7; }
+`;
+        }
+
+        if (settings.quoteDepthBadges) {
+            css += `
+.glp-quote-depth {
+    display: inline-block; font-size: 9px; font-weight: 700;
+    background: rgba(106,168,255,0.15); color: #6aa8ff;
+    padding: 0 4px; border-radius: 3px; margin-right: 4px;
+    vertical-align: middle; line-height: 1.6;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+`;
+        }
+
+        if (settings.collapseNestedQuotes) {
+            css += `
+.glp-nested-collapsed {
+    max-height: 0 !important; overflow: hidden !important;
+    padding: 0 !important; margin: 0 !important; border: none !important;
+    transition: max-height 0.2s ease;
+}
+.glp-nested-collapsed.glp-nested-expanded {
+    max-height: none !important; overflow: visible !important;
+    padding: 6px 10px !important; margin: 6px 0 !important;
+    border-left: 3px solid ${settings.quoteBorderColor} !important;
+}
+.glp-nested-toggle {
+    display: inline-block; cursor: pointer;
+    font-size: 11px; color: #6aa8ff; margin: 4px 0;
+    background: rgba(106,168,255,0.08); border: 1px solid rgba(106,168,255,0.18);
+    border-radius: 4px; padding: 2px 8px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    transition: background 0.15s, border-color 0.15s;
+}
+.glp-nested-toggle:hover { background: rgba(106,168,255,0.16); border-color: rgba(106,168,255,0.34); }
 `;
         }
 
@@ -1491,6 +1574,11 @@ td.nav { border-color: ${t.border} !important; }
         }
 
         // ---- Misc ----
+        if (settings.hideRelatedThreads) {
+            css += `table.threads.related, .threads-wrapper:has(table.threads.related) { display: none !important; }
+`;
+        }
+
         if (settings.hideFooter) {
             css += `#footer { display: none !important; }
 `;
@@ -2084,10 +2172,14 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     { key: 'compactPostTitle', label: 'Compact Thread Title Bar' },
                     { key: 'widerContent', label: 'Wider Content Area' },
                     { key: 'smallerAvatars', label: 'Smaller Avatars (80px max)' },
-                    { key: 'collapseLongQuotes', label: 'Collapse Deeply Nested Quotes' }
+                    { key: 'collapseLongQuotes', label: 'Collapse Deeply Nested Quotes' },
+                    { key: 'readerMode', label: 'Reader Mode (Distraction-Free)' },
+                    { key: 'hideRelatedThreads', label: 'Hide Related Threads' }
                 ])}
                 ${createSettingsSection('Quote Styling', [
                     { key: 'compactQuotes', label: 'Compact Quotes' },
+                    { key: 'quoteDepthBadges', label: 'Quote Depth Badges' },
+                    { key: 'collapseNestedQuotes', label: 'Collapse Nested Quote Chains' },
                     { key: 'quoteBorderColor', label: 'Quote Border Color', type: 'color' }
                 ])}
                 ${createSettingsSection('Visual Enhancements', [
@@ -2511,7 +2603,10 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             '.glp-user-tag',
             '.glp-post-number',
             '.glp-collapse-indicator',
-            '.glp-yt-embed'
+            '.glp-yt-embed',
+            '.glp-reader-byline',
+            '.glp-quote-depth',
+            '.glp-nested-toggle'
         ];
 
         if (!keepSettingsPanel) {
@@ -2527,13 +2622,14 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             });
         });
 
-        document.querySelectorAll('[data-glp-highlighted], [data-glp-collapsible], [data-glp-yt]').forEach(node => {
+        document.querySelectorAll('[data-glp-highlighted], [data-glp-collapsible], [data-glp-yt], [data-glp-nested-processed]').forEach(node => {
             delete node.dataset.glpHighlighted;
             delete node.dataset.glpCollapsible;
             delete node.dataset.glpYt;
+            delete node.dataset.glpNestedProcessed;
         });
 
-        document.body?.classList.remove('glp-enhanced-active', 'glpx-enabled');
+        document.body?.classList.remove('glp-enhanced-active', 'glpx-enabled', 'glpx-reader-active');
     }
 
     function routeAllowsFeature(feature) {
@@ -2565,9 +2661,12 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             { id: 'feed.hideThreads', routes: ['feed'], settingKey: 'hideThreadButtons', init: initHideThreadButtons, apply: applyHiddenThreads, destroy: () => document.querySelectorAll('.glp-hide-col, #glp-hidden-threads-bar').forEach(node => node.remove()) },
             { id: 'feed.keywordFilters', routes: ['feed'], init: applyKeywordFilters, apply: applyKeywordFilters, destroy: clearKeywordFilters },
             { id: 'feed.autoRefresh', routes: ['feed'], settingKey: 'autoRefresh', init: initAutoRefresh, apply: () => {}, destroy: () => { if (refreshTimer) clearInterval(refreshTimer); document.getElementById('glp-auto-refresh-bar')?.remove(); } },
-            { id: 'users.tags', routes: ['thread'], settingKey: 'userTags', init: initUserTags, apply: initUserTags, destroy: () => document.querySelectorAll('.glp-user-tag, .glp-tag-btn, #glp-tag-picker').forEach(node => node.remove()) },
+            { id: 'users.tags', routes: ['thread', 'feed'], settingKey: 'userTags', init: initUserTags, apply: initUserTags, destroy: () => document.querySelectorAll('.glp-user-tag, .glp-tag-btn, #glp-tag-picker').forEach(node => node.remove()) },
             { id: 'thread.scrollProgress', routes: ['thread'], settingKey: 'scrollProgress', init: initScrollProgress, apply: () => {}, destroy: () => document.getElementById('glp-scroll-progress')?.remove() },
             { id: 'feed.threadPreview', routes: ['feed'], settingKey: 'threadPreview', init: initThreadPreview, apply: () => {}, destroy: removePreview },
+            { id: 'thread.readerMode', routes: ['thread'], settingKey: 'readerMode', init: initReaderMode, apply: initReaderMode, destroy: destroyReaderMode },
+            { id: 'thread.quoteDepthBadges', routes: ['thread'], settingKey: 'quoteDepthBadges', init: initQuoteDepthBadges, apply: initQuoteDepthBadges, destroy: () => document.querySelectorAll('.glp-quote-depth').forEach(n => n.remove()) },
+            { id: 'thread.nestedQuoteCollapse', routes: ['thread'], settingKey: 'collapseNestedQuotes', init: initNestedQuoteCollapse, apply: initNestedQuoteCollapse, destroy: () => { document.querySelectorAll('.glp-nested-toggle').forEach(n => n.remove()); document.querySelectorAll('.glp-nested-collapsed').forEach(n => { n.classList.remove('glp-nested-collapsed', 'glp-nested-expanded'); delete n.dataset.glpNestedProcessed; }); } },
             { id: 'thread.permalinks', routes: ['thread'], settingKey: 'postPermalinks', init: initPostPermalinks, apply: addPostNumbers, destroy: () => {} },
             { id: 'media.youtube', routes: ['thread'], settingKey: 'youtubeEmbed', init: embedYouTubeLinks, apply: embedYouTubeLinks, destroy: () => document.querySelectorAll('.glp-yt-embed').forEach(node => node.remove()) },
             { id: 'thread.opNav', routes: ['thread'], settingKey: 'opPostNav', init: initOPPostNav, apply: initOPPostNav, destroy: () => document.querySelectorAll('.glp-op-nav').forEach(node => node.remove()) },
@@ -2644,6 +2743,107 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     ticking = false;
                 });
                 ticking = true;
+            }
+        });
+    }
+
+    // ============================================
+    // READER MODE (distraction-free thread reading)
+    // ============================================
+    function initReaderMode() {
+        if (!settings.readerMode) return;
+        if (!document.querySelector('.msg')) return;
+
+        document.body.classList.add('glpx-reader-active');
+
+        // Add author byline above each post content when author cell is hidden
+        document.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
+            if (tr.querySelector('.glp-reader-byline')) return;
+            const authorCell = tr.querySelector('.messageauthor, .replyauthor');
+            const contentCell = tr.querySelector('.messagecontent, .replycontent');
+            if (!authorCell || !contentCell) return;
+
+            const nameEl = authorCell.querySelector('.author_header b a') || authorCell.querySelector('.author_header b') || authorCell.querySelector('.author_header');
+            const dateEl = authorCell.querySelector('.author_date');
+            const name = nameEl ? nameEl.textContent.replace(/\(OP\)/g, '').trim() : 'Anonymous';
+            const date = dateEl ? dateEl.title || dateEl.textContent.trim() : '';
+
+            const byline = document.createElement('span');
+            byline.className = 'glp-reader-byline';
+            byline.textContent = date ? `${name} · ${date}` : name;
+
+            const postHdr = contentCell.querySelector('.post_hdr');
+            if (postHdr) {
+                postHdr.insertBefore(byline, postHdr.firstChild);
+            } else {
+                const wrap = contentCell.querySelector('.post_wrap');
+                if (wrap) wrap.insertBefore(byline, wrap.firstChild);
+            }
+        });
+    }
+
+    function destroyReaderMode() {
+        document.body.classList.remove('glpx-reader-active');
+        document.querySelectorAll('.glp-reader-byline').forEach(el => el.remove());
+    }
+
+    // ============================================
+    // QUOTE DEPTH BADGES AND NESTED COLLAPSE
+    // ============================================
+    function computeQuoteDepth(quoteEl) {
+        let depth = 0;
+        let el = quoteEl;
+        while (el) {
+            el = el.parentElement?.closest('.quoteo');
+            if (el) depth++;
+        }
+        return depth;
+    }
+
+    function initQuoteDepthBadges() {
+        if (!settings.quoteDepthBadges) return;
+
+        document.querySelectorAll('.quoteo').forEach(quote => {
+            if (quote.querySelector('.glp-quote-depth')) return;
+            const depth = computeQuoteDepth(quote);
+            if (depth > 0) {
+                const badge = document.createElement('span');
+                badge.className = 'glp-quote-depth';
+                badge.textContent = `Q${depth + 1}`;
+                badge.title = `Quote depth: ${depth + 1}`;
+                // Insert at start of the quote's first text/element
+                const firstFontTag = quote.querySelector('font[size="1"]');
+                if (firstFontTag) {
+                    firstFontTag.insertBefore(badge, firstFontTag.firstChild);
+                } else {
+                    quote.insertBefore(badge, quote.firstChild);
+                }
+            }
+        });
+    }
+
+    function initNestedQuoteCollapse() {
+        if (!settings.collapseNestedQuotes) return;
+
+        document.querySelectorAll('.quoteo').forEach(quote => {
+            if (quote.dataset.glpNestedProcessed) return;
+            quote.dataset.glpNestedProcessed = '1';
+
+            const depth = computeQuoteDepth(quote);
+            if (depth >= 2) {
+                quote.classList.add('glp-nested-collapsed');
+
+                const toggle = document.createElement('span');
+                toggle.className = 'glp-nested-toggle';
+                toggle.textContent = `Show nested quote (depth ${depth + 1})`;
+                toggle.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isExpanded = quote.classList.toggle('glp-nested-expanded');
+                    toggle.textContent = isExpanded
+                        ? `Hide nested quote (depth ${depth + 1})`
+                        : `Show nested quote (depth ${depth + 1})`;
+                });
+                quote.parentNode.insertBefore(toggle, quote);
             }
         });
     }
@@ -2833,6 +3033,8 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 if (settings.relativeTimestamps) convertTimestamps();
                 if (settings.freshnessColors) applyFreshnessColors();
                 if (settings.hideThreadButtons) initHideThreadButtons();
+                if (settings.userMuteList) { initMuteButtons(); applyMuteList(); }
+                if (settings.userTags) initUserTags();
                 applyDOMModifications();
             } catch (e) {
                 exhausted = true;
@@ -3158,6 +3360,9 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 if (settings.userMuteList) initMuteButtons();
                 if (settings.userTags) initUserTags();
                 if (settings.youtubeEmbed) embedYouTubeLinks();
+                if (settings.quoteDepthBadges) initQuoteDepthBadges();
+                if (settings.collapseNestedQuotes) initNestedQuoteCollapse();
+                if (settings.readerMode) initReaderMode();
                 highlightOPBadges();
                 applyDOMModifications();
             } catch (e) {
@@ -3647,6 +3852,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         if (!settings.userTags) return;
         loadUserTags();
 
+        // Thread page: author headers
         document.querySelectorAll('.msg tr[id^="post_"] .author_header').forEach(header => {
             if (header.querySelector('.glp-tag-btn')) return;
             const link = header.querySelector('b a');
@@ -3670,6 +3876,30 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 showTagPicker(username, header);
             });
             header.appendChild(btn);
+        });
+
+        // Feed page: poster cells
+        document.querySelectorAll('.threads .hfr, .threads .ufr').forEach(cell => {
+            if (cell.querySelector('.glp-user-tag, .glp-tag-btn')) return;
+            const link = cell.querySelector('a');
+            const username = link ? link.textContent.trim() : cell.textContent.trim();
+            if (!username || username === 'Anonymous Coward') return;
+
+            if (userTags[username]) {
+                const tag = createTagElement(username, userTags[username]);
+                cell.appendChild(tag);
+            }
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'glp-tag-btn';
+            btn.textContent = 'Tag';
+            btn.title = 'Tag this user';
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showTagPicker(username, cell);
+            });
+            cell.appendChild(btn);
         });
     }
 

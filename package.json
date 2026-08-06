@@ -7,6 +7,7 @@
   "scripts": {
     "check": "node --check src/glp-ultra.user.js && node --check extension/content/gm-shim.js && node --check extension/content/ext-bridge.js && node --check extension/background/service-worker.js && node --check extension/popup/popup.js && node --check extension/options/options.js && node scripts/build-userscript.mjs --check-only",
     "build": "node scripts/build-userscript.mjs",
+    "load": "node scripts/load-in-chrome.mjs",
     "icons": "node scripts/build-icons.mjs",
     "package": "node scripts/package-extension.mjs",
     "verify:captures": "node scripts/verify-captures.mjs",

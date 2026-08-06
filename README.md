@@ -28,13 +28,29 @@ Every feature exposes `init`/`destroy` and unwinds itself completely when switch
 
 ### Extension (recommended)
 
+The `extension/` folder is ready to load as-is — nothing to build first.
+
 ```bash
-npm run verify      # gates + build
-npm run package     # dist/glp-ultra-v3.0.0.zip
+npm run load    # copies the folder path and opens chrome://extensions
 ```
 
-Then `chrome://extensions` → enable Developer mode → **Load unpacked** → select `extension/`.
-The build is unsigned by design; Chrome/Edge will note that it is unpacked.
+1. `chrome://extensions`
+2. Turn on **Developer mode** (top right)
+3. **Load unpacked**
+4. Paste the path into the folder picker: `<repo>/extension`
+
+Chrome 137+ ignores `--load-extension`, and as of Chrome 151 the
+`--disable-features=DisableLoadExtensionCommandLineSwitch` workaround is gone too — loading
+unpacked is a deliberate manual action now, which is why `npm run load` only removes the typing.
+
+The build is unsigned by design; Chrome/Edge will show the usual unpacked-extension notice.
+Edge and Brave use the same flow. After editing `src/glp-ultra.user.js`, run `npm run build`
+and hit **Reload** on the extension card.
+
+```bash
+npm run verify      # gates + build + structure checks
+npm run package     # dist/glp-ultra-v3.0.0.zip
+```
 
 ### Userscript
 
@@ -62,6 +78,7 @@ scripts/                     build, icons, package, verification gates
 | Command | Purpose |
 | --- | --- |
 | `npm run check` | Syntax + policy gates (no remote code, no confirm dialogs, schema coverage) |
+| `npm run load` | Copies the extension path and opens `chrome://extensions` |
 | `npm run build` | Emits `dist/`, `extension/content/glp-ultra.user.js`, and the options-page schema |
 | `npm run verify:captures` | Asserts the selector registry still matches real captured GLP pages |
 | `npm run verify:extension` | Manifest/file/version/rule integrity |

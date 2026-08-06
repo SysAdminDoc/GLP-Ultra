@@ -1,13 +1,49 @@
 {
   "manifest_version": 3,
-  "name": "GLP Enhanced",
-  "version": "2.1.0",
-  "description": "Premium declutter, theming, and reading tools for Godlike Productions.",
-  "permissions": [],
+  "name": "GLP Ultra",
+  "version": "3.0.0",
+  "description": "Declutter, theming, filtering, blocking, and reading tools for Godlike Productions.",
+  "permissions": [
+    "storage",
+    "contextMenus",
+    "declarativeNetRequest"
+  ],
   "host_permissions": [
     "https://www.godlikeproductions.com/*",
     "https://godlikeproductions.com/*"
   ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "action": {
+    "default_title": "GLP Ultra",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "glp-ad-network",
+        "enabled": true,
+        "path": "rules/ad-network.json"
+      }
+    ]
+  },
   "content_scripts": [
     {
       "matches": [
@@ -19,7 +55,8 @@
       ],
       "js": [
         "content/gm-shim.js",
-        "content/glp-enhanced.user.js"
+        "content/glp-ultra.user.js",
+        "content/ext-bridge.js"
       ],
       "run_at": "document_start"
     }

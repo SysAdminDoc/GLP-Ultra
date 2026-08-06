@@ -1,0 +1,137 @@
+/* GLP Ultra popup: quick control over the settings the engine reads from chrome.storage.local. */
+
+const SETTINGS_KEY = 'glpEnhancedSettings';
+const NETWORK_BLOCK_KEY = 'glpNetworkAdBlock';
+
+const QUICK_TOGGLES = [
+    { key: 'removeAds', label: 'Remove ads', help: 'Ad slots, widgets, and AMP embeds.' },
+    { key: 'readerMode', label: 'Reader mode', help: 'Distraction-free thread reading.' },
+    { key: 'hideMemeReplies', label: 'Hide image-only replies', help: 'Drops low-effort reaction posts.' },
+    { key: 'hidePinnedThreads', label: 'Hide pinned threads', help: 'Keeps the feed chronological.' },
+    { key: 'infiniteScroll', label: 'Infinite scroll', help: 'Auto-loads the next forum page.' },
+    { key: 'hideBoomerGifs', label: 'Hide reaction GIFs', help: 'Blocks the /sm/ animated smilies.' }
+];
+
+let settings = {};
+
+function setStatus(message) {
+    const el = document.getElementById('status');
+    if (!message) {
+        el.hidden = true;
+        el.textContent = '';
+        return;
+    }
+    el.hidden = false;
+    el.textContent = message;
+}
+
+async function readSettings() {
+    const stored = await chrome.storage.local.get(SETTINGS_KEY);
+    const raw = stored[SETTINGS_KEY];
+    if (typeof raw !== 'string') return {};
+    try {
+        return JSON.parse(raw);
+    } catch (e) {
+        return {};
+    }
+}
+
+async function activeGLPTab() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tab && tab.url && tab.url.includes('godlikeproductions.com') ? tab : null;
+}
+
+async function patch(changes) {
+    settings = { ...settings, ...changes };
+    await chrome.storage.local.set({ [SETTINGS_KEY]: JSON.stringify(settings) });
+
+    const tab = await activeGLPTab();
+    if (tab) {
+        chrome.tabs.sendMessage(tab.id, { type: 'glp:patch-settings', patch: changes }, () => void chrome.runtime.lastError);
+    }
+}
+
+function renderQuickToggles() {
+    const list = document.getElementById('quick-toggles');
+    list.replaceChildren();
+
+    QUICK_TOGGLES.forEach(item => {
+        const li = document.createElement('li');
+
+        const label = document.createElement('label');
+        label.htmlFor = `toggle-${item.key}`;
+
+        const name = document.createElement('span');
+        name.className = 'label';
+        name.textContent = item.label;
+
+        const help = document.createElement('span');
+        help.className = 'help';
+        help.textContent = item.help;
+
+        label.append(name, help);
+
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.id = `toggle-${item.key}`;
+        input.checked = !!settings[item.key];
+        input.addEventListener('change', () => patch({ [item.key]: input.checked }));
+
+        li.append(label, input);
+        list.appendChild(li);
+    });
+}
+
+async function init() {
+    settings = await readSettings();
+
+    const master = document.getElementById('master-toggle');
+    master.checked = settings.enabled !== false;
+    master.addEventListener('change', () => patch({ enabled: master.checked }));
+
+    const theme = document.getElementById('theme-select');
+    theme.value = settings.colorTheme || 'midnight';
+    theme.addEventListener('change', () => patch({ colorTheme: theme.value }));
+
+    renderQuickToggles();
+
+    const stored = await chrome.storage.local.get(NETWORK_BLOCK_KEY);
+    const networkBlock = document.getElementById('network-block');
+    networkBlock.checked = stored[NETWORK_BLOCK_KEY] !== false;
+    networkBlock.addEventListener('change', () => {
+        chrome.storage.local.set({ [NETWORK_BLOCK_KEY]: networkBlock.checked });
+    });
+
+    document.getElementById('open-options').addEventListener('click', () => {
+        chrome.runtime.openOptionsPage();
+        window.close();
+    });
+
+    const panelBtn = document.getElementById('open-panel');
+    const tab = await activeGLPTab();
+    const version = document.getElementById('version-line');
+
+    if (!tab) {
+        panelBtn.disabled = true;
+        version.textContent = `v${chrome.runtime.getManifest().version} - open a GLP page`;
+        setStatus('Not on Godlike Productions. Toggles still save and apply on your next visit.');
+        return;
+    }
+
+    chrome.tabs.sendMessage(tab.id, { type: 'glp:ping' }, response => {
+        if (chrome.runtime.lastError || !response || !response.ok) {
+            version.textContent = `v${chrome.runtime.getManifest().version} - engine idle`;
+            setStatus('Engine has not loaded in this tab yet. Reload the page.');
+            panelBtn.disabled = true;
+            return;
+        }
+        version.textContent = `v${response.version} - active on this tab`;
+    });
+
+    panelBtn.addEventListener('click', () => {
+        chrome.tabs.sendMessage(tab.id, { type: 'glp:open-settings' }, () => void chrome.runtime.lastError);
+        window.close();
+    });
+}
+
+init();

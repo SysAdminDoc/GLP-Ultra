@@ -6,7 +6,7 @@ const root = process.cwd();
 
 const captures = [
   {
-    file: 'Godlike Productions - Discussion Forum.mhtml',
+    file: 'captures/forum-feed.mhtml',
     route: 'feed',
     urlPattern: /forum1\/pg1/i,
     checks: [
@@ -21,7 +21,7 @@ const captures = [
     ]
   },
   {
-    file: 'Pentagon Urged No Resumption Of Strikes As Iran Grew More Effective Tracking US Air Ops_ NYT.mhtml',
+    file: 'captures/thread-message.mhtml',
     route: 'thread',
     urlPattern: /forum1\/message6170474\/pg1/i,
     checks: [

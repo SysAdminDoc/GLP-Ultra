@@ -1,0 +1,13 @@
+node_modules/
+dist/
+
+# Written into the unpacked dir by Chrome when the extension is loaded
+extension/_metadata/
+*.bak
+.keys/
+*.log
+
+# Local-only working notes
+CLAUDE.md
+CODEX_CHANGELOG.md
+.claude/

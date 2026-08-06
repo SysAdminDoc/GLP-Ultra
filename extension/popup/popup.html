@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>GLP Ultra</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <header class="head">
+        <div class="brand">
+            <span class="mark">GLP</span>
+            <div class="titles">
+                <h1>GLP Ultra</h1>
+                <p id="version-line">Loading...</p>
+            </div>
+        </div>
+        <label class="master">
+            <input type="checkbox" id="master-toggle">
+            <span class="track"><span class="knob"></span></span>
+        </label>
+    </header>
+
+    <div id="status" class="status" hidden></div>
+
+    <section class="block">
+        <h2>Theme</h2>
+        <select id="theme-select">
+            <option value="midnight">Midnight</option>
+            <option value="catppuccin">Catppuccin Mocha</option>
+            <option value="dracula">Dracula</option>
+            <option value="nord">Nord</option>
+            <option value="gruvbox">Gruvbox</option>
+            <option value="amoled">AMOLED Black</option>
+            <option value="solarized">Solarized Dark</option>
+            <option value="blood">Blood</option>
+            <option value="alien">Alien Green</option>
+            <option value="highcontrast">High Contrast Dark</option>
+        </select>
+    </section>
+
+    <section class="block">
+        <h2>Quick toggles</h2>
+        <ul class="toggles" id="quick-toggles"></ul>
+    </section>
+
+    <section class="block">
+        <h2>Network</h2>
+        <ul class="toggles">
+            <li>
+                <label for="network-block">
+                    <span class="label">Block ad networks</span>
+                    <span class="help">Stops mgid and friends at the request layer.</span>
+                </label>
+                <input type="checkbox" id="network-block">
+            </li>
+        </ul>
+    </section>
+
+    <footer class="foot">
+        <button type="button" id="open-panel" class="btn primary">Settings panel</button>
+        <button type="button" id="open-options" class="btn">All options</button>
+    </footer>
+
+    <script src="popup.js"></script>
+</body>
+</html>

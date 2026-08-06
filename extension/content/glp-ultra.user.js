@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         GLP Enhanced - Godlike Productions Declutter
-// @namespace    https://github.com/glp-enhanced
-// @version      2.1.0
-// @description  Premium declutter, theming, and reading tools for Godlike Productions
-// @author       GLP Enhanced
+// @name         GLP Ultra
+// @namespace    https://github.com/SysAdminDoc/GLP_Userscript
+// @version      3.0.0
+// @description  Declutter, theming, filtering, blocking, and reading tools for Godlike Productions
+// @author       Matthew Parker
 // @match        *://www.godlikeproductions.com/*
 // @match        *://godlikeproductions.com/*
 // @icon         https://www.godlikeproductions.com/favicon.ico
@@ -17,7 +17,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '2.1.0';
+    const SCRIPT_VERSION = '3.0.0';
 
     // ============================================
     // DEFAULT SETTINGS
@@ -34,6 +34,7 @@
 
         // Registration Nag
         autoBypassRegNag: true,
+        autoBypassClubNag: true,
 
         // Header Options
         hideHeaderBanner: true,
@@ -71,6 +72,9 @@
         hideThreadHeaderRow: true,
         hideForumPageNav: false,
         compactThreadList: true,
+        sortControls: true,
+        defaultSortByNew: false,
+        hidePinnedThreads: false,
         highlightPinnedThreads: true,
         highlightSuperPins: true,
         highlightOP: true,
@@ -102,10 +106,12 @@
         compactQuotes: true,
         quoteDepthBadges: true,
         collapseNestedQuotes: true,
+        collapseQuotesByDefault: false,
         quoteBorderColor: '#4a90d9',
 
         // Visual Enhancements
         colorTheme: 'midnight',
+        shapeStyle: 'default',
         fontSize: 14,
         lineHeight: 1.5,
         maxContentWidth: 0,
@@ -147,6 +153,9 @@
 
         // Filtering
         hideThreadButtons: true,
+        userBlockList: true,
+        hideMemeReplies: false,
+        hideBoomerGifs: false,
         keywordHighlight: '',
         keywordHide: '',
         customCSS: '',
@@ -158,7 +167,7 @@
     };
 
     const SECTION_DESCRIPTIONS = {
-        'Core': 'Master controls for GLP Enhanced itself.',
+        'Core': 'Master controls for GLP Ultra itself.',
         'Ad Removal': 'Quiet the page by removing ad slots, embeds, and visual interruptions.',
         'Registration & Login': 'Keep account prompts and login surfaces under control.',
         'Header Options': 'Trim the top chrome while preserving access to important site actions.',
@@ -170,18 +179,29 @@
         'Thread List Enhancements': 'Add useful ranking, freshness, and visited-thread cues.',
         'Post Enhancements': 'Add reader tools for posts, timestamps, OP replies, and links.',
         'UI Enhancements': 'Enable high-value helpers for scrolling, media, previews, and feedback.',
-        'Filtering & Custom': 'Filter noisy topics and add carefully scoped custom CSS.',
+        'Filtering & Custom': 'Filter noisy topics, low-effort replies, and add carefully scoped custom CSS.',
         'Muted Users': 'Review and restore users muted by the local script.',
+        'Blocked Users': 'Review and restore users blocked by numeric user ID.',
+        'Presets': 'One-click configurations for common browsing modes.',
         'Miscellaneous': 'Low-level cleanup options for GLP layout cruft.'
     };
 
     const SETTING_DESCRIPTIONS = {
-        enabled: 'Turns every GLP Enhanced page modification on or off without clearing saved settings.',
+        enabled: 'Turns every GLP Ultra page modification on or off without clearing saved settings.',
         removeAds: 'Targets MGID and common ad containers.',
         removeWidgets: 'Removes empty widget placeholders after ads are hidden.',
         removeMsgAds: 'Hides ad rows injected into thread pages.',
         removeAmpEmbeds: 'Removes AMP embed blocks used by ad widgets.',
         autoBypassRegNag: 'Skips the registration interstitial when GLP exposes a bypass link.',
+        autoBypassClubNag: 'Accepts the "Private Virtual Country Club" disclaimer automatically.',
+        sortControls: 'Adds sort buttons (updated, posted, rating, views, replies) above the thread list.',
+        defaultSortByNew: 'Redirects forum pages to newest-first ordering when no sort is specified.',
+        hidePinnedThreads: 'Hides pinned and karma-pinned rows from the thread list.',
+        collapseQuotesByDefault: 'Starts every collapsible quote chain closed instead of open.',
+        shapeStyle: 'Overrides corner treatment across GLP surfaces.',
+        userBlockList: 'Adds a Block button to post authors and hides posts from blocked user IDs.',
+        hideMemeReplies: 'Hides image-only replies with almost no text.',
+        hideBoomerGifs: 'Hides the animated smiley/reaction images GLP serves from /sm/.',
         hideLoginLinks: 'Useful for read-only browsing sessions.',
         compactHeader: 'Compresses header whitespace and redundant breaks.',
         compactNav: 'Keeps navigation available with less vertical weight.',
@@ -195,7 +215,7 @@
         hideRelatedThreads: 'Hides the related threads section at the bottom of thread pages.',
         quoteDepthBadges: 'Shows quote nesting depth with a small numbered badge.',
         collapseNestedQuotes: 'Collapses quote chains deeper than two levels with an expand toggle.',
-        darkModeEnhance: 'Applies the selected GLP Enhanced dark theme.',
+        darkModeEnhance: 'Applies the selected GLP Ultra dark theme.',
         smoothScrolling: 'Uses smoother page movement where supported.',
         dimVisitedThreads: 'Makes already-read topics quieter.',
         hotThreadBadge: 'Emphasizes busy threads by reply count.',
@@ -338,6 +358,7 @@
         featuresStarted: false,
         observer: null,
         settingsApplyTimer: null,
+        featureErrors: [],
         fetchQueue: [],
         fetchActive: false,
         lastFetchAt: 0
@@ -485,7 +506,7 @@
 
     function generateCSS() {
         let css = `
-/* GLP Enhanced Base Styles */
+/* GLP Ultra Base Styles */
 .glp-enhanced-hidden { display: none !important; }
 body.glp-enhanced-active { color-scheme: dark; }
 
@@ -1565,6 +1586,65 @@ td.nav { border-color: ${t.border} !important; }
     color: #fff !important; background: rgba(74,144,217,0.16);
     border-color: rgba(74,144,217,0.38); transform: translateY(-1px);
 }
+
+`;
+        }
+
+        // ---- Merged suite chrome (always styled, independent of theme toggle) ----
+        css += `
+/* Sort controls */
+.glp-sort-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.glp-sort-item {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: rgba(255,255,255,0.04); border: 1px solid ${t.border};
+    border-radius: 6px; padding: 3px 6px;
+}
+.glp-sort-label { color: #9aa8c7; font-size: 11px; font-weight: 650; letter-spacing: 0.02em; }
+.glp-sort-btn {
+    background: transparent; border: 1px solid transparent; color: #8d9bbb;
+    border-radius: 4px; padding: 1px 5px; font-size: 10px; line-height: 1.4; cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.glp-sort-btn:hover { color: #fff; background: rgba(255,255,255,0.08); }
+.glp-sort-btn.glp-sort-active {
+    color: ${t.bg}; background: ${t.accent}; border-color: ${t.accent}; font-weight: 700;
+}
+
+/* Block button */
+.glp-block-btn {
+    display: inline-block; margin-top: 5px;
+    background: rgba(192,57,43,0.16); color: #ff9b91 !important;
+    border: 1px solid rgba(192,57,43,0.42); border-radius: 4px;
+    padding: 2px 7px; font-size: 10px; font-weight: 700; cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.glp-block-btn:hover { background: rgba(192,57,43,0.36); color: #fff !important; }
+
+/* Filtered rows */
+tr.glp-user-blocked, tr.glp-meme-hidden, tr.glp-pinned-hidden { display: none !important; }
+`;
+
+        // ---- Shape treatment ----
+        if (settings.shapeStyle === 'rounded') {
+            css += `body.glp-enhanced-active table.threads,
+body.glp-enhanced-active table.msg,
+body.glp-enhanced-active .post_wrap,
+body.glp-enhanced-active .quoteo,
+body.glp-enhanced-active .threads-wrapper { border-radius: 10px !important; overflow: hidden; }
+body.glp-enhanced-active .author_avatar img { border-radius: 8px !important; }
+`;
+        } else if (settings.shapeStyle === 'square') {
+            css += `body.glp-enhanced-active table.threads,
+body.glp-enhanced-active table.msg,
+body.glp-enhanced-active .post_wrap,
+body.glp-enhanced-active .quoteo,
+body.glp-enhanced-active .threads-wrapper,
+body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
+`;
+        }
+
+        if (settings.hideBoomerGifs) {
+            css += `.post_main img[src*="/sm/"] { display: none !important; }
 `;
         }
 
@@ -2074,6 +2154,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         const existing = document.getElementById('glp-enhanced-overlay');
         if (existing) existing.remove();
         loadMutedUsers();
+        loadBlockedUsers();
 
         const overlay = document.createElement('div');
         overlay.id = 'glp-enhanced-overlay';
@@ -2089,7 +2170,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             <div id="glp-enhanced-settings-header">
                 <div class="glp-settings-title-block">
                     <div class="glp-settings-kicker">Premium control center</div>
-                    <h2 id="glp-settings-title">GLP Enhanced <span class="version">v${SCRIPT_VERSION}</span></h2>
+                    <h2 id="glp-settings-title">GLP Ultra <span class="version">v${SCRIPT_VERSION}</span></h2>
                     <p class="glp-settings-subtitle">Tune the forum into a cleaner, quieter, faster reading surface. Changes are saved locally and can be exported at any time.</p>
                 </div>
                 <div class="glp-settings-header-actions">
@@ -2102,7 +2183,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             </div>
             <div id="glp-enhanced-settings-body">
                 ${createSettingsSection('Core', [
-                    { key: 'enabled', label: 'Enable GLP Enhanced' }
+                    { key: 'enabled', label: 'Enable GLP Ultra' }
                 ])}
                 ${createSettingsSection('Ad Removal', [
                     { key: 'removeAds', label: 'Remove Advertisements (mgid)' },
@@ -2112,6 +2193,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 ])}
                 ${createSettingsSection('Registration & Login', [
                     { key: 'autoBypassRegNag', label: 'Auto-Bypass Registration Nag' },
+                    { key: 'autoBypassClubNag', label: 'Auto-Accept Country Club Disclaimer' },
                     { key: 'hideLoginLinks', label: 'Hide All Login Buttons' }
                 ])}
                 ${createSettingsSection('Header Options', [
@@ -2149,6 +2231,9 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     { key: 'hideThreadHeaderRow', label: 'Hide Column Headers Row' },
                     { key: 'hideForumPageNav', label: 'Hide Forum Page Navigation' },
                     { key: 'compactThreadList', label: 'Compact Thread List' },
+                    { key: 'sortControls', label: 'Sort Controls Toolbar' },
+                    { key: 'defaultSortByNew', label: 'Default to Newest First' },
+                    { key: 'hidePinnedThreads', label: 'Hide Pinned Threads' },
                     { key: 'highlightPinnedThreads', label: 'Highlight Pinned Threads' },
                     { key: 'highlightSuperPins', label: 'Highlight Super Pins (Gold)' },
                     { key: 'highlightOP', label: 'Highlight OP Badge (Gold)' },
@@ -2180,10 +2265,12 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     { key: 'compactQuotes', label: 'Compact Quotes' },
                     { key: 'quoteDepthBadges', label: 'Quote Depth Badges' },
                     { key: 'collapseNestedQuotes', label: 'Collapse Nested Quote Chains' },
+                    { key: 'collapseQuotesByDefault', label: 'Collapse Every Quote by Default' },
                     { key: 'quoteBorderColor', label: 'Quote Border Color', type: 'color' }
                 ])}
                 ${createSettingsSection('Visual Enhancements', [
                     { key: 'colorTheme', label: 'Color Theme', type: 'select', options: {midnight:'Midnight',catppuccin:'Catppuccin Mocha',dracula:'Dracula',nord:'Nord',gruvbox:'Gruvbox',amoled:'AMOLED Black',solarized:'Solarized Dark',blood:'Blood',alien:'Alien Green',highcontrast:'High Contrast Dark'} },
+                    { key: 'shapeStyle', label: 'Corner Style', type: 'select', options: {default:'Site Default',rounded:'Rounded',square:'Square'} },
                     { key: 'fontSize', label: 'Font Size (px)', type: 'number', min: 10, max: 24 },
                     { key: 'lineHeight', label: 'Line Height', type: 'number', min: 1, max: 2.5, step: 0.1 },
                     { key: 'maxContentWidth', label: 'Max Width (0=none)', type: 'number', min: 0, max: 2000 },
@@ -2225,11 +2312,16 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 ])}
                 ${createSettingsSection('Filtering & Custom', [
                     { key: 'hideThreadButtons', label: 'Show Hide Thread Buttons (x)' },
+                    { key: 'userBlockList', label: 'User Block Buttons (by User ID)' },
+                    { key: 'hideMemeReplies', label: 'Hide Image-Only Replies' },
+                    { key: 'hideBoomerGifs', label: 'Hide Reaction GIFs (/sm/)' },
                     { key: 'keywordHighlight', label: 'Highlight Keywords (comma-sep)', type: 'text' },
                     { key: 'keywordHide', label: 'Hide Keywords (comma-sep)', type: 'text' },
                     { key: 'customCSS', label: 'Custom CSS', type: 'textarea' }
                 ])}
                 ${createSettingsSection('Muted Users', [], 'mute-list')}
+                ${createSettingsSection('Blocked Users', [], 'block-list')}
+                ${createSettingsSection('Presets', [], 'presets')}
                 ${createSettingsSection('Miscellaneous', [
                     { key: 'autoExpandImages', label: 'Auto-Expand Images' },
                     { key: 'hideFooter', label: 'Hide Footer' },
@@ -2287,18 +2379,48 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 }
             });
         }
+
+        // Block list unblock buttons
+        const blockManage = document.getElementById('glp-block-manage');
+        if (blockManage) {
+            blockManage.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-unblock]');
+                if (btn) {
+                    unblockUser(btn.dataset.unblock);
+                    setTrustedHTML(blockManage, getBlockListHTML());
+                }
+            });
+        }
+
+        document.getElementById('glp-preset-reader')?.addEventListener('click', () => {
+            applyReaderPreset();
+            closeSettings();
+        });
     }
 
     function createSettingsSection(title, items, specialId) {
         let contentHTML = '';
         const desc = SECTION_DESCRIPTIONS[title] || '';
         const changedCount = items.filter(item => settings[item.key] !== DEFAULT_SETTINGS[item.key]).length;
-        const metaText = specialId === 'mute-list'
-            ? `${mutedUsers.length} muted`
-            : `${items.length} control${items.length !== 1 ? 's' : ''}${changedCount ? ` - ${changedCount} changed` : ''}`;
+        const SPECIAL_META = {
+            'mute-list': `${mutedUsers.length} muted`,
+            'block-list': `${blockedUsers.length} blocked`,
+            'presets': '1 preset'
+        };
+        const metaText = SPECIAL_META[specialId]
+            || `${items.length} control${items.length !== 1 ? 's' : ''}${changedCount ? ` - ${changedCount} changed` : ''}`;
 
         if (specialId === 'mute-list') {
             contentHTML = `<div class="glp-mute-manage-list" id="glp-mute-manage">${getMuteListHTML()}</div>`;
+        } else if (specialId === 'block-list') {
+            contentHTML = `<div class="glp-mute-manage-list" id="glp-block-manage">${getBlockListHTML()}</div>`;
+        } else if (specialId === 'presets') {
+            contentHTML = `
+                <div class="glp-setting-item full-width" data-search="presets lean reading preset declutter">
+                    <label><span class="glp-setting-label">Lean reading preset</span><span class="glp-setting-help">Turns on every ad, chrome, and metadata cleanup at once. Applies immediately with an undo toast.</span></label>
+                    <button type="button" class="glp-btn glp-btn-secondary" id="glp-preset-reader">Apply lean reading preset</button>
+                </div>
+            `;
         } else {
             contentHTML = items.map(item => {
                 const value = settings[item.key];
@@ -2336,7 +2458,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         }
 
         return `
-            <div class="glp-settings-section${specialId === 'mute-list' ? ' collapsed' : ''}" data-section-title="${escapeAttribute(title)}">
+            <div class="glp-settings-section${specialId === 'mute-list' || specialId === 'block-list' ? ' collapsed' : ''}" data-section-title="${escapeAttribute(title)}">
                 <div class="glp-settings-section-header">
                     <div class="glp-section-heading">
                         <h3>${escapeHTML(title)}</h3>
@@ -2371,7 +2493,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     if (match) visibleItems++;
                 });
 
-                const isSpecial = section.querySelector('#glp-mute-manage');
+                const isSpecial = section.querySelector('#glp-mute-manage, #glp-block-manage');
                 const showSection = isSpecial ? sectionMatches : visibleItems > 0 || sectionMatches;
                 section.classList.toggle('glp-filtered', !showSection);
                 if (query && showSection) section.classList.remove('collapsed');
@@ -2492,7 +2614,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     closeSettings();
                     showNotification('Settings imported. Reload if a feature needs a fresh page.', 'success');
                 } catch (err) {
-                    showNotification('Import failed. Choose a valid GLP Enhanced JSON file.', 'error');
+                    showNotification('Import failed. Choose a valid GLP Ultra JSON file.', 'error');
                 }
             };
             reader.readAsText(file);
@@ -2606,7 +2728,9 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             '.glp-yt-embed',
             '.glp-reader-byline',
             '.glp-quote-depth',
-            '.glp-nested-toggle'
+            '.glp-nested-toggle',
+            '.glp-block-btn',
+            '.glp-sort-group'
         ];
 
         if (!keepSettingsPanel) {
@@ -2630,6 +2754,13 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         });
 
         document.body?.classList.remove('glp-enhanced-active', 'glpx-enabled', 'glpx-reader-active');
+    }
+
+    function recordFeatureError(id, stage, error) {
+        const entry = { id, stage, message: error && error.message ? error.message : String(error) };
+        runtimeState.featureErrors.push(entry);
+        if (runtimeState.featureErrors.length > 20) runtimeState.featureErrors.shift();
+        console.warn(`[GLP Ultra] feature "${id}" failed during ${stage}:`, error);
     }
 
     function routeAllowsFeature(feature) {
@@ -2658,6 +2789,9 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             { id: 'feed.hotBadges', routes: ['feed'], settingKey: 'hotThreadBadge', init: applyHotThreadBadges, apply: applyHotThreadBadges, destroy: () => {} },
             { id: 'feed.freshness', routes: ['feed'], settingKey: 'freshnessColors', init: applyFreshnessColors, apply: applyFreshnessColors, destroy: () => document.querySelectorAll('.glp-fresh-now, .glp-fresh-recent, .glp-fresh-stale').forEach(node => node.classList.remove('glp-fresh-now', 'glp-fresh-recent', 'glp-fresh-stale')) },
             { id: 'users.muteButtons', routes: ['all'], settingKey: 'userMuteList', init: initMuteButtons, apply: applyMuteList, destroy: () => document.querySelectorAll('.glp-mute-btn').forEach(node => node.remove()) },
+            { id: 'users.blockButtons', routes: ['thread'], settingKey: 'userBlockList', init: initUserBlockButtons, apply: initUserBlockButtons, destroy: () => { document.querySelectorAll('.glp-block-btn').forEach(node => node.remove()); document.querySelectorAll('.glp-user-blocked').forEach(node => node.classList.remove('glp-user-blocked')); } },
+            { id: 'thread.memeFilter', routes: ['thread'], settingKey: 'hideMemeReplies', init: applyMemeFilter, apply: applyMemeFilter, destroy: clearMemeFilter },
+            { id: 'feed.pinnedVisibility', routes: ['feed'], init: applyPinnedVisibility, apply: applyPinnedVisibility, destroy: clearPinnedVisibility },
             { id: 'feed.hideThreads', routes: ['feed'], settingKey: 'hideThreadButtons', init: initHideThreadButtons, apply: applyHiddenThreads, destroy: () => document.querySelectorAll('.glp-hide-col, #glp-hidden-threads-bar').forEach(node => node.remove()) },
             { id: 'feed.keywordFilters', routes: ['feed'], init: applyKeywordFilters, apply: applyKeywordFilters, destroy: clearKeywordFilters },
             { id: 'feed.autoRefresh', routes: ['feed'], settingKey: 'autoRefresh', init: initAutoRefresh, apply: () => {}, destroy: () => { if (refreshTimer) clearInterval(refreshTimer); document.getElementById('glp-auto-refresh-bar')?.remove(); } },
@@ -2678,9 +2812,21 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
     function runFeatureRegistry(stage = 'init') {
         const ctx = { route: runtimeState.route, settings, selectors: SELECTOR_REGISTRY };
         getFeatureRegistry().forEach(feature => {
-            if (!routeAllowsFeature(feature) || !settingAllowsFeature(feature)) return;
-            const runner = feature[stage] || feature.init;
-            if (typeof runner === 'function') runner(ctx);
+            const routeOk = routeAllowsFeature(feature);
+            if (!routeOk) return;
+
+            // One failing feature must never take the rest of the page down with it.
+            try {
+                if (!settingAllowsFeature(feature)) {
+                    // A feature switched off in the panel must undo itself, not linger in the DOM.
+                    if (stage === 'apply' && typeof feature.destroy === 'function') feature.destroy(ctx);
+                    return;
+                }
+                const runner = feature[stage] || feature.init;
+                if (typeof runner === 'function') runner(ctx);
+            } catch (error) {
+                recordFeatureError(feature.id, stage, error);
+            }
         });
     }
 
@@ -2830,7 +2976,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             quote.dataset.glpNestedProcessed = '1';
 
             const depth = computeQuoteDepth(quote);
-            if (depth >= 2) {
+            if (depth >= (settings.collapseQuotesByDefault ? 0 : 2)) {
                 quote.classList.add('glp-nested-collapsed');
 
                 const toggle = document.createElement('span');
@@ -3035,6 +3181,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 if (settings.hideThreadButtons) initHideThreadButtons();
                 if (settings.userMuteList) { initMuteButtons(); applyMuteList(); }
                 if (settings.userTags) initUserTags();
+                applyPinnedVisibility();
                 applyDOMModifications();
             } catch (e) {
                 exhausted = true;
@@ -3162,6 +3309,295 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
     }
 
     // ============================================
+    // USER BLOCK LIST (numeric user id)
+    // ============================================
+    let blockedUsers = [];
+
+    function loadBlockedUsers() {
+        try {
+            const parsed = JSON.parse(GM_getValue('glpBlockedUsers', '[]'));
+            blockedUsers = Array.isArray(parsed)
+                ? parsed.map(entry => (typeof entry === 'object' && entry ? entry : { id: String(entry), name: String(entry) }))
+                : [];
+        } catch (e) {
+            blockedUsers = [];
+        }
+    }
+
+    function saveBlockedUsers() {
+        GM_setValue('glpBlockedUsers', JSON.stringify(blockedUsers));
+    }
+
+    function isUserBlocked(userId) {
+        return blockedUsers.some(entry => entry.id === String(userId));
+    }
+
+    function blockUser(userId, userName) {
+        const id = String(userId || '').trim();
+        if (!id || isUserBlocked(id)) return;
+        const name = (userName || '').trim() || `User ${id}`;
+        blockedUsers.push({ id, name });
+        saveBlockedUsers();
+        applyUserBlocks();
+        showNotification(`Blocked ${name}.`, 'warning', {
+            label: 'Undo',
+            onClick: () => unblockUser(id)
+        });
+    }
+
+    function unblockUser(userId) {
+        const id = String(userId);
+        const entry = blockedUsers.find(u => u.id === id);
+        blockedUsers = blockedUsers.filter(u => u.id !== id);
+        saveBlockedUsers();
+        applyUserBlocks();
+        showNotification(`Unblocked ${entry ? entry.name : id}.`, 'success');
+    }
+
+    function applyUserBlocks(root = document) {
+        const scope = root && root.querySelectorAll ? root : document;
+        scope.querySelectorAll('tr[class*="post_uid_"]').forEach(tr => {
+            const match = tr.className.match(/post_uid_(\d+)/);
+            const blocked = !!(settings.userBlockList && match && isUserBlocked(match[1]));
+            tr.classList.toggle('glp-user-blocked', blocked);
+        });
+    }
+
+    function initUserBlockButtons(root = document) {
+        if (!settings.userBlockList) return;
+        loadBlockedUsers();
+
+        const scope = root && root.querySelectorAll ? root : document;
+        scope.querySelectorAll('td.messageauthor, td.replyauthor').forEach(cell => {
+            if (cell.querySelector('.glp-block-btn')) return;
+            const row = cell.closest('tr');
+            const match = row && row.className ? row.className.match(/post_uid_(\d+)/) : null;
+            if (!match) return;
+
+            const userId = match[1];
+            const header = cell.querySelector('.author_header');
+            const link = header ? header.querySelector('b a, a') : null;
+            const userName = link
+                ? link.textContent.trim()
+                : (header ? header.textContent.replace(/\(OP\)|Mute|Block/g, '').trim() : `User ${userId}`);
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'glp-block-btn';
+            btn.textContent = 'Block';
+            btn.title = `Block user ${userId}`;
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                blockUser(userId, userName);
+            });
+            cell.appendChild(btn);
+        });
+
+        applyUserBlocks(scope);
+    }
+
+    function getBlockListHTML() {
+        if (blockedUsers.length === 0) {
+            return '<div class="glp-empty-state">No blocked users yet. Use the Block button on any post author.</div>';
+        }
+        return blockedUsers.map(u => `
+            <div class="glp-mute-manage-item">
+                <span>${escapeHTML(u.name)} <em>#${escapeHTML(u.id)}</em></span>
+                <button data-unblock="${escapeAttribute(u.id)}">Unblock</button>
+            </div>
+        `).join('');
+    }
+
+    // ============================================
+    // CONTENT FILTERS (low-effort replies, reaction GIFs)
+    // ============================================
+    function applyMemeFilter(root = document) {
+        const scope = root && root.querySelectorAll ? root : document;
+        if (!settings.hideMemeReplies) {
+            scope.querySelectorAll('.glp-meme-hidden').forEach(tr => tr.classList.remove('glp-meme-hidden'));
+            return;
+        }
+
+        scope.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
+            const body = tr.querySelector('.post_main');
+            if (!body) return;
+
+            const clone = body.cloneNode(true);
+            clone.querySelectorAll('.quoteo, .quotei, .sig1, .sig2, font[size="1"], .glp-post-number, .glp-quote-depth').forEach(node => node.remove());
+
+            const mediaCount = clone.querySelectorAll('img:not([src*="/sm/"]), iframe, video').length;
+            if (mediaCount === 0) {
+                tr.classList.remove('glp-meme-hidden');
+                return;
+            }
+
+            const text = clone.textContent.replace(/\s+/g, ' ').trim();
+            tr.classList.toggle('glp-meme-hidden', text.length < 20);
+        });
+    }
+
+    function clearMemeFilter() {
+        document.querySelectorAll('.glp-meme-hidden').forEach(tr => tr.classList.remove('glp-meme-hidden'));
+    }
+
+    // ============================================
+    // PINNED THREAD VISIBILITY
+    // ============================================
+    function applyPinnedVisibility(root = document) {
+        const scope = root && root.querySelectorAll ? root : document;
+        scope.querySelectorAll('.threads:not(.related) tbody tr').forEach(tr => {
+            const pinned = !!tr.querySelector('span[title="Pinned Thread"], span[title="Karma Pin"]');
+            tr.classList.toggle('glp-pinned-hidden', !!settings.hidePinnedThreads && pinned);
+        });
+    }
+
+    function clearPinnedVisibility() {
+        document.querySelectorAll('.glp-pinned-hidden').forEach(tr => tr.classList.remove('glp-pinned-hidden'));
+    }
+
+    // ============================================
+    // FEED SORT CONTROLS
+    // ============================================
+    const SORT_CONTROLS = Object.freeze([
+        { key: 'updated', label: 'Updated' },
+        { key: 'posted', label: 'Posted' },
+        { key: 'rating', label: 'Rating' },
+        { key: 'views', label: 'Views' },
+        { key: 'replies', label: 'Replies' }
+    ]);
+
+    function currentForumBase() {
+        const match = window.location.pathname.match(/\/(forum\d+)\//);
+        return `${window.location.origin}/${match ? match[1] : 'forum1'}/pg1`;
+    }
+
+    function buildSortControls(bar) {
+        if (!settings.sortControls) return;
+
+        const params = new URLSearchParams(window.location.search);
+        const activeSort = params.get('sort');
+        const activeOrder = params.get('order');
+
+        const group = document.createElement('div');
+        group.className = 'glp-sort-group';
+
+        SORT_CONTROLS.forEach(control => {
+            const wrap = document.createElement('span');
+            wrap.className = 'glp-sort-item';
+
+            const label = document.createElement('span');
+            label.className = 'glp-sort-label';
+            label.textContent = control.label;
+            wrap.appendChild(label);
+
+            [['desc', 'Newest / highest first', '▼'], ['asc', 'Oldest / lowest first', '▲']].forEach(([order, title, glyph]) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'glp-sort-btn';
+                btn.textContent = glyph;
+                btn.title = `${control.label}: ${title}`;
+                if (activeSort === control.key && activeOrder === order) btn.classList.add('glp-sort-active');
+                btn.addEventListener('click', () => {
+                    window.location.href = `${currentForumBase()}?sort=${control.key}&order=${order}`;
+                });
+                wrap.appendChild(btn);
+            });
+
+            group.appendChild(wrap);
+        });
+
+        const pinnedBtn = document.createElement('button');
+        pinnedBtn.type = 'button';
+        pinnedBtn.className = 'glp-settings-inline-btn glp-toolbar-btn';
+        pinnedBtn.textContent = settings.hidePinnedThreads ? 'Show pinned' : 'Hide pinned';
+        pinnedBtn.title = 'Toggle pinned thread rows';
+        pinnedBtn.addEventListener('click', () => {
+            settings.hidePinnedThreads = !settings.hidePinnedThreads;
+            saveSettings();
+            applyPinnedVisibility();
+            pinnedBtn.textContent = settings.hidePinnedThreads ? 'Show pinned' : 'Hide pinned';
+            showNotification(`Pinned threads ${settings.hidePinnedThreads ? 'hidden' : 'shown'}.`, 'info');
+        });
+        group.appendChild(pinnedBtn);
+
+        const resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.className = 'glp-settings-inline-btn glp-toolbar-btn';
+        resetBtn.textContent = 'Reset sort';
+        resetBtn.title = 'Return to the default forum ordering';
+        resetBtn.addEventListener('click', () => {
+            window.location.href = currentForumBase();
+        });
+        group.appendChild(resetBtn);
+
+        bar.appendChild(group);
+    }
+
+    function applyDefaultSort() {
+        if (!settings.defaultSortByNew) return false;
+        if (runtimeState.route !== 'feed') return false;
+
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('sort')) return false;
+
+        params.set('sort', 'posted');
+        params.set('order', 'desc');
+        window.location.replace(`${window.location.pathname}?${params.toString()}`);
+        return true;
+    }
+
+    // ============================================
+    // COUNTRY CLUB DISCLAIMER BYPASS
+    // ============================================
+    function bypassCountryClubNag() {
+        if (!settings.autoBypassClubNag) return false;
+
+        const submit = document.querySelector('input[type="submit"][name="disclaimer"]');
+        if (!submit) return false;
+
+        const form = submit.closest('form') || document;
+        form.querySelectorAll('input[type="checkbox"]').forEach(box => { box.checked = true; });
+        submit.click();
+        return true;
+    }
+
+    // ============================================
+    // PRESETS
+    // ============================================
+    const READER_PRESET_KEYS = Object.freeze([
+        'removeAds', 'removeWidgets', 'removeMsgAds', 'removeAmpEmbeds',
+        'autoBypassRegNag', 'autoBypassClubNag',
+        'hideHeaderBanner', 'hideStatsBar', 'hideHeaderTime', 'hideLoginLinks',
+        'hideTopLinks', 'hideMainNav', 'hideTabNav', 'hideRSS', 'hideChatRoom', 'hideJoinLink',
+        'compactHeader', 'compactNav', 'compactThreadList', 'compactPosts', 'compactQuotes',
+        'hideKarmaBar', 'hideSignatures', 'hideLastEdited', 'hideRateSection', 'hideReportLinks',
+        'hideRelatedThreads', 'hideFooter', 'hideMobileThreadMeta', 'hideThreadHeaderRow',
+        'widerContent', 'smallerAvatars', 'collapseLongQuotes', 'hideMemeReplies'
+    ]);
+
+    function applyReaderPreset() {
+        const previous = {};
+        READER_PRESET_KEYS.forEach(key => {
+            previous[key] = settings[key];
+            settings[key] = true;
+        });
+        saveSettings();
+        applyStyles();
+        runFeatureRegistry('apply');
+        showNotification('Lean reading preset applied.', 'success', {
+            label: 'Undo',
+            onClick: () => {
+                Object.entries(previous).forEach(([key, value]) => { settings[key] = value; });
+                saveSettings();
+                applyStyles();
+                runFeatureRegistry('apply');
+                showNotification('Preset reverted.', 'info');
+            }
+        });
+    }
+
+    // ============================================
     // INJECT FORUM LINK INTO THREAD NAV
     // ============================================
     function injectForumLink() {
@@ -3169,6 +3605,10 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             if (navCell.querySelector('.glp-forum-link')) return;
             const firstCtrl = navCell.querySelector('.navctrl');
             if (!firstCtrl) return;
+            // .navctrl is not always a direct child of the nav cell, so insert against its
+            // real parent - insertBefore on the wrong parent throws and aborts the page.
+            const ctrlParent = firstCtrl.parentNode;
+            if (!ctrlParent) return;
 
             // Forum link
             const div = document.createElement('div');
@@ -3177,7 +3617,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             a.href = '/forum1/pg1';
             a.textContent = 'Forum';
             div.appendChild(a);
-            navCell.insertBefore(div, firstCtrl);
+            ctrlParent.insertBefore(div, firstCtrl);
 
             // Theme selector
             if (!navCell.querySelector('#glp-theme-select')) {
@@ -3215,7 +3655,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     });
                 });
                 themeDiv.appendChild(select);
-                navCell.insertBefore(themeDiv, firstCtrl);
+                ctrlParent.insertBefore(themeDiv, firstCtrl);
             }
 
             // Settings gear
@@ -3225,11 +3665,11 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 const gear = document.createElement('a');
                 gear.href = '#';
                 gear.textContent = 'Settings';
-                gear.title = 'Open GLP Enhanced settings';
-                gear.setAttribute('aria-label', 'Open GLP Enhanced settings');
+                gear.title = 'Open GLP Ultra settings';
+                gear.setAttribute('aria-label', 'Open GLP Ultra settings');
                 gear.addEventListener('click', (e) => { e.preventDefault(); createSettingsPanel(); });
                 gearDiv.appendChild(gear);
-                navCell.appendChild(gearDiv);
+                ctrlParent.appendChild(gearDiv);
             }
         });
     }
@@ -3281,6 +3721,8 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         });
         bar.appendChild(select);
 
+        buildSortControls(bar);
+
         // Settings gear
         const spacer = document.createElement('span');
         spacer.className = 'glp-toolbar-spacer';
@@ -3289,8 +3731,9 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         const settingsBtn = document.createElement('button');
         settingsBtn.type = 'button';
         settingsBtn.className = 'glp-settings-inline-btn';
+        settingsBtn.id = 'glp-open-settings-btn';
         settingsBtn.textContent = 'Settings';
-        settingsBtn.title = 'Open GLP Enhanced settings';
+        settingsBtn.title = 'Open GLP Ultra settings';
         settingsBtn.addEventListener('click', createSettingsPanel);
         bar.appendChild(settingsBtn);
 
@@ -3362,6 +3805,8 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 if (settings.youtubeEmbed) embedYouTubeLinks();
                 if (settings.quoteDepthBadges) initQuoteDepthBadges();
                 if (settings.collapseNestedQuotes) initNestedQuoteCollapse();
+                if (settings.userBlockList) initUserBlockButtons();
+                if (settings.hideMemeReplies) applyMemeFilter();
                 if (settings.readerMode) initReaderMode();
                 highlightOPBadges();
                 applyDOMModifications();
@@ -3705,6 +4150,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 if (settings.userMuteList) { initMuteButtons(); applyMuteList(); }
                 if (settings.hideThreadButtons) initHideThreadButtons();
                 applyKeywordFilters();
+                applyPinnedVisibility();
                 applyDOMModifications();
             }
         } catch (e) { /* silent */ }
@@ -4416,7 +4862,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         runtimeState.route = classifyRoute();
 
         if (typeof GM_registerMenuCommand !== 'undefined' && !runtimeState.menuRegistered) {
-            GM_registerMenuCommand('GLP Enhanced Settings', createSettingsPanel);
+            GM_registerMenuCommand('GLP Ultra Settings', createSettingsPanel);
             runtimeState.menuRegistered = true;
         }
 
@@ -4426,7 +4872,10 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         }
 
         if (settings.autoBypassRegNag && bypassRegistrationNag()) return;
+        if (bypassCountryClubNag()) return;
+        if (applyDefaultSort()) return;
 
+        loadBlockedUsers();
         startFeatures();
     }
 
@@ -4462,6 +4911,33 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
 
         runtimeState.observer.observe(document.body, { childList: true, subtree: true });
     }
+
+    // Control surface for the browser-extension shell (popup, options page, service worker).
+    // Harmless when running as a plain userscript: nothing else reads it.
+    window.__GLP_ULTRA__ = {
+        version: SCRIPT_VERSION,
+        openSettings: createSettingsPanel,
+        getSettings: () => ({ ...settings }),
+        getDefaults: () => ({ ...DEFAULT_SETTINGS }),
+        applyExternalSettings(patch) {
+            if (!patch || typeof patch !== 'object') return false;
+            Object.keys(DEFAULT_SETTINGS).forEach(key => {
+                if (Object.prototype.hasOwnProperty.call(patch, key)) settings[key] = patch[key];
+            });
+            saveSettings();
+            applyStyles();
+            if (!settings.enabled) {
+                destroyEnhancedUI({ keepStyles: true });
+            } else if (!runtimeState.featuresStarted) {
+                startFeatures();
+            } else {
+                runFeatureRegistry('apply');
+            }
+            return true;
+        },
+        getLists: () => ({ mutedUsers: [...mutedUsers], blockedUsers: blockedUsers.map(u => ({ ...u })), hiddenThreads: [...hiddenThreads] }),
+        getDiagnostics: () => ({ route: runtimeState.route, featuresStarted: runtimeState.featuresStarted, errors: [...runtimeState.featureErrors] })
+    };
 
     init();
 

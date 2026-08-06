@@ -1,4 +1,16 @@
-# GLP Ultra v0.0.1 Roadmap
+# GLP Ultra Roadmap
+
+## Status — v3.0.0 (2026-08-06)
+
+The two userscripts are merged and the MV3 extension is the primary vehicle, exactly as the delivery table below prescribes.
+
+- Shipped: single engine at `src/glp-ultra.user.js` (114 settings / 17 sections), MV3 extension with popup, options page, service worker, and `declarativeNetRequest` ad blocking, plus the userscript build from the same source.
+- Absorbed from `GodLikeProductions Enhanced Suite` v9.0.0 (now deleted): sort toolbar, newest-first default, pinned-thread hiding, user blocking by ID, image-only reply filter, reaction-GIF filter, country-club nag bypass, collapse-quotes-by-default, corner style, lean reading preset.
+- Dropped deliberately: jQuery CDN dependency, key-driven surfaces (house rule), the Suite autopager (superseded by the engine's infinite scroll).
+- Verification: `npm run verify` (gates + captures + structure) and a Playwright run that loads the unpacked extension and replays the real GLP captures — 16/16 checks.
+
+Remaining roadmap items below are unchanged and still open.
+
 
 Research date: 2026-05-19  
 Target site: Godlike Productions, `https://www.godlikeproductions.com/` and `https://godlikeproductions.com/`  

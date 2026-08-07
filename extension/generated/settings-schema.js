@@ -132,6 +132,9 @@ window.GLP_SCHEMA = {
     "exportThreadJson": true,
     "exportMediaManifest": true,
     "exportCopyThreadLink": true,
+    "reduceMotion": false,
+    "highContrast": false,
+    "largeTargets": false,
     "autoExpandImages": false,
     "hideFooter": true,
     "hideAllClfix": true,
@@ -189,6 +192,9 @@ window.GLP_SCHEMA = {
     "customCSS": "Injected after the theme; keep it scoped and reversible.",
     "hideAllClfix": "Removes spacer elements that create dead space.",
     "updateNotices": "After an update, names the settings this version added so nothing new stays hidden.",
+    "reduceMotion": "Stops every animation and transition GLP Ultra adds. Your operating system setting is always honoured; this forces it on regardless.",
+    "highContrast": "Raises text and border contrast across the injected UI and stops muted text from fading below a readable level.",
+    "largeTargets": "Grows the buttons and chips this script adds to a minimum 32px hit area, without changing the page layout.",
     "exportThreadMarkdown": "Adds a Markdown export button to the thread toolbar. Quotes keep their nesting depth.",
     "exportThreadHtml": "Adds a standalone dark HTML export of the thread with the original post markup preserved.",
     "exportThreadJson": "Adds a structured JSON export: posts, authors, dates, quote depth, links, and media.",
@@ -230,6 +236,7 @@ window.GLP_SCHEMA = {
     "Muted Users": "Review and restore users muted by the local script.",
     "Blocked Users": "Review and restore users blocked by numeric user ID.",
     "Presets": "One-click configurations for common browsing modes.",
+    "Accessibility": "Motion, contrast, and target size. These override the theme, not the other way round.",
     "Miscellaneous": "Low-level cleanup options for GLP layout cruft."
   },
   "sections": [
@@ -925,6 +932,24 @@ window.GLP_SCHEMA = {
       "title": "Presets",
       "items": [],
       "specialId": "presets"
+    },
+    {
+      "title": "Accessibility",
+      "items": [
+        {
+          "key": "reduceMotion",
+          "label": "Reduce Motion (No Animations)"
+        },
+        {
+          "key": "highContrast",
+          "label": "High Contrast Text And Borders"
+        },
+        {
+          "key": "largeTargets",
+          "label": "Larger Click Targets"
+        }
+      ],
+      "specialId": null
     },
     {
       "title": "Miscellaneous",

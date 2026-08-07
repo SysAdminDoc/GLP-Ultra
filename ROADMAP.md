@@ -367,11 +367,10 @@ Legend: `Y` = present or strongly represented, `P` = partial/weak/adjacent, `-` 
 
 High-value gaps still open:
 
-1. Accessibility and reduced-motion controls: high contrast dark, font scaling, line height, target size, motion limits. Only the `prefers-reduced-motion` media query exists; none of it is user-controllable.
-2. Download/open media actions: save or open an image straight from a post.
-3. Noise budget: per-page count of hidden ads, muted users, keyword-filtered posts, and collapsed quotes.
-4. Importable filter/theme packs.
-5. Optional `chrome.storage.sync` for settings, with the userscript export as the fallback.
+1. Download/open media actions: save or open an image straight from a post.
+2. Noise budget: per-page count of hidden ads, muted users, keyword-filtered posts, and collapsed quotes.
+3. Importable filter/theme packs.
+4. Optional `chrome.storage.sync` for settings, with the userscript export as the fallback.
 
 Weak implementations to replace:
 

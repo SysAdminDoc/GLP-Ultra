@@ -344,6 +344,39 @@ try {
   check('thread: Markdown export quotes nested material', markdown.includes('\n> '));
   check('thread: Markdown export lists the media manifest', markdown.includes('## Media manifest'));
 
+  // ---------------- Accessibility overrides ----------------
+  // Asserted as computed style on a real element: a rule that exists in the stylesheet but
+  // loses to the theme is exactly the failure these settings are supposed to prevent.
+  const motionBefore = await page.locator('.glp-backlink').first()
+    .evaluate(node => getComputedStyle(node).transitionDuration);
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { reduceMotion: true } });
+  await page.waitForTimeout(300);
+  const motionAfter = await page.locator('.glp-backlink').first()
+    .evaluate(node => getComputedStyle(node).transitionDuration);
+  check('a11y: reduce motion collapses transition durations',
+    parseFloat(motionAfter) < 0.01 && parseFloat(motionBefore) >= parseFloat(motionAfter),
+    `${motionBefore} -> ${motionAfter}`);
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { reduceMotion: false } });
+  await page.waitForTimeout(300);
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { largeTargets: true } });
+  await page.waitForTimeout(300);
+  const targetBox = await page.locator('.glp-backlink').first().boundingBox();
+  check('a11y: larger click targets reach 32px', (targetBox?.height ?? 0) >= 32, JSON.stringify(targetBox));
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { largeTargets: false } });
+  await page.waitForTimeout(300);
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { highContrast: true } });
+  await page.waitForTimeout(300);
+  const contrast = await page.locator('.glp-backlinks-label').first().evaluate(node => {
+    const style = getComputedStyle(node);
+    return { color: style.color, opacity: style.opacity };
+  });
+  check('a11y: high contrast lifts muted label text to full opacity',
+    contrast.opacity === '1' && contrast.color === 'rgb(214, 222, 238)', JSON.stringify(contrast));
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { highContrast: false } });
+  await page.waitForTimeout(300);
+
   // ---------------- Context menu actions ----------------
   // Playwright cannot open a native context menu, so drive the two halves separately: the
   // worker must actually register the items, and the engine must act on a right-click it saw.

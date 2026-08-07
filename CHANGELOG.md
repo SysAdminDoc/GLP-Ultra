@@ -4,6 +4,7 @@
 
 ### Added
 
+- **Accessibility controls.** A new panel section: *Reduce Motion* stops every animation and transition the script adds (the OS `prefers-reduced-motion` setting is still always honoured, this forces it on regardless), *High Contrast* lifts injected text and borders and stops muted text fading below a readable level, and *Larger Click Targets* grows the script's own buttons and chips to a 32px minimum without reflowing the site's tables. They are emitted last in the stylesheet on purpose — a theme that beats the motion or contrast setting is a bug.
 - **Quote backlinks.** GLP marks each post with its own `reply<id>` permalink and each quote block with a "Quoting:" footer naming the quoted author and linking the quoted post — enough to reconstruct who answered whom. A post now lists the replies that quoted it, each chip naming the answering post and author, hovering one shows an excerpt of that reply, and clicking scrolls to it and flashes it. Quotes that name a post on the same page gain an in-page jump beside the site's own link, which always left the page.
 
 ## 3.1.0 — 2026-08-06

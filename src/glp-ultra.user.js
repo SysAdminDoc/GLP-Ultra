@@ -187,6 +187,11 @@
         exportMediaManifest: true,
         exportCopyThreadLink: true,
 
+        // Accessibility
+        reduceMotion: false,
+        highContrast: false,
+        largeTargets: false,
+
         // Misc
         autoExpandImages: false,
         hideFooter: true,
@@ -216,6 +221,7 @@
         'Muted Users': 'Review and restore users muted by the local script.',
         'Blocked Users': 'Review and restore users blocked by numeric user ID.',
         'Presets': 'One-click configurations for common browsing modes.',
+        'Accessibility': 'Motion, contrast, and target size. These override the theme, not the other way round.',
         'Miscellaneous': 'Low-level cleanup options for GLP layout cruft.'
     };
 
@@ -271,6 +277,9 @@
         customCSS: 'Injected after the theme; keep it scoped and reversible.',
         hideAllClfix: 'Removes spacer elements that create dead space.',
         updateNotices: 'After an update, names the settings this version added so nothing new stays hidden.',
+        reduceMotion: 'Stops every animation and transition GLP Ultra adds. Your operating system setting is always honoured; this forces it on regardless.',
+        highContrast: 'Raises text and border contrast across the injected UI and stops muted text from fading below a readable level.',
+        largeTargets: 'Grows the buttons and chips this script adds to a minimum 32px hit area, without changing the page layout.',
         exportThreadMarkdown: 'Adds a Markdown export button to the thread toolbar. Quotes keep their nesting depth.',
         exportThreadHtml: 'Adds a standalone dark HTML export of the thread with the original post markup preserved.',
         exportThreadJson: 'Adds a structured JSON export: posts, authors, dates, quote depth, links, and media.',
@@ -2471,6 +2480,96 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
 #wrap, #wrap_in { padding-top: 0 !important; margin-top: 0 !important; }
 `;
 
+        // ---- Accessibility ----
+        // Last, and deliberately so: these are overrides. A theme that wins against the motion
+        // or contrast setting is a bug, not a style choice.
+        if (settings.reduceMotion) {
+            css += `
+body.glp-enhanced-active *,
+#glp-enhanced-overlay *,
+#glp-diagnostics *,
+#glp-recovery *,
+.glp-toast,
+.glp-thread-preview,
+#glp-backlink-card {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+}
+`;
+        }
+
+        if (settings.highContrast) {
+            css += `
+body.glp-enhanced-active {
+    --glp-panel-text: #ffffff;
+    --glp-panel-muted: #d6deee;
+    --glp-panel-subtle: #c2cbe0;
+}
+#glp-enhanced-overlay,
+#glp-diagnostics,
+#glp-recovery {
+    --glp-panel-text: #ffffff;
+    --glp-panel-muted: #d6deee;
+    --glp-panel-subtle: #c2cbe0;
+    --glp-panel-border: rgba(203, 216, 240, 0.55);
+    --glp-panel-border-strong: rgba(226, 235, 255, 0.75);
+}
+/* Muted text is the first thing a contrast requirement loses; pin it back up. */
+.glp-setting-help,
+.glp-diag-empty,
+.glp-diag-row span:last-child,
+.glp-backlinks-label,
+.glp-watch-meta,
+.glp-toolbar-label,
+#glp-hidden-threads-bar,
+#glp-filter-status { color: #d6deee !important; opacity: 1 !important; }
+.glp-btn,
+.glp-backlink,
+.glp-quote-jump,
+.glp-toolbar-btn,
+.glp-mute-btn,
+.glp-block-btn,
+.glp-tag-btn,
+.glp-recovery-row button { border-color: rgba(226, 235, 255, 0.62) !important; color: #ffffff !important; }
+.glp-post-number,
+.glp-quote-depth,
+.glp-user-rep { opacity: 1 !important; }
+body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
+`;
+        }
+
+        if (settings.largeTargets) {
+            // Only GLP Ultra's own controls grow. Resizing the site's own layout to hit a target
+            // size would reflow every table on the page.
+            css += `
+.glp-btn,
+.glp-toolbar-btn,
+.glp-sort-btn,
+.glp-backlink,
+.glp-quote-jump,
+.glp-mute-btn,
+.glp-block-btn,
+.glp-tag-btn,
+.glp-hide-col-btn,
+.glp-nested-toggle,
+.glp-recovery-row button,
+#glp-hidden-threads-bar button,
+#glp-watch-digest button,
+[data-glp-thread-tool] {
+    min-height: 32px !important;
+    min-width: 32px !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+.glp-hide-col-btn { line-height: 1 !important; }
+`;
+        }
+
         // Custom CSS injection
         if (settings.customCSS && settings.customCSS.trim()) {
             css += `\n/* User Custom CSS - scoped */\n${scopeCustomCSS(settings.customCSS)}\n`;
@@ -2684,6 +2783,11 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 ${createSettingsSection('Muted Users', [], 'mute-list')}
                 ${createSettingsSection('Blocked Users', [], 'block-list')}
                 ${createSettingsSection('Presets', [], 'presets')}
+                ${createSettingsSection('Accessibility', [
+                    { key: 'reduceMotion', label: 'Reduce Motion (No Animations)' },
+                    { key: 'highContrast', label: 'High Contrast Text And Borders' },
+                    { key: 'largeTargets', label: 'Larger Click Targets' }
+                ])}
                 ${createSettingsSection('Miscellaneous', [
                     { key: 'autoExpandImages', label: 'Auto-Expand Images' },
                     { key: 'hideFooter', label: 'Hide Footer' },

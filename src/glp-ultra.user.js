@@ -803,12 +803,19 @@ body.glp-enhanced-active { color-scheme: dark; }
     width: min(1040px, 96vw);
     max-height: min(88vh, 980px);
     overflow: hidden;
+    /* A column, so the scrolling body takes whatever the header, search bar and footer leave.
+       The body used to subtract a hardcoded 184px for chrome that actually measures ~222px, and
+       the panel clips its overflow - so the footer, with Save and Close in it, was cut off the
+       bottom of the panel entirely at ordinary window heights. */
+    display: flex;
+    flex-direction: column;
     box-shadow: var(--glpx-shadow-3), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     color: var(--glp-panel-text);
 }
 
 #glp-enhanced-settings-header {
+    flex: none;
     background: linear-gradient(135deg, rgba(var(--glpx-accent-rgb), 0.10) 0%, transparent 70%), var(--glp-panel-bg-2);
     padding: 18px 22px 16px;
     border-bottom: 1px solid var(--glp-panel-border);
@@ -861,6 +868,7 @@ body.glp-enhanced-active { color-scheme: dark; }
 }
 
 .glp-settings-search-wrap {
+    flex: none;
     padding: 14px 22px;
     background: rgba(5, 8, 18, 0.44);
     border-bottom: 1px solid rgba(147, 168, 211, 0.13);
@@ -1083,7 +1091,8 @@ body.glp-enhanced-active { color-scheme: dark; }
 
 #glp-enhanced-settings-body {
     padding: 0;
-    max-height: calc(min(88vh, 980px) - 184px);
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     scrollbar-color: rgba(var(--glpx-accent-rgb), 0.42) rgba(255,255,255,0.04);
 }
@@ -1283,6 +1292,7 @@ body.glp-enhanced-active { color-scheme: dark; }
 }
 
 #glp-enhanced-settings-footer {
+    flex: none;
     background: rgba(5, 8, 18, 0.72);
     padding: 14px 22px;
     border-top: 1px solid var(--glp-panel-border);
@@ -1296,6 +1306,30 @@ body.glp-enhanced-active { color-scheme: dark; }
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+}
+
+/* Seven buttons in one undifferentiated row, with the only destructive action shoulder to
+   shoulder with Export. Grouped by job now - destroy, inspect, move data - with a rule between
+   each, and the destructive group separated by more than a rule. */
+.glp-footer-cluster {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 0;
+    min-width: 0;
+}
+
+.glp-footer-cluster .glp-footer-group {
+    padding: 0 14px;
+}
+
+.glp-footer-cluster .glp-footer-group + .glp-footer-group {
+    border-left: 1px solid var(--glp-panel-border);
+}
+
+.glp-footer-cluster .glp-footer-destructive {
+    padding-left: 0;
+    padding-right: 22px;
 }
 
 .glp-btn {
@@ -1399,10 +1433,18 @@ body.glp-enhanced-active { color-scheme: dark; }
     #glp-enhanced-settings { width: 100%; max-height: 96vh; }
     #glp-enhanced-settings-header { padding: 16px; }
     .glp-settings-search-wrap { grid-template-columns: 1fr; padding: 12px 16px; }
-    #glp-enhanced-settings-body { max-height: calc(96vh - 210px); }
+
     .glp-settings-section-header { padding: 13px 16px; }
     .glp-settings-section-content { padding: 14px 16px 18px; grid-template-columns: 1fr; }
     #glp-enhanced-settings-footer { padding: 12px 16px; align-items: stretch; flex-direction: column; }
+    .glp-footer-cluster { flex-direction: column; align-items: stretch; gap: 10px; }
+    .glp-footer-cluster .glp-footer-group { padding: 0; }
+    .glp-footer-cluster .glp-footer-group + .glp-footer-group {
+        border-left: none;
+        border-top: 1px solid var(--glp-panel-border);
+        padding-top: 10px;
+    }
+    .glp-footer-cluster .glp-footer-destructive { padding-right: 0; }
     .glp-footer-group { width: 100%; }
     .glp-footer-group .glp-btn { flex: 1; }
 }
@@ -3230,12 +3272,18 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             </div>
             </div>
             <div id="glp-enhanced-settings-footer">
-                <div class="glp-footer-group">
-                    <button class="glp-btn glp-btn-danger" id="glp-reset-btn">Reset to defaults</button>
-                    <button class="glp-btn glp-btn-secondary" id="glp-export-btn">Export</button>
-                    <button class="glp-btn glp-btn-secondary" id="glp-import-btn">Import</button>
-                    <button class="glp-btn glp-btn-secondary" id="glp-recovery-btn">Recovery</button>
-                    <button class="glp-btn glp-btn-secondary" id="glp-diagnostics-btn">Diagnostics</button>
+                <div class="glp-footer-cluster">
+                    <div class="glp-footer-group glp-footer-destructive">
+                        <button class="glp-btn glp-btn-danger" id="glp-reset-btn" title="Restore every setting to its default. Undoable from the toast.">Reset to defaults</button>
+                    </div>
+                    <div class="glp-footer-group">
+                        <button class="glp-btn glp-btn-secondary" id="glp-recovery-btn" title="Everything currently hidden, muted, blocked or filtered - restorable one at a time">Recovery</button>
+                        <button class="glp-btn glp-btn-secondary" id="glp-diagnostics-btn" title="Route, selector health, feature timings and recent errors">Diagnostics</button>
+                    </div>
+                    <div class="glp-footer-group">
+                        <button class="glp-btn glp-btn-secondary" id="glp-export-btn" title="Download every setting and list as a JSON backup">Export</button>
+                        <button class="glp-btn glp-btn-secondary" id="glp-import-btn" title="Load settings and lists from a backup file">Import</button>
+                    </div>
                 </div>
                 <div class="glp-footer-group">
                     <button class="glp-btn glp-btn-secondary" id="glp-cancel-btn">Close</button>
@@ -3390,7 +3438,14 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
                     input = `<input type="number" id="setting-${key}" value="${escapeAttribute(value)}"
                              min="${item.min || 0}" max="${item.max || 9999}" step="${item.step || 1}">`;
                 } else if (item.type === 'color') {
-                    input = `<input type="color" id="setting-${key}" value="${escapeAttribute(value)}">`;
+                    // <input type="color"> cannot hold `var(--glpx-accent)` and silently coerces
+                    // an unparseable value to #000000. Show the resolved accent instead, and flag
+                    // the control as still following the theme so reading the panel back does not
+                    // turn that into a literal black the user never chose.
+                    const followsTheme = typeof value === 'string' && value.trim().startsWith('var(');
+                    const swatch = followsTheme ? (THEME_PALETTES[settings.colorTheme] || THEME_PALETTES.midnight).accent : value;
+                    input = `<input type="color" id="setting-${key}" value="${escapeAttribute(swatch)}"` +
+                            `${followsTheme ? ` data-follows-theme="${escapeAttribute(value)}"` : ''}>`;
                 } else if (item.type === 'select') {
                     const opts = Object.entries(item.options).map(([v, l]) =>
                         `<option value="${escapeAttribute(v)}"${v === value ? ' selected' : ''}>${escapeHTML(l)}</option>`
@@ -3633,6 +3688,8 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
                     settings[key] = input.checked;
                 } else if (input.type === 'number') {
                     settings[key] = parseFloat(input.value);
+                } else if (input.type === 'color' && input.dataset.followsTheme) {
+                    settings[key] = input.dataset.followsTheme;
                 } else {
                     settings[key] = input.value;
                 }
@@ -3661,6 +3718,9 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
     function bindImmediateSettings() {
         document.querySelectorAll('[id^="setting-"]').forEach(input => {
             const eventName = input.type === 'text' || input.tagName === 'TEXTAREA' ? 'input' : 'change';
+            if (input.type === 'color') {
+                input.addEventListener('input', () => { delete input.dataset.followsTheme; }, { once: true });
+            }
             input.addEventListener(eventName, () => {
                 window.clearTimeout(runtimeState.settingsApplyTimer);
                 runtimeState.settingsApplyTimer = window.setTimeout(() => {

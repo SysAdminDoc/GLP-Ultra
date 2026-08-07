@@ -625,6 +625,105 @@ try {
     painted('warning', 0) && semantic.warning.border[1] > semantic.warning.border[2],
     JSON.stringify(semantic.warning));
 
+  // ---------------- Settings panel ----------------
+  // The panel is the primary interface and had exactly two assertions against it: that it opens
+  // and that one section exists. Everything the navigation rewrite added went unverified.
+  await sendMessage(worker, page, { type: 'glp:open-settings' });
+  await page.waitForTimeout(500);
+  check('settings: the section rail lists every panel section',
+    await page.locator('#glp-settings-nav .glp-nav-item').count()
+      === await page.locator('#glp-enhanced-settings .glp-settings-section').count(),
+    `${await page.locator('#glp-settings-nav .glp-nav-item').count()} rail entries vs `
+    + `${await page.locator('#glp-enhanced-settings .glp-settings-section').count()} sections`);
+
+  // Grouping: the only destructive action in the footer used to sit against Export in a row of
+  // seven. Assert the daylight, not the markup - a divider that renders as nothing is not one.
+  // The panel clips its own overflow, so anything the layout pushes past its bottom edge simply
+  // vanishes - and boundingBox() still reports the geometry of something that is not on screen,
+  // which is why this asks the panel, not the button. Measured at a width that forces the footer
+  // to wrap onto a second row, because that is the case a fixed chrome reservation gets wrong:
+  // the body's height used to be `88vh - 184px` regardless of how tall the chrome really was.
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: 900, height: 700 });
+  await page.waitForTimeout(300);
+  const footerVisible = await page.evaluate(() => {
+    const panel = document.getElementById('glp-enhanced-settings');
+    const footer = document.getElementById('glp-enhanced-settings-footer');
+    if (!panel || !footer) return null;
+    const panelRect = panel.getBoundingClientRect();
+    const footerRect = footer.getBoundingClientRect();
+    return {
+      overflow: Math.round(footerRect.bottom - panelRect.bottom),
+      insideViewport: footerRect.bottom <= window.innerHeight + 1,
+      footerHeight: Math.round(footerRect.height),
+      panel: [Math.round(panelRect.top), Math.round(panelRect.bottom)],
+      footer: [Math.round(footerRect.top), Math.round(footerRect.bottom)]
+    };
+  });
+  check('settings: the footer survives a width that wraps it, instead of being clipped away',
+    footerVisible !== null && footerVisible.overflow <= 1 && footerVisible.insideViewport,
+    JSON.stringify(footerVisible));
+  await page.setViewportSize(viewport);
+  await page.waitForTimeout(300);
+
+  const resetBox = await page.locator('#glp-reset-btn').boundingBox();
+  const exportBox = await page.locator('#glp-export-btn').boundingBox();
+  const footerGap = (resetBox && exportBox) ? exportBox.x - (resetBox.x + resetBox.width) : -1;
+  check('settings: the destructive reset is set apart from the rest of the footer',
+    footerGap >= 24, `${Math.round(footerGap)}px between Reset and Export`);
+  check('settings: the footer is grouped by job rather than one undifferentiated row',
+    await page.locator('#glp-enhanced-settings-footer .glp-footer-cluster .glp-footer-group').count() === 3,
+    `${await page.locator('#glp-enhanced-settings-footer .glp-footer-cluster .glp-footer-group').count()} groups`);
+
+  // Changed-state tracking. Flip one setting and the dot, the rail and the section reset should
+  // all agree with it; the only-changed filter should then show that setting and little else.
+  const changedBefore = await page.locator('#glp-enhanced-settings .glp-setting-changed').count();
+  await page.locator('#setting-inlinePostNumbers').click();
+  await page.waitForTimeout(350);
+  const changedAfter = await page.locator('#glp-enhanced-settings .glp-setting-changed').count();
+  const changedKeys = await page.locator('#glp-enhanced-settings .glp-setting-changed')
+    .evaluateAll(nodes => nodes.map(node => node.dataset.settingKey));
+  check('settings: changing a control marks that row as changed', changedAfter === changedBefore + 1,
+    `${changedBefore} -> ${changedAfter}: ${changedKeys.join(', ')}`);
+  // <input type="color"> coerces anything it cannot parse to #000000, so a setting whose default
+  // is `var(--glpx-accent)` used to be read back as literal black the moment the panel was read -
+  // which is any time any other control was touched.
+  check('settings: the theme-following colour swatch shows the accent rather than black',
+    await page.locator('#setting-quoteBorderColor').inputValue() !== '#000000',
+    await page.locator('#setting-quoteBorderColor').inputValue());
+  check('settings: touching an unrelated control leaves the theme-following colour alone',
+    !changedKeys.includes('quoteBorderColor'), changedKeys.join(', '));
+  check('settings: the rail marks the section holding the change',
+    await page.locator('#glp-settings-nav .glp-nav-item.glp-nav-changed').count() >= 1);
+  check('settings: that section offers its own reset',
+    await page.locator('.glp-settings-section:has(.glp-setting-changed) [data-reset-section]:visible').count() >= 1);
+
+  await page.locator('#glp-only-changed').click();
+  await page.waitForTimeout(350);
+  const visibleRows = await page.locator('#glp-enhanced-settings .glp-setting-item:visible').count();
+  check('settings: the only-changed filter hides everything unchanged',
+    visibleRows > 0 && visibleRows === changedAfter, `${visibleRows} rows visible, ${changedAfter} changed`);
+  check('settings: the status line reports the filtered count',
+    /\d/.test(await page.locator('#glp-settings-status').innerText()),
+    await page.locator('#glp-settings-status').innerText());
+
+  // A search that matches nothing must say so rather than showing a blank panel.
+  await page.locator('#glp-settings-search').fill('zzzznotasetting');
+  await page.waitForTimeout(350);
+  check('settings: a search matching nothing shows the empty state',
+    await page.locator('#glp-settings-empty:visible').count() === 1);
+  await page.locator('#glp-settings-empty-reset').click();
+  await page.waitForTimeout(350);
+  check('settings: clearing the filters brings every control back',
+    await page.locator('#glp-enhanced-settings .glp-setting-item:visible').count() > changedAfter,
+    `${await page.locator('#glp-enhanced-settings .glp-setting-item:visible').count()} rows`);
+
+  // Put it back so later sections see the defaults they expect.
+  await page.locator('#setting-inlinePostNumbers').click();
+  await page.waitForTimeout(300);
+  await page.locator('#glp-enhanced-close-btn').click();
+  await page.waitForTimeout(300);
+
   // ---------------- Theme sweep ----------------
   // `npm run shots` renders every surface in every theme, but nothing ever looked at the result,
   // so five surfaces sat on hardcoded blues through all ten themes without anything noticing.

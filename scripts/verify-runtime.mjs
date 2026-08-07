@@ -437,8 +437,12 @@ try {
   // before the document is parsed must not mark the run done against an empty DOM.
   await page.evaluate(() => window.localStorage.removeItem('glpEnhanced.mv3.glpMutedUsers'));
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1500);
-  const mirrored = await sendMessage(worker, page, { type: 'glp:get-state' });
+  // The shim's restore is an async chrome.storage read racing a page load, so a fixed sleep is a
+  // coin toss - this check failed once in eight runs on a loaded machine, which is the worst
+  // possible outcome: a gate people learn to re-run rather than believe.
+  const mirrored = await waitFor(
+    () => sendMessage(worker, page, { type: 'glp:get-state' }),
+    state => ['PackedMuteOne', 'PackedMuteTwo'].every(name => (state?.lists?.mutedUsers || []).includes(name)));
   check('packs: the chrome.storage mirror restores a store deleted from localStorage',
     ['PackedMuteOne', 'PackedMuteTwo'].every(name => (mirrored?.lists?.mutedUsers || []).includes(name)),
     JSON.stringify(mirrored?.lists?.mutedUsers));
@@ -1023,6 +1027,21 @@ async function readDownload(download) {
   const chunks = [];
   for await (const chunk of stream) chunks.push(chunk);
   return Buffer.concat(chunks).toString('utf8');
+}
+
+/**
+ * Polls `read` until `ready` accepts its result, then returns it; returns the last result if the
+ * deadline passes. Lets a check assert on a settled state without paying a fixed sleep for it,
+ * and without turning machine load into a random failure.
+ */
+async function waitFor(read, ready, timeout = 8000, interval = 200) {
+  const deadline = Date.now() + timeout;
+  let last = await read();
+  while (!ready(last) && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, interval));
+    last = await read();
+  }
+  return last;
 }
 
 async function sendMessage(worker, page, message) {

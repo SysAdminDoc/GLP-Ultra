@@ -1,6 +1,6 @@
 {
   "name": "glp-ultra",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "private": true,
   "type": "module",
   "description": "Declutter, theming, filtering, blocking, and reading tools for Godlike Productions - MV3 extension and userscript from one source.",

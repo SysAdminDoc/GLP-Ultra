@@ -1,5 +1,57 @@
 # Changelog
 
+## 3.4.0 — 2026-08-07
+
+Three drift items closed, and four defects the new gates turned up on their first run.
+
+### Fixed
+
+- **Every semantic colour in the product was dead.** 3.3.0's token pass wrote
+  `--glpx-success` / `--glpx-warning` / `--glpx-danger` as `var()` references to themselves. CSS
+  resolves a cyclic custom property as invalid-at-computed-value-time, so all 19 usages fell back
+  to inherit and success, warning and error toasts, danger buttons and every state chip painted
+  in the surrounding text colour. Nothing errored, which is why it shipped.
+- **The settings footer was clipped off the bottom of the panel.** At 900x700 it sat 207px below
+  the panel's edge, and the panel clips its overflow — so Reset, Recovery, Diagnostics, Export,
+  Import, Close and Save were all off screen with no scrollbar to reach them. The body reserved a
+  hardcoded `88vh - 184px` for chrome whose real height depends on whether the footer and search
+  bar wrap. The panel is a flex column now, and the body takes what is left.
+- **Touching any setting turned every quote border black.** `quoteBorderColor` defaults to
+  `var(--glpx-accent)`, an `<input type="color">` coerces anything it cannot parse to `#000000`,
+  and reading the panel back is what saves it. The swatch shows the resolved accent and keeps
+  following the theme until someone actually picks a colour.
+- **The thread toolbar changed colour depending on which features were on.** Both
+  `collapseExpandAll` and `threadQuickSearch` emitted a full copy of its chrome; whichever came
+  last won. Emitted once now.
+- A second definition of `--glpx-border` in the site block meant the same token drew one line on
+  page content and a different one on product chrome, decided by whether the element was inside
+  `<body>`. Ten further declarations there restated the token layer verbatim.
+
+### Changed
+
+- **The last five surfaces read the shared tokens.** Watch digest, tag picker, quick-search
+  panel, lightbox and toast stack carried their own colours; the quick-search panel was `#1a1a2e`
+  on `#4a4a6a`, so it sat as a blue-purple box on all ten palettes. The ghost control every small
+  button uses is named once and tinted with the accent, so a toolbar button belongs to its theme
+  at rest rather than only on hover.
+- **The settings footer is grouped by job** — destroy | inspect | move data — with a rule between
+  each and daylight around Reset, which used to sit shoulder to shoulder with Export. Every
+  button now says what it does.
+
+### Added
+
+- **The theme sweep is a gate.** `npm run shots` rendered every surface in every theme and
+  nothing ever read the result, which is how five surfaces stayed blue. The harness now paints
+  each surface under two opposite palettes, requires it to move, and checks its text clears 4.5:1
+  on both.
+- **The build rejects a custom property that references itself**, in both the bare and the
+  `var(--x, fallback)` form — the latter is equally a cycle.
+- Thirteen assertions on the settings panel, which previously had two: the section rail, the
+  changed-state dots, the only-changed filter, the empty state, per-section reset, and the
+  footer's geometry at a width that wraps it.
+- A download that never arrives is one failed check rather than an uncaught throw. Two runs died
+  on a slow export and took the ~40 later checks with them, reporting nothing about any of them.
+
 ## 3.3.0 — 2026-08-06
 
 A design-system pass over every surface, and the layout defects looking properly at each one

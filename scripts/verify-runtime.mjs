@@ -629,6 +629,44 @@ try {
     painted('warning', 0) && semantic.warning.border[1] > semantic.warning.border[2],
     JSON.stringify(semantic.warning));
 
+  // ---------------- Pre-upgrade settings backup ----------------
+  // Loading keeps only keys the current schema declares, and the next save writes the pruned
+  // object back — so an upgrade silently discards whatever a predecessor stored under a name
+  // this build does not know. That is acceptable only because the old payload is recoverable.
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { keywordHide: 'pre-upgrade-marker' } });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => window.localStorage.setItem('glpEnhanced.mv3.glpSettingsVersion', '3.0.0'));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1400);
+
+  const upgraded = await waitFor(
+    () => workerDiagnostics(worker, page),
+    state => !!state?.settingsBackup);
+  check('backup: an upgrade banks the payload it is about to prune',
+    upgraded?.settingsBackup?.from === '3.0.0' && upgraded?.settingsBackup?.to === manifestVersion,
+    JSON.stringify(upgraded?.settingsBackup));
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { keywordHide: 'after-the-upgrade' } });
+  await page.waitForTimeout(400);
+  await sendMessage(worker, page, { type: 'glp:open-settings' });
+  await page.waitForTimeout(350);
+  await page.locator('#glp-recovery-btn').click();
+  await page.waitForTimeout(400);
+  const backupRow = page.locator('#glp-recovery .glp-diag-group:has-text("Settings backup") .glp-recovery-row');
+  check('backup: the recovery shelf offers it back', await backupRow.count() === 1,
+    await page.locator('#glp-recovery .glp-diag-group:has-text("Settings backup")').innerText().catch(() => 'no group'));
+
+  await backupRow.locator('button').click();
+  await page.waitForTimeout(500);
+  const afterRestore = await sendMessage(worker, page, { type: 'glp:get-state' });
+  check('backup: restoring it brings the pre-upgrade value back',
+    afterRestore?.settings?.keywordHide === 'pre-upgrade-marker', restored?.settings?.keywordHide);
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { keywordHide: '' } });
+  await page.evaluate(() => window.localStorage.removeItem('glpEnhanced.mv3.glpEnhancedSettings_backup'));
+  await page.waitForTimeout(300);
+  await page.evaluate(() => document.getElementById('glp-recovery')?.remove());
+
   // ---------------- Dark Reader coexistence ----------------
   // GLP Ultra is already a dark theme; Dark Reader inverting on top of it washes the palette out.
   // `<meta name="darkreader-lock">` is Dark Reader's own documented opt-out and is read live.

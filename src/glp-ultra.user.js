@@ -592,9 +592,46 @@
     // ============================================
     let settings = {};
 
+    const SETTINGS_BACKUP_KEY = 'glpEnhancedSettings_backup';
+
+    /**
+     * Keeps one copy of the settings payload as it was before the most recent upgrade.
+     *
+     * Loading keeps only keys the current schema declares, and the first save after that writes
+     * the pruned object back - so anything a predecessor stored under a name this build does not
+     * know is gone, silently, with the upgrade. That is fine as long as the pre-upgrade payload
+     * is recoverable, which is what this is for. An empty previous version counts as an upgrade:
+     * it means the payload predates version stamping, which is exactly the legacy case.
+     */
+    function backupSettingsBeforeUpgrade(saved, previous) {
+        if (!saved || previous === SCRIPT_VERSION) return;
+        try {
+            GM_setValue(SETTINGS_BACKUP_KEY, JSON.stringify({
+                version: previous || 'unstamped',
+                upgradedTo: SCRIPT_VERSION,
+                savedAt: new Date().toISOString(),
+                payload: saved
+            }));
+        } catch (e) {
+            /* A backup that cannot be written must not stop the upgrade. */
+        }
+    }
+
+    function readSettingsBackup() {
+        try {
+            const raw = GM_getValue(SETTINGS_BACKUP_KEY, null);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return parsed && parsed.payload ? parsed : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
     function loadSettings() {
         const saved = GM_getValue('glpEnhancedSettings', null);
         runtimeState.previousVersion = String(GM_getValue('glpSettingsVersion', '') || '');
+        backupSettingsBeforeUpgrade(saved, runtimeState.previousVersion);
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
@@ -8159,6 +8196,37 @@ ${manifest}
      * restorable on its own. The hidden-threads bar only ever offered "clear all" and only on
      * the feed; mutes and blocks were buried in the settings panel; filters had no inventory.
      */
+    function restoreSettingsBackup() {
+        const backup = readSettingsBackup();
+        if (!backup) return false;
+        const current = GM_getValue('glpEnhancedSettings', null);
+        let parsed;
+        try {
+            parsed = JSON.parse(backup.payload);
+        } catch (e) {
+            showNotification('That settings backup could not be read.', 'error');
+            return false;
+        }
+        settings = { ...DEFAULT_SETTINGS };
+        Object.keys(DEFAULT_SETTINGS).forEach(key => {
+            if (Object.prototype.hasOwnProperty.call(parsed, key)) settings[key] = parsed[key];
+        });
+        saveSettings();
+        applyStyles();
+        runFeatureRegistry('apply');
+        showNotification(`Settings restored from before the ${backup.version} to ${backup.upgradedTo} upgrade.`, 'success', {
+            label: 'Undo',
+            onClick: () => {
+                if (current) GM_setValue('glpEnhancedSettings', current);
+                loadSettings();
+                applyStyles();
+                runFeatureRegistry('apply');
+                showNotification('Back to the current settings.', 'info');
+            }
+        });
+        return true;
+    }
+
     function recoveryInventory() {
         loadMutedUsers();
         loadBlockedUsers();
@@ -8251,6 +8319,22 @@ ${manifest}
                 showNotification('All hidden threads restored.', 'success');
                 renderRecoveryShelf();
             });
+        }
+
+        const backup = readSettingsBackup();
+        const backupGroup = diagnosticsGroup(body, 'Settings backup');
+        if (!backup) {
+            const empty = document.createElement('div');
+            empty.className = 'glp-diag-empty';
+            empty.textContent = 'No upgrade has replaced a saved payload yet.';
+            backupGroup.appendChild(empty);
+        } else {
+            recoveryRow(backupGroup,
+                `From before the ${backup.version} to ${backup.upgradedTo} upgrade (${String(backup.savedAt).slice(0, 10)})`,
+                'Restore',
+                () => {
+                    if (restoreSettingsBackup()) renderRecoveryShelf();
+                });
         }
 
         const users = diagnosticsGroup(body, `Muted users (${inventory.users.length})`);
@@ -8436,6 +8520,10 @@ ${manifest}
             settingsVersionSeen: runtimeState.previousVersion || SCRIPT_VERSION,
             route: runtimeState.route,
             url: window.location.href,
+            settingsBackup: (() => {
+                const backup = readSettingsBackup();
+                return backup ? { from: backup.version, to: backup.upgradedTo, savedAt: backup.savedAt } : null;
+            })(),
             darkReader: {
                 detected: darkReaderPresent(),
                 locked: !!document.getElementById(DARK_READER_LOCK_ID)

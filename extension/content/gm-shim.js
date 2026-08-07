@@ -25,7 +25,10 @@
         'glpHiddenThreadTitles',
         'glpUserTags',
         'glpWatchedThreads',
-        'glpUserStats'
+        'glpUserStats',
+        // The pre-upgrade settings backup is recovery data; mirroring it means clearing site data
+        // does not also destroy the only copy of what the settings looked like before an upgrade.
+        'glpEnhancedSettings_backup'
     ];
 
     let suppressMirror = false;

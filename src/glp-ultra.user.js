@@ -26,6 +26,7 @@
         // Core
         enabled: true,
         safeMode: false,
+        overrideDarkReader: true,
 
         // Ad Removal
         removeAds: true,
@@ -231,6 +232,7 @@
 
     const SETTING_DESCRIPTIONS = {
         enabled: 'Turns every GLP Ultra page modification on or off without clearing saved settings.',
+        overrideDarkReader: 'Tells Dark Reader to leave this site alone while GLP Ultra is theming it. Two dark themes over one page wash out every colour the theme picked.',
         safeMode: 'Ignores your custom CSS for this browser. The way back when a rule you pasted has hidden the controls you would need to remove it.',
         removeAds: 'Targets MGID and common ad containers.',
         removeWidgets: 'Removes empty widget placeholders after ads are hidden.',
@@ -3129,7 +3131,8 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                 </div>
                 ${createSettingsSection('Core', [
                     { key: 'enabled', label: 'Enable GLP Ultra' },
-                    { key: 'safeMode', label: 'Safe Mode (ignore custom CSS)' }
+                    { key: 'safeMode', label: 'Safe Mode (ignore custom CSS)' },
+                    { key: 'overrideDarkReader', label: 'Take Precedence Over Dark Reader' }
                 ])}
                 ${createSettingsSection('Ad Removal', [
                     { key: 'removeAds', label: 'Remove Advertisements (mgid)' },
@@ -4076,6 +4079,37 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     // ============================================
     // APPLY STYLES
     // ============================================
+    /**
+     * Dark Reader inverts pages it does not recognise, and GLP Ultra is already a dark theme, so
+     * the two stack: the palette's accents wash out and contrast drops below what the theme was
+     * measured at. `<meta name="darkreader-lock">` is Dark Reader's own documented way for a page
+     * to say it handles its own dark mode, and it is honoured live, not only at load.
+     *
+     * Removed again the moment GLP Ultra stops theming, so switching this off hands the page back
+     * rather than leaving it light.
+     */
+    const DARK_READER_LOCK_ID = 'glp-darkreader-lock';
+
+    function darkReaderPresent() {
+        return document.documentElement.hasAttribute('data-darkreader-scheme')
+            || document.documentElement.hasAttribute('data-darkreader-mode')
+            || !!document.querySelector('style.darkreader, style[class*="darkreader"]');
+    }
+
+    function syncDarkReaderLock() {
+        const wanted = settings.enabled && settings.overrideDarkReader;
+        const existing = document.getElementById(DARK_READER_LOCK_ID);
+        if (!wanted) {
+            existing?.remove();
+            return;
+        }
+        if (existing) return;
+        const meta = document.createElement('meta');
+        meta.id = DARK_READER_LOCK_ID;
+        meta.name = 'darkreader-lock';
+        (document.head || document.documentElement).appendChild(meta);
+    }
+
     function applyStyles() {
         let styleEl = document.getElementById('glp-enhanced-styles');
         if (!styleEl) {
@@ -4084,10 +4118,12 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             document.head.appendChild(styleEl);
         }
         styleEl.textContent = generateCSS();
+        syncDarkReaderLock();
     }
 
     function destroyEnhancedUI({ keepSettingsPanel = false, keepStyles = false } = {}) {
         runtimeState.featuresStarted = false;
+        if (!keepStyles) document.getElementById(DARK_READER_LOCK_ID)?.remove();
         destroyRegisteredFeatures();
 
         if (runtimeState.observer) {
@@ -8400,6 +8436,10 @@ ${manifest}
             settingsVersionSeen: runtimeState.previousVersion || SCRIPT_VERSION,
             route: runtimeState.route,
             url: window.location.href,
+            darkReader: {
+                detected: darkReaderPresent(),
+                locked: !!document.getElementById(DARK_READER_LOCK_ID)
+            },
             featuresStarted: runtimeState.featuresStarted,
             enabledFeatures: getFeatureRegistry()
                 .filter(feature => routeAllowsFeature(feature) && settingAllowsFeature(feature))

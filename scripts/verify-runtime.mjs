@@ -629,6 +629,38 @@ try {
     painted('warning', 0) && semantic.warning.border[1] > semantic.warning.border[2],
     JSON.stringify(semantic.warning));
 
+  // ---------------- Dark Reader coexistence ----------------
+  // GLP Ultra is already a dark theme; Dark Reader inverting on top of it washes the palette out.
+  // `<meta name="darkreader-lock">` is Dark Reader's own documented opt-out and is read live.
+  const lockPresent = () => page.locator('meta[name="darkreader-lock"]').count();
+  check('dark reader: the lock meta is present while GLP Ultra is theming', await lockPresent() === 1);
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { overrideDarkReader: false } });
+  await page.waitForTimeout(400);
+  check('dark reader: switching the override off hands the page back', await lockPresent() === 0);
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { overrideDarkReader: true } });
+  await page.waitForTimeout(400);
+  check('dark reader: switching it back on re-locks without a reload', await lockPresent() === 1);
+
+  // The thread capture was saved from a browser that had Dark Reader running, so its <html>
+  // already carries `data-darkreader-mode` — clear both markers before asserting absence, or the
+  // detector looks stuck on. Two-sided on purpose: a detector that only ever says yes is not one.
+  await page.evaluate(() => {
+    document.documentElement.removeAttribute('data-darkreader-scheme');
+    document.documentElement.removeAttribute('data-darkreader-mode');
+  });
+  const withoutDarkReader = await workerDiagnostics(worker, page);
+  check('dark reader: not reported when none of its markers are on the page',
+    withoutDarkReader?.darkReader?.detected === false,
+    JSON.stringify(withoutDarkReader?.darkReader));
+
+  await page.evaluate(() => document.documentElement.setAttribute('data-darkreader-scheme', 'dark'));
+  const withDarkReader = await workerDiagnostics(worker, page);
+  check('dark reader: reported, and the lock held, once its marker appears',
+    withDarkReader?.darkReader?.detected === true && withDarkReader?.darkReader?.locked === true,
+    JSON.stringify(withDarkReader?.darkReader));
+  await page.evaluate(() => document.documentElement.removeAttribute('data-darkreader-scheme'));
+
   // ---------------- Custom CSS lockout and safe mode ----------------
   // Custom CSS is the only setting that can hide the interface for changing settings, and it is
   // saved, so a reload does not undo it. Paste the classic footgun and prove there is a way back.

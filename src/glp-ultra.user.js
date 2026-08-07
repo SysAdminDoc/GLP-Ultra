@@ -176,6 +176,7 @@
 
         // Media
         mediaPrivacyMode: true,
+        mediaActions: true,
         mediaXEmbeds: true,
         mediaHoverPreview: false,
         mediaHoverPreviewSize: 70,
@@ -276,6 +277,7 @@
         hideThreadButtons: 'Adds per-row hide controls and a recovery shelf.',
         customCSS: 'Injected after the theme; keep it scoped and reversible.',
         hideAllClfix: 'Removes spacer elements that create dead space.',
+        mediaActions: 'Adds Save / Open / Copy link buttons under every content image in a post. A hotlinked third-party image cannot be fetched from the page, so saving it opens it instead and says so.',
         updateNotices: 'After an update, names the settings this version added so nothing new stays hidden.',
         reduceMotion: 'Stops every animation and transition GLP Ultra adds. Your operating system setting is always honoured; this forces it on regardless.',
         highContrast: 'Raises text and border contrast across the injected UI and stops muted text from fading below a readable level.',
@@ -425,6 +427,7 @@
         featureErrors: [],
         featureTimings: {},
         quoteGraphBound: false,
+        mediaActionsBound: false,
         contextBound: false,
         lastContext: null,
         newSettingKeys: [],
@@ -1644,6 +1647,27 @@ body.glpx-reader-active .glp-reader-byline {
 `;
         }
 
+        if (settings.mediaActions) {
+            css += `
+.glp-media-actions {
+    display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.glp-media-action {
+    cursor: pointer; font-size: 11px; line-height: 1.5;
+    color: #dce7ff; background: rgba(255,255,255,0.055);
+    border: 1px solid rgba(147,168,211,0.22); border-radius: 5px; padding: 2px 8px;
+    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+    font-family: inherit;
+}
+.glp-media-action:hover,
+.glp-media-action:focus-visible {
+    background: rgba(106,168,255,0.18); border-color: rgba(106,168,255,0.44);
+    transform: translateY(-1px);
+}
+`;
+        }
+
         if (settings.quoteBacklinks) {
             css += `
 .glp-backlinks {
@@ -2770,6 +2794,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
                 ${createSettingsSection('Media & Embeds', [
                     { key: 'mediaPrivacyMode', label: 'Click-to-Load Third-Party Embeds' },
                     { key: 'mediaXEmbeds', label: 'Normalize X / Twitter Embeds' },
+                    { key: 'mediaActions', label: 'Save / Open / Copy Buttons on Images' },
                     { key: 'mediaHoverPreview', label: 'Hover Preview for Images' },
                     { key: 'mediaHoverPreviewSize', label: 'Hover Preview Size (% of viewport)', type: 'number', min: 30, max: 95 }
                 ])}
@@ -3277,6 +3302,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             '.glp-reader-byline',
             '.glp-quote-depth',
             '.glp-backlinks',
+            '.glp-media-actions',
             '.glp-quote-jump',
             '#glp-backlink-card',
             '.glp-nested-toggle',
@@ -3330,6 +3356,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             { id: 'nav.forumToolbar', routes: ['feed', 'generic'], init: injectForumToolbar, apply: injectForumToolbar, destroy: () => document.getElementById('glp-forum-toolbar')?.remove() },
             { id: 'ui.backToTop', routes: ['all'], settingKey: 'backToTopButton', init: initBackToTop, apply: () => {}, destroy: () => document.getElementById('glp-back-to-top')?.remove() },
             { id: 'media.lightbox', routes: ['thread'], settingKey: 'imageLightbox', init: initGalleryLightbox, apply: initGalleryLightbox, destroy: destroyGalleryLightbox },
+            { id: 'media.actions', routes: ['thread'], settingKey: 'mediaActions', init: initMediaActions, apply: initMediaActions, destroy: destroyMediaActions },
             { id: 'thread.collapsiblePosts', routes: ['thread'], settingKey: 'collapsiblePosts', init: initCollapsiblePosts, apply: initCollapsiblePosts, destroy: () => document.querySelectorAll('.glp-collapse-indicator').forEach(node => node.remove()) },
             { id: 'feed.infiniteScroll', routes: ['feed'], settingKey: 'infiniteScroll', init: initInfiniteScroll, apply: () => {}, destroy: () => document.getElementById('glp-infinite-loader')?.remove() },
             { id: 'thread.infiniteScroll', routes: ['thread'], settingKey: 'infiniteThreadScroll', init: initInfiniteThreadScroll, apply: () => {}, destroy: () => document.getElementById('glp-infinite-loader')?.remove() },
@@ -5075,25 +5102,163 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
     let galleryImages = [];
     let galleryIndex = 0;
 
+    // Smileys, karma icons, flags and spacer gifs are chrome, not content. One predicate, so the
+    // lightbox, the gallery, and the media actions can never disagree about what an image is.
+    function isChromeImage(src) {
+        return src.includes('/sm/') || src.includes('karma') ||
+            src.includes('div.png') || src.includes('flags/');
+    }
+
+    /**
+     * `naturalWidth` is 0 until an image has actually loaded, so measuring it during a
+     * document-idle pass silently rejects every image still in flight. Fall back to the declared
+     * attributes, and treat an image of unknown size as content until it loads and says otherwise.
+     */
+    function imageIsThumbnailSized(img) {
+        if (img.complete && img.naturalWidth) return img.naturalWidth < 50 || img.naturalHeight < 50;
+        const width = parseInt(img.getAttribute('width') || '0', 10);
+        const height = parseInt(img.getAttribute('height') || '0', 10);
+        if (width && height) return width < 50 || height < 50;
+        return false;
+    }
+
+    function isContentImage(img) {
+        if (!img || !img.src) return false;
+        if (isChromeImage(img.src)) return false;
+        return !imageIsThumbnailSized(img);
+    }
+
+    function contentImages(root = document) {
+        return [...root.querySelectorAll('.post_main img')].filter(isContentImage);
+    }
+
     function onLightboxClick(e) {
         const img = e.target.closest('.post_main img');
-        if (!img) return;
-        if (img.src.includes('/sm/') || img.src.includes('karma') ||
-            img.src.includes('div.png') || img.src.includes('flags/')) return;
-        if (img.naturalWidth < 50 || img.naturalHeight < 50) return;
+        if (!img || !isContentImage(img)) return;
 
         e.preventDefault();
 
         if (settings.imageGallery) {
-            galleryImages = Array.from(document.querySelectorAll('.post_main img'))
-                .filter(i => !i.src.includes('/sm/') && !i.src.includes('karma') &&
-                        !i.src.includes('div.png') && !i.src.includes('flags/') &&
-                        i.naturalWidth >= 50);
+            galleryImages = contentImages();
             galleryIndex = galleryImages.indexOf(img);
             if (galleryIndex === -1) galleryIndex = 0;
         }
 
         showLightbox(img.src);
+    }
+
+    // ============================================
+    // MEDIA ACTIONS (save / open / copy)
+    // ============================================
+
+    /**
+     * Saving an image off GLP meant right-click > Save As, which the site's own context menu and
+     * the extension's menu both compete for. These are explicit, and honest about the one case
+     * that cannot work: a hotlinked third-party image cannot be fetched from a content script,
+     * so the download falls back to opening it and says so rather than doing nothing.
+     */
+    function initMediaActions() {
+        if (!settings.mediaActions) return;
+
+        contentImages().forEach(img => {
+            if (img.dataset.glpMediaActions) return;
+            img.dataset.glpMediaActions = '1';
+
+            const bar = document.createElement('div');
+            bar.className = 'glp-media-actions';
+
+            [
+                { action: 'save', label: 'Save', title: 'Download this image' },
+                { action: 'open', label: 'Open', title: 'Open the full image in a new tab' },
+                { action: 'copy', label: 'Copy link', title: 'Copy the image address' }
+            ].forEach(spec => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'glp-media-action';
+                button.dataset.glpMediaAction = spec.action;
+                button.dataset.glpMediaSrc = img.src;
+                button.textContent = spec.label;
+                button.title = spec.title;
+                bar.appendChild(button);
+            });
+
+            img.insertAdjacentElement('afterend', bar);
+
+            // An image that had not loaded yet was given the benefit of the doubt; if it turns
+            // out to be a thumbnail, take the bar back.
+            if (!img.complete || !img.naturalWidth) {
+                img.addEventListener('load', () => {
+                    if (!isContentImage(img)) bar.remove();
+                }, { once: true });
+            }
+        });
+
+        if (runtimeState.mediaActionsBound) return;
+        runtimeState.mediaActionsBound = true;
+        document.addEventListener('click', onMediaActionClick);
+    }
+
+    function onMediaActionClick(event) {
+        const button = event.target.closest('[data-glp-media-action]');
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+
+        const src = button.dataset.glpMediaSrc;
+        if (!src) return;
+
+        if (button.dataset.glpMediaAction === 'open') {
+            window.open(src, '_blank', 'noopener,noreferrer');
+            return;
+        }
+
+        if (button.dataset.glpMediaAction === 'copy') {
+            navigator.clipboard.writeText(src)
+                .then(() => showNotification('Image address copied.', 'success'))
+                .catch(() => showNotification('Clipboard refused the copy.', 'error'));
+            return;
+        }
+
+        downloadImage(src);
+    }
+
+    function imageFileName(src) {
+        try {
+            const name = new URL(src, window.location.href).pathname.split('/').pop() || '';
+            return /\.[a-z0-9]{2,5}$/i.test(name) ? name : `glp-image-${Date.now()}.jpg`;
+        } catch (error) {
+            return `glp-image-${Date.now()}.jpg`;
+        }
+    }
+
+    async function downloadImage(src) {
+        const name = imageFileName(src);
+        try {
+            // Same-origin GLP uploads fetch fine. A hotlinked image is a cross-origin request
+            // from a content script, which is subject to the page's CORS rules and will throw.
+            const response = await fetch(src);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = name;
+            link.click();
+            URL.revokeObjectURL(url);
+            showNotification(`Saved ${name}.`, 'success');
+        } catch (error) {
+            window.open(src, '_blank', 'noopener,noreferrer');
+            showNotification('That image is hosted elsewhere and cannot be fetched from the page - opened it instead.', 'warning');
+        }
+    }
+
+    function destroyMediaActions() {
+        document.querySelectorAll('.glp-media-actions').forEach(node => node.remove());
+        document.querySelectorAll('[data-glp-media-actions]').forEach(node => delete node.dataset.glpMediaActions);
+        if (runtimeState.mediaActionsBound) {
+            document.removeEventListener('click', onMediaActionClick);
+            runtimeState.mediaActionsBound = false;
+        }
     }
 
     function initGalleryLightbox() {

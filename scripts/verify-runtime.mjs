@@ -344,6 +344,66 @@ try {
   check('thread: Markdown export quotes nested material', markdown.includes('\n> '));
   check('thread: Markdown export lists the media manifest', markdown.includes('## Media manifest'));
 
+  // ---------------- Media actions ----------------
+  // The thread capture carries no in-post content image (only avatars, banner, and smileys), so
+  // plant the three cases the predicate has to separate: a loaded content image, a loaded
+  // thumbnail, and an image that has not loaded and only declares its size in attributes.
+  const PIXEL_60 = 'data:image/svg+xml;base64,' + Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60"><rect width="60" height="60" fill="#456"/></svg>'
+  ).toString('base64');
+  const PIXEL_10 = 'data:image/svg+xml;base64,' + Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="#456"/></svg>'
+  ).toString('base64');
+
+  await page.evaluate(([big, small]) => {
+    const body = document.querySelector('.post_main');
+    const add = (src, attrs = {}) => {
+      const img = document.createElement('img');
+      Object.entries(attrs).forEach(([key, value]) => img.setAttribute(key, value));
+      img.src = src;
+      img.dataset.glpFixture = '1';
+      body.appendChild(img);
+      return img;
+    };
+    add(big, { id: 'fixture-content' });
+    add(small, { id: 'fixture-thumb' });
+    // Never resolves under the harness router: exercises the not-yet-loaded path.
+    add('https://www.godlikeproductions.com/uploads/pending.jpg', { id: 'fixture-pending', width: '400', height: '300' });
+  }, [PIXEL_60, PIXEL_10]);
+  await page.waitForTimeout(300);
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { mediaActions: true } });
+  await page.waitForTimeout(400);
+
+  check('media: a loaded content image gets an action bar',
+    await page.locator('#fixture-content + .glp-media-actions').count() === 1);
+  check('media: a loaded thumbnail gets none',
+    await page.locator('#fixture-thumb + .glp-media-actions').count() === 0);
+  check('media: an image that has not loaded is judged on its declared size, not naturalWidth',
+    await page.locator('#fixture-pending + .glp-media-actions').count() === 1);
+  check('media: chrome images (smileys, karma, flags) get no action bar', await page.evaluate(() =>
+    [...document.querySelectorAll('.post_main img')]
+      .filter(img => /\/sm\/|karma|div\.png|flags\//.test(img.src))
+      .every(img => img.nextElementSibling?.className !== 'glp-media-actions')));
+
+  const copyTarget = await page.locator('#fixture-content + .glp-media-actions [data-glp-media-action="copy"]')
+    .getAttribute('data-glp-media-src');
+  check('media: the copy action carries the image address', (copyTarget || '').startsWith('data:image/svg'), (copyTarget || '').slice(0, 32));
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { mediaActions: false } });
+  await page.waitForTimeout(400);
+  check('media: disabling the actions removes every bar',
+    await page.locator('.glp-media-actions').count() === 0);
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { mediaActions: true } });
+  await page.waitForTimeout(400);
+  check('media: re-enabling brings each bar back exactly once',
+    await page.locator('.glp-media-actions').count() === 2,
+    String(await page.locator('.glp-media-actions').count()));
+
+  await page.evaluate(() => document.querySelectorAll('[data-glp-fixture]').forEach(node => {
+    node.nextElementSibling?.classList.contains('glp-media-actions') && node.nextElementSibling.remove();
+    node.remove();
+  }));
+
   // ---------------- Accessibility overrides ----------------
   // Asserted as computed style on a real element: a rule that exists in the stylesheet but
   // loses to the theme is exactly the failure these settings are supposed to prevent.

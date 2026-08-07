@@ -124,6 +124,7 @@ window.GLP_SCHEMA = {
     "userReputationOverlay": false,
     "userHistoryCap": 400,
     "mediaPrivacyMode": true,
+    "mediaActions": true,
     "mediaXEmbeds": true,
     "mediaHoverPreview": false,
     "mediaHoverPreviewSize": 70,
@@ -191,6 +192,7 @@ window.GLP_SCHEMA = {
     "hideThreadButtons": "Adds per-row hide controls and a recovery shelf.",
     "customCSS": "Injected after the theme; keep it scoped and reversible.",
     "hideAllClfix": "Removes spacer elements that create dead space.",
+    "mediaActions": "Adds Save / Open / Copy link buttons under every content image in a post. A hotlinked third-party image cannot be fetched from the page, so saving it opens it instead and says so.",
     "updateNotices": "After an update, names the settings this version added so nothing new stays hidden.",
     "reduceMotion": "Stops every animation and transition GLP Ultra adds. Your operating system setting is always honoured; this forces it on regardless.",
     "highContrast": "Raises text and border contrast across the injected UI and stops muted text from fading below a readable level.",
@@ -877,6 +879,10 @@ window.GLP_SCHEMA = {
         {
           "key": "mediaXEmbeds",
           "label": "Normalize X / Twitter Embeds"
+        },
+        {
+          "key": "mediaActions",
+          "label": "Save / Open / Copy Buttons on Images"
         },
         {
           "key": "mediaHoverPreview",

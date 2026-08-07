@@ -133,7 +133,8 @@ window.GLP_SCHEMA = {
     "exportCopyThreadLink": true,
     "autoExpandImages": false,
     "hideFooter": true,
-    "hideAllClfix": true
+    "hideAllClfix": true,
+    "updateNotices": true
   },
   "settingDescriptions": {
     "enabled": "Turns every GLP Ultra page modification on or off without clearing saved settings.",
@@ -185,6 +186,7 @@ window.GLP_SCHEMA = {
     "hideThreadButtons": "Adds per-row hide controls and a recovery shelf.",
     "customCSS": "Injected after the theme; keep it scoped and reversible.",
     "hideAllClfix": "Removes spacer elements that create dead space.",
+    "updateNotices": "After an update, names the settings this version added so nothing new stays hidden.",
     "exportThreadMarkdown": "Adds a Markdown export button to the thread toolbar. Quotes keep their nesting depth.",
     "exportThreadHtml": "Adds a standalone dark HTML export of the thread with the original post markup preserved.",
     "exportThreadJson": "Adds a structured JSON export: posts, authors, dates, quote depth, links, and media.",
@@ -932,6 +934,10 @@ window.GLP_SCHEMA = {
         {
           "key": "hideAllClfix",
           "label": "Remove Layout Spacers (br/clfix)"
+        },
+        {
+          "key": "updateNotices",
+          "label": "Announce New Settings After An Update"
         }
       ],
       "specialId": null

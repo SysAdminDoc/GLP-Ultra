@@ -189,7 +189,8 @@
         // Misc
         autoExpandImages: false,
         hideFooter: true,
-        hideAllClfix: true
+        hideAllClfix: true,
+        updateNotices: true
     };
 
     const SECTION_DESCRIPTIONS = {
@@ -267,6 +268,7 @@
         hideThreadButtons: 'Adds per-row hide controls and a recovery shelf.',
         customCSS: 'Injected after the theme; keep it scoped and reversible.',
         hideAllClfix: 'Removes spacer elements that create dead space.',
+        updateNotices: 'After an update, names the settings this version added so nothing new stays hidden.',
         exportThreadMarkdown: 'Adds a Markdown export button to the thread toolbar. Quotes keep their nesting depth.',
         exportThreadHtml: 'Adds a standalone dark HTML export of the thread with the original post markup preserved.',
         exportThreadJson: 'Adds a structured JSON export: posts, authors, dates, quote depth, links, and media.',
@@ -358,7 +360,9 @@
         viewportSwitch: ['#glpViewportToggle', '#glpViewportMeta', '.viewport_mode_switch'],
         topLinks: ['#mainpagetoplinks', '.pagetoplinks2', '.hdr_top'],
         loginLinks: ['#topnavlogin', '.topnav_login', '.loginlinks'],
-        mainNav: ['.topnav.topnav_main', '.mainpagenavlinks', '.navlinks', '.topnav a'],
+        // `.mainpagenavlinks` is what the captures actually carry; `.topnav.topnav_main` matches
+        // nothing in either one, and bare `.navlinks` also names the thread's own nav rows.
+        mainNav: ['.mainpagenavlinks', '.topnav.topnav_main', '.navlinks', '.topnav a'],
         tabNav: ['ul.tabnav', '.tab_forum', '.tab_day', '.tab_extras', '#tab_forum_1', '#tab_curdate'],
         feedContainer: ['#forum_l', '.threads-wrapper'],
         feedTable: ['table.threads'],
@@ -408,6 +412,9 @@
         observer: null,
         settingsApplyTimer: null,
         featureErrors: [],
+        featureTimings: {},
+        newSettingKeys: [],
+        previousVersion: '',
         fetchQueue: [],
         fetchActive: false,
         lastFetchAt: 0,
@@ -467,6 +474,47 @@
         return 'generic';
     }
 
+    // Surfaces that must resolve on a given route. A miss here is a real site change, not a
+    // feature that simply has nothing to do on this page - which is what makes the health
+    // report worth reading instead of a wall of "not on this page".
+    const ROUTE_SURFACES = Object.freeze({
+        feed: ['pageRoot', 'mainNav', 'feedTable', 'feedRows', 'feedTitleCell', 'feedThreadLink', 'feedPostedCell'],
+        // The thread route has no site-wide main nav - its nav rows are the thread's own.
+        thread: ['pageRoot', 'threadTopNav', 'threadTable', 'postRows', 'postBody', 'postAuthorName', 'postDate', 'postTitle'],
+        search: ['pageRoot', 'mainNav'],
+        composer: ['pageRoot', 'mainNav'],
+        profile: ['pageRoot', 'mainNav'],
+        generic: ['pageRoot']
+    });
+
+    /**
+     * Which selector in each registry entry is actually carrying the page. The first entry is
+     * the primary; anything below it is a fallback that only matches once the site has drifted,
+     * so a fallback hit is an early warning and a total miss on an expected surface is a break.
+     */
+    function selectorHealth(route = runtimeState.route) {
+        const expected = new Set(ROUTE_SURFACES[route] || ROUTE_SURFACES.generic);
+        return Object.keys(SELECTOR_REGISTRY).map(key => {
+            const selectors = SELECTOR_REGISTRY[key];
+            const index = selectors.findIndex(selector => {
+                try {
+                    return !!document.querySelector(selector);
+                } catch (error) {
+                    return false;
+                }
+            });
+            const required = expected.has(key);
+            let status = 'primary';
+            if (index < 0) status = required ? 'missing' : 'absent';
+            else if (index > 0) status = 'fallback';
+            return { key, status, required, selector: index < 0 ? null : selectors[index], depth: index };
+        });
+    }
+
+    function selectorWarnings(route = runtimeState.route) {
+        return selectorHealth(route).filter(entry => entry.status === 'missing' || entry.status === 'fallback');
+    }
+
     function querySurface(surfaceKey, root = document) {
         const selectors = SELECTOR_REGISTRY[surfaceKey] || [];
         for (const selector of selectors) {
@@ -518,6 +566,7 @@
 
     function loadSettings() {
         const saved = GM_getValue('glpEnhancedSettings', null);
+        runtimeState.previousVersion = String(GM_getValue('glpSettingsVersion', '') || '');
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
@@ -527,12 +576,36 @@
                         settings[key] = parsed[key];
                     }
                 });
+                // Keys the stored payload never heard of are exactly the settings this build
+                // added, so the update notice can name them without a hand-kept changelog.
+                runtimeState.newSettingKeys = Object.keys(DEFAULT_SETTINGS)
+                    .filter(key => !Object.prototype.hasOwnProperty.call(parsed, key));
             } catch (e) {
                 settings = { ...DEFAULT_SETTINGS };
             }
         } else {
             settings = { ...DEFAULT_SETTINGS };
         }
+    }
+
+    /**
+     * Shown once per version bump, and only to users who already had settings stored - a fresh
+     * install has nothing to migrate and does not need to be told what changed.
+     */
+    function announceVersionChange() {
+        const previous = runtimeState.previousVersion;
+        GM_setValue('glpSettingsVersion', SCRIPT_VERSION);
+        if (!previous || previous === SCRIPT_VERSION) return;
+        if (!settings.updateNotices) return;
+
+        const added = runtimeState.newSettingKeys;
+        const summary = added.length
+            ? `${added.length} new setting${added.length === 1 ? '' : 's'}: ${added.slice(0, 4).join(', ')}${added.length > 4 ? `, +${added.length - 4} more` : ''}`
+            : 'no new settings';
+        showNotification(`GLP Ultra updated ${previous} to ${SCRIPT_VERSION} - ${summary}.`, 'info', {
+            label: 'Open settings',
+            onClick: createSettingsPanel
+        });
     }
 
     function saveSettings() {
@@ -1059,6 +1132,35 @@ body.glp-enhanced-active { color-scheme: dark; }
         scroll-behavior: auto !important;
     }
 }
+
+#glp-diagnostics {
+    position: fixed; right: 18px; bottom: 18px; z-index: 2147483646;
+    width: min(460px, calc(100vw - 36px)); max-height: min(70vh, 640px);
+    display: flex; flex-direction: column;
+    background: var(--glp-panel-bg, #0d1220);
+    border: 1px solid var(--glp-panel-border, rgba(147, 168, 211, 0.22));
+    border-radius: 12px; box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+    color: var(--glp-panel-text, #e6ecf7);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px;
+}
+
+.glp-diag-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 14px; border-bottom: 1px solid var(--glp-panel-border, rgba(147, 168, 211, 0.22));
+    font-weight: 700;
+}
+
+.glp-diag-body { overflow-y: auto; padding: 10px 14px 14px; }
+.glp-diag-group { margin-top: 12px; }
+.glp-diag-group:first-child { margin-top: 0; }
+.glp-diag-group h4 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #93a8d3; }
+.glp-diag-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid rgba(147, 168, 211, 0.10); }
+.glp-diag-row:last-child { border-bottom: none; }
+.glp-diag-row span:last-child { color: #b9c6e2; font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace; text-align: right; }
+.glp-diag-ok span:last-child { color: #7fd39b; }
+.glp-diag-warn span:last-child { color: #e6c14a; }
+.glp-diag-bad span:last-child { color: #ff8f8f; }
+.glp-diag-empty { color: #8592b0; padding: 3px 0; }
 
 `;
 
@@ -2510,7 +2612,8 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 ${createSettingsSection('Miscellaneous', [
                     { key: 'autoExpandImages', label: 'Auto-Expand Images' },
                     { key: 'hideFooter', label: 'Hide Footer' },
-                    { key: 'hideAllClfix', label: 'Remove Layout Spacers (br/clfix)' }
+                    { key: 'hideAllClfix', label: 'Remove Layout Spacers (br/clfix)' },
+                    { key: 'updateNotices', label: 'Announce New Settings After An Update' }
                 ])}
             </div>
             <div id="glp-enhanced-settings-footer">
@@ -2518,6 +2621,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     <button class="glp-btn glp-btn-danger" id="glp-reset-btn">Reset to defaults</button>
                     <button class="glp-btn glp-btn-secondary" id="glp-export-btn">Export</button>
                     <button class="glp-btn glp-btn-secondary" id="glp-import-btn">Import</button>
+                    <button class="glp-btn glp-btn-secondary" id="glp-diagnostics-btn">Diagnostics</button>
                 </div>
                 <div class="glp-footer-group">
                     <button class="glp-btn glp-btn-secondary" id="glp-cancel-btn">Close</button>
@@ -2535,6 +2639,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         document.getElementById('glp-reset-btn').addEventListener('click', resetSettingsWithUndo);
         document.getElementById('glp-export-btn').addEventListener('click', exportSettings);
         document.getElementById('glp-import-btn').addEventListener('click', importSettings);
+        document.getElementById('glp-diagnostics-btn').addEventListener('click', toggleDiagnosticsPanel);
 
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) closeSettings();
@@ -2967,6 +3072,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             '#glp-forum-toolbar',
             '#glp-media-preview',
             '#glp-watch-digest',
+            '#glp-diagnostics',
             '.glp-thread-preview',
             '.glp-op-nav',
             '.glp-copied-toast',
@@ -3086,11 +3192,31 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     return;
                 }
                 const runner = feature[stage] || feature.init;
-                if (typeof runner === 'function') runner(ctx);
+                if (typeof runner === 'function') {
+                    const startedAt = performance.now();
+                    runner(ctx);
+                    recordFeatureTiming(feature.id, stage, performance.now() - startedAt);
+                }
             } catch (error) {
                 recordFeatureError(feature.id, stage, error);
             }
         });
+    }
+
+    /**
+     * Keeps the slowest observed run per feature and stage. Cumulative totals would just grow
+     * with page age; the worst single run is what a user feels.
+     */
+    function recordFeatureTiming(id, stage, ms) {
+        const key = `${id}:${stage}`;
+        const previous = runtimeState.featureTimings[key];
+        if (!previous) {
+            runtimeState.featureTimings[key] = { id, stage, runs: 1, worstMs: ms, lastMs: ms };
+            return;
+        }
+        previous.runs += 1;
+        previous.lastMs = ms;
+        if (ms > previous.worstMs) previous.worstMs = ms;
     }
 
     function destroyRegisteredFeatures() {
@@ -6403,6 +6529,175 @@ ${manifest}
         });
 
         runtimeState.observer.observe(document.body, { childList: true, subtree: true });
+        announceVersionChange();
+    }
+
+    // ============================================
+    // DIAGNOSTICS
+    // ============================================
+
+    /**
+     * Everything needed to answer "why is GLP Ultra behaving like this on this page" without a
+     * console: what route it thinks it is on, which features are live, which selectors are
+     * carrying the page, what the fetch queue is doing, and what has been slow.
+     */
+    function buildDiagnostics() {
+        const health = selectorHealth();
+        const counts = health.reduce((acc, entry) => {
+            acc[entry.status] = (acc[entry.status] || 0) + 1;
+            return acc;
+        }, {});
+
+        return {
+            version: SCRIPT_VERSION,
+            settingsVersionSeen: runtimeState.previousVersion || SCRIPT_VERSION,
+            route: runtimeState.route,
+            url: window.location.href,
+            featuresStarted: runtimeState.featuresStarted,
+            enabledFeatures: getFeatureRegistry()
+                .filter(feature => routeAllowsFeature(feature) && settingAllowsFeature(feature))
+                .map(feature => feature.id),
+            changedSettings: Object.keys(DEFAULT_SETTINGS).filter(key => settings[key] !== DEFAULT_SETTINGS[key]),
+            errors: [...runtimeState.featureErrors],
+            selectorHealth: {
+                total: health.length,
+                primary: counts.primary || 0,
+                fallback: counts.fallback || 0,
+                missing: counts.missing || 0,
+                absent: counts.absent || 0,
+                warnings: health
+                    .filter(entry => entry.status === 'missing' || entry.status === 'fallback')
+                    .map(entry => ({ key: entry.key, status: entry.status, required: entry.required, selector: entry.selector }))
+            },
+            timings: Object.values(runtimeState.featureTimings)
+                .sort((a, b) => b.worstMs - a.worstMs)
+                .slice(0, 8)
+                .map(entry => ({ ...entry, worstMs: Number(entry.worstMs.toFixed(2)), lastMs: Number(entry.lastMs.toFixed(2)) })),
+            fetchQueue: {
+                pending: runtimeState.fetchQueue.length,
+                active: runtimeState.fetchActive,
+                lastFetchAge: runtimeState.lastFetchAt ? relativeAge(runtimeState.lastFetchAt) : 'never'
+            }
+        };
+    }
+
+    function diagnosticsRow(parent, label, value, tone) {
+        const row = document.createElement('div');
+        row.className = tone ? `glp-diag-row glp-diag-${tone}` : 'glp-diag-row';
+        const name = document.createElement('span');
+        name.textContent = label;
+        const detail = document.createElement('span');
+        detail.textContent = value;
+        row.append(name, detail);
+        parent.appendChild(row);
+        return row;
+    }
+
+    function diagnosticsGroup(parent, title) {
+        const group = document.createElement('div');
+        group.className = 'glp-diag-group';
+        const heading = document.createElement('h4');
+        heading.textContent = title;
+        group.appendChild(heading);
+        parent.appendChild(group);
+        return group;
+    }
+
+    function toggleDiagnosticsPanel() {
+        const existing = document.getElementById('glp-diagnostics');
+        if (existing) {
+            existing.remove();
+            return;
+        }
+        renderDiagnosticsPanel();
+    }
+
+    function renderDiagnosticsPanel() {
+        const report = buildDiagnostics();
+
+        const panel = document.createElement('div');
+        panel.id = 'glp-diagnostics';
+        panel.setAttribute('role', 'region');
+        panel.setAttribute('aria-label', 'GLP Ultra diagnostics');
+
+        const header = document.createElement('div');
+        header.className = 'glp-diag-header';
+        const title = document.createElement('span');
+        title.textContent = `Diagnostics - v${report.version}`;
+        const actions = document.createElement('div');
+        actions.className = 'glp-footer-group';
+
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'glp-btn glp-btn-secondary';
+        copy.textContent = 'Copy';
+        copy.addEventListener('click', () => {
+            const text = JSON.stringify(buildDiagnostics(), null, 2);
+            navigator.clipboard.writeText(text)
+                .then(() => showNotification('Diagnostics copied.', 'success'))
+                .catch(() => showNotification('Clipboard refused the copy.', 'error'));
+        });
+
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'glp-btn glp-btn-secondary';
+        close.textContent = 'Close';
+        close.addEventListener('click', () => panel.remove());
+
+        actions.append(copy, close);
+        header.append(title, actions);
+
+        const body = document.createElement('div');
+        body.className = 'glp-diag-body';
+
+        const state = diagnosticsGroup(body, 'State');
+        diagnosticsRow(state, 'Route', report.route);
+        diagnosticsRow(state, 'Features started', report.featuresStarted ? 'yes' : 'no',
+            report.featuresStarted ? 'ok' : 'bad');
+        diagnosticsRow(state, 'Active features', String(report.enabledFeatures.length));
+        diagnosticsRow(state, 'Settings changed from defaults', String(report.changedSettings.length));
+        diagnosticsRow(state, 'Settings version last seen', report.settingsVersionSeen);
+
+        const selectors = diagnosticsGroup(body, 'Selector health');
+        diagnosticsRow(selectors, 'Primary selector matched', `${report.selectorHealth.primary}/${report.selectorHealth.total}`, 'ok');
+        diagnosticsRow(selectors, 'Fell back to an alternate', String(report.selectorHealth.fallback),
+            report.selectorHealth.fallback ? 'warn' : 'ok');
+        diagnosticsRow(selectors, 'Expected but missing', String(report.selectorHealth.missing),
+            report.selectorHealth.missing ? 'bad' : 'ok');
+        report.selectorHealth.warnings.forEach(warning => {
+            diagnosticsRow(selectors, warning.key, warning.status === 'missing' ? 'no match' : warning.selector,
+                warning.status === 'missing' ? 'bad' : 'warn');
+        });
+
+        const errors = diagnosticsGroup(body, 'Feature errors');
+        if (!report.errors.length) {
+            const empty = document.createElement('div');
+            empty.className = 'glp-diag-empty';
+            empty.textContent = 'None recorded.';
+            errors.appendChild(empty);
+        } else {
+            report.errors.forEach(error => diagnosticsRow(errors, `${error.id} (${error.stage})`, error.message, 'bad'));
+        }
+
+        const timings = diagnosticsGroup(body, 'Slowest features (worst run)');
+        if (!report.timings.length) {
+            const empty = document.createElement('div');
+            empty.className = 'glp-diag-empty';
+            empty.textContent = 'Nothing measured yet.';
+            timings.appendChild(empty);
+        } else {
+            report.timings.forEach(entry => diagnosticsRow(timings, `${entry.id} (${entry.runs}x)`, `${entry.worstMs} ms`,
+                entry.worstMs > 50 ? 'warn' : ''));
+        }
+
+        const queue = diagnosticsGroup(body, 'Fetch queue');
+        diagnosticsRow(queue, 'Pending', String(report.fetchQueue.pending));
+        diagnosticsRow(queue, 'Active', report.fetchQueue.active ? 'yes' : 'no');
+        diagnosticsRow(queue, 'Last fetch', report.fetchQueue.lastFetchAge);
+
+        panel.append(header, body);
+        document.body.appendChild(panel);
+        return panel;
     }
 
     // Control surface for the browser-extension shell (popup, options page, service worker).
@@ -6429,7 +6724,8 @@ ${manifest}
             return true;
         },
         getLists: () => ({ mutedUsers: [...mutedUsers], blockedUsers: blockedUsers.map(u => ({ ...u })), hiddenThreads: [...hiddenThreads] }),
-        getDiagnostics: () => ({ route: runtimeState.route, featuresStarted: runtimeState.featuresStarted, errors: [...runtimeState.featureErrors] })
+        getDiagnostics: buildDiagnostics,
+        openDiagnostics: renderDiagnosticsPanel
     };
 
     init();

@@ -15,6 +15,7 @@ import { chromium } from 'playwright';
 
 const root = process.cwd();
 const extensionPath = path.join(root, 'extension');
+const manifestVersion = JSON.parse(await readFile(path.join(extensionPath, 'manifest.json'), 'utf8')).version;
 
 const CAPTURES = {
   feed: { file: 'captures/forum-feed.mhtml', url: 'https://www.godlikeproductions.com/forum1/pg1' },
@@ -105,6 +106,11 @@ try {
   const feedDiag = await workerDiagnostics(worker, page);
   check('feed: route classified as feed', feedDiag?.route === 'feed', JSON.stringify(feedDiag));
   check('feed: no feature errors', (feedDiag?.errors || []).length === 0, JSON.stringify(feedDiag?.errors));
+  check('feed: no expected selector is missing', (feedDiag?.selectorHealth?.missing ?? -1) === 0,
+    JSON.stringify(feedDiag?.selectorHealth?.warnings));
+  check('feed: no feed-route surface has fallen back to an alternate selector',
+    !(feedDiag?.selectorHealth?.warnings || []).some(warning => warning.required && warning.status === 'fallback'),
+    JSON.stringify((feedDiag?.selectorHealth?.warnings || []).filter(warning => warning.required)));
 
   await sendMessage(worker, page, { type: 'glp:open-settings' });
   await page.waitForTimeout(400);
@@ -127,6 +133,36 @@ try {
   const threadDiag = await workerDiagnostics(worker, page);
   check('thread: route classified as thread', threadDiag?.route === 'thread', JSON.stringify(threadDiag));
   check('thread: no feature errors', (threadDiag?.errors || []).length === 0, JSON.stringify(threadDiag?.errors));
+
+  // Diagnostics have to answer the questions the roadmap promises they answer.
+  check('thread: diagnostics report the running version', threadDiag?.version === manifestVersion, threadDiag?.version);
+  check('thread: diagnostics list the active features', (threadDiag?.enabledFeatures || []).length > 0,
+    String((threadDiag?.enabledFeatures || []).length));
+  check('thread: diagnostics report fetch queue state',
+    threadDiag?.fetchQueue && typeof threadDiag.fetchQueue.pending === 'number', JSON.stringify(threadDiag?.fetchQueue));
+  // Against a real capture every surface the thread route depends on must resolve, and on its
+  // primary selector - a fallback hit here means the registry's first choice has already rotted.
+  check('thread: no expected selector is missing', (threadDiag?.selectorHealth?.missing ?? -1) === 0,
+    JSON.stringify(threadDiag?.selectorHealth?.warnings));
+  check('thread: no thread-route surface has fallen back to an alternate selector',
+    !(threadDiag?.selectorHealth?.warnings || []).some(warning => warning.required && warning.status === 'fallback'),
+    JSON.stringify((threadDiag?.selectorHealth?.warnings || []).filter(warning => warning.required)));
+
+  await sendMessage(worker, page, { type: 'glp:open-settings' });
+  await page.waitForTimeout(300);
+  await page.locator('#glp-diagnostics-btn').click();
+  await page.waitForTimeout(300);
+  check('thread: the diagnostics panel opens from the settings footer',
+    await page.locator('#glp-diagnostics').count() === 1);
+  check('thread: the diagnostics panel reports selector health',
+    await page.locator('#glp-diagnostics .glp-diag-group').count() >= 4);
+  check('thread: the diagnostics panel reports no feature errors',
+    (await page.locator('#glp-diagnostics .glp-diag-group').nth(2).innerText()).includes('None recorded'));
+  await page.locator('#glp-diagnostics .glp-diag-header .glp-btn:last-child').click();
+  await page.waitForTimeout(200);
+  check('thread: the diagnostics panel closes', await page.locator('#glp-diagnostics').count() === 0);
+  await page.locator('#glp-enhanced-close-btn').click();
+  await page.waitForTimeout(200);
 
   // Media adapters: the capture carries a real X/Twitter widget iframe.
   check('thread: third-party embeds replaced by click-to-load placeholders',

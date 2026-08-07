@@ -1,8 +1,23 @@
 # Changelog
 
-## Unreleased
+## 3.1.0 — 2026-08-06
 
 ### Added
+
+- **Thread watcher.** Watch a thread and it is polled through the shared rate-limited fetch queue, walking to its last page before counting posts so an unread delta means new replies rather than a new page. The digest lists every watched thread with its unread count, last-checked age, and failed-check state, and each row can be marked read, opened, or unwatched. Hidden tabs pause background checks by default. In the extension, the toolbar badge shows the unread total instead of a plain "on".
+- **Recovery shelf.** One surface listing hidden threads, muted users, blocked users, and the filters currently hiding things — each restorable on its own, from any route. Hidden threads now remember their titles, so the shelf names what it is about to restore. Older backups without titles still restore their ids.
+- **Diagnostics panel.** The settings footer opens an in-page report: route, active features, settings changed from defaults, per-feature worst-run timings, fetch queue state, recorded feature errors, and selector health — with a Copy button. Selector health names, per registry entry, whether the page is being carried by the primary selector or a fallback, which is the self-healing warning for site drift.
+- **Context-menu actions.** Right-click on GLP offers Hide this thread, Mute this user, Tag this user, Preview this image, and Export this thread. Each reports why nothing happened rather than failing quietly.
+- **Update notices.** After a version change, GLP Ultra names the settings the new build added, computed by diffing the stored payload against the defaults. Switch off with *Announce New Settings After An Update*.
+- **Firefox build.** `npm run build:firefox` generates the Gecko variant (event-page background, extension id, `strict_min_version`) into `dist/extension-firefox/`, and `npm run package:firefox` zips it. Everything but the manifest is identical to the Chrome build.
+
+### Fixed
+
+- **Every setting, mute, block, tag, and hidden thread reset to defaults on reload in the extension build.** The engine is written against Tampermonkey semantics — serialize before every `GM_setValue`, `JSON.parse` after every `GM_getValue` — but the MV3 shim also parsed on read, so the engine parsed an already-parsed object, threw, and fell back to defaults inside its own try/catch. Silent data loss on every page load.
+- `mainNav`'s primary selector `.topnav.topnav_main` matches neither capture, so that surface had been resolving through fallbacks; `.mainpagenavlinks` is now the primary. The thread route no longer expects a site-wide main nav it does not have.
+- The image lightbox added a document click listener on every `init` and never removed it, so disabling the feature left the handler live and re-enabling it stacked another copy. It now binds once and unbinds in `destroy`.
+
+### Also in this release
 
 - **Thread export.** Thread pages get Export MD / Export HTML / Export JSON / Copy Link buttons in the tools bar. Markdown preserves quote nesting as `>` depth, HTML is a standalone dark document with the original post markup, and JSON is a structured record of every post (author, member/user id, OP flag, date, quote depth, links, media). Every export carries the source URL, thread id, page number, and an export timestamp, and an optional media manifest listing each image, embed, and outbound link.
 - **Mute match modes**: a muted entry can now match the exact name, any name containing it, or a regular expression. An invalid pattern is skipped rather than taking the whole mute list down.
@@ -12,11 +27,7 @@
 - **Media privacy mode** (on by default): third-party embeds inside posts are replaced by a labelled click-to-load placeholder, so YouTube and X never see the page until the reader asks. YouTube auto-embedding builds the placeholder directly rather than loading and then unloading a player.
 - **X / Twitter embed normalization**: widgets get a labelled frame and, where the page still carries the post id, a direct link to the post — a dead widget is now recognisable instead of an unexplained gap.
 - **Hover preview for images** (off by default): hovering a shrunken thumbnail or an image link shows the full-size image, capped to a configurable share of the viewport.
-- **Runtime verification harness** (`npm run verify:runtime`): loads the unpacked extension in Playwright's Chromium and replays the real GLP captures at their live URLs, then asserts the feed and thread surfaces, the messaging path, and the export outputs. Wired into `npm run verify`.
-
-### Fixed
-
-- The image lightbox added a document click listener on every `init` and never removed it, so disabling the feature left the handler live and re-enabling it stacked another copy. It now binds once and unbinds in `destroy`.
+- **Runtime verification harness** (`npm run verify:runtime`): loads the unpacked extension in Playwright's Chromium and replays the real GLP captures at their live URLs, then asserts the feed and thread surfaces, the messaging path, and the export outputs. Wired into `npm run verify`; 83 checks at this release.
 
 ## 3.0.0 — 2026-08-06
 

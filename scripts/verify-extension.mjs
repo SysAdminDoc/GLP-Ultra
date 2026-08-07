@@ -33,16 +33,20 @@ if (manifest.version !== packageJson.version) fail(`manifest ${manifest.version}
 if (/^\d+\.\d+\.\d+$/.test(manifest.version) === false) fail(`manifest version "${manifest.version}" is not a 3-part version`);
 if (manifest.commands) fail('command shortcuts are not allowed');
 
-const referenced = [
-  manifest.background?.service_worker,
-  manifest.action?.default_popup,
-  manifest.options_ui?.page,
-  ...Object.values(manifest.icons || {}),
-  ...Object.values(manifest.action?.default_icon || {}),
-  ...(manifest.declarative_net_request?.rule_resources || []).map(resource => resource.path),
-  ...(manifest.content_scripts || []).flatMap(entry => [...(entry.js || []), ...(entry.css || [])])
-].filter(Boolean);
+function referencedFiles(m) {
+  return [
+    m.background?.service_worker,
+    ...(m.background?.scripts || []),
+    m.action?.default_popup,
+    m.options_ui?.page,
+    ...Object.values(m.icons || {}),
+    ...Object.values(m.action?.default_icon || {}),
+    ...(m.declarative_net_request?.rule_resources || []).map(resource => resource.path),
+    ...(m.content_scripts || []).flatMap(entry => [...(entry.js || []), ...(entry.css || [])])
+  ].filter(Boolean);
+}
 
+const referenced = referencedFiles(manifest);
 for (const relative of referenced) {
   if (!(await exists(relative))) fail(`manifest references missing file: ${relative}`);
 }
@@ -73,9 +77,41 @@ for (const rule of rules) {
   }
 }
 
+// The Firefox variant is generated, so it is checked where it lands rather than in the repo.
+// Firefox cannot be driven by the runtime harness, which makes this gate the only thing
+// standing between a manifest edit and a broken add-on.
+const firefoxDir = path.join(root, 'dist', 'extension-firefox');
+let firefoxSummary = 'not built';
+try {
+  const firefox = JSON.parse(await readFile(path.join(firefoxDir, 'manifest.json'), 'utf8'));
+  if (firefox.version !== packageJson.version) fail(`firefox manifest ${firefox.version} != package ${packageJson.version}`);
+  if (firefox.background?.service_worker) fail('firefox manifest still declares a service_worker background');
+  if (!firefox.background?.scripts?.length) fail('firefox manifest has no background scripts');
+  if (!firefox.browser_specific_settings?.gecko?.id) fail('firefox manifest has no gecko extension id');
+  if (!firefox.browser_specific_settings?.gecko?.strict_min_version) fail('firefox manifest has no strict_min_version');
+  if (firefox.commands) fail('command shortcuts are not allowed');
+
+  for (const relative of referencedFiles(firefox)) {
+    try {
+      await access(path.join(firefoxDir, relative));
+    } catch (e) {
+      fail(`firefox manifest references missing file: ${relative}`);
+    }
+  }
+
+  // The two builds must not drift: same content, one manifest apart.
+  const firefoxEngine = await readFile(path.join(firefoxDir, 'content', 'glp-ultra.user.js'), 'utf8');
+  if (firefoxEngine !== engineSource) fail('dist/extension-firefox is stale - run npm run build:firefox');
+  const gecko = firefox.browser_specific_settings?.gecko || {};
+  firefoxSummary = `v${firefox.version}, gecko ${gecko.id || 'missing'}, min ${gecko.strict_min_version || 'missing'}`;
+} catch (error) {
+  if (error.code !== 'ENOENT') fail(`firefox variant could not be read: ${error.message}`);
+}
+
 if (failures > 0) {
   console.error(`verify-extension: ${failures} problem(s) found.`);
   process.exit(1);
 }
 
 console.log(`Extension verified: manifest v${manifest.version}, ${referenced.length} referenced files, ${rules.length} network rules, ${Object.keys(schema.defaults).length} settings in schema.`);
+console.log(`Firefox variant: ${firefoxSummary}.`);

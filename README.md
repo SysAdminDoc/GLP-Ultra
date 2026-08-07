@@ -1,17 +1,17 @@
 # GLP Ultra
 
-[![version](https://img.shields.io/badge/version-3.0.0-4a90d9)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-3.1.0-4a90d9)](CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Firefox%20%7C%20userscript-1f6feb)](#install)
 [![manifest](https://img.shields.io/badge/manifest-v3-8957e5)](extension/manifest.json)
 
 Declutter, theming, filtering, blocking, and reading tools for [Godlike Productions](https://www.godlikeproductions.com/) — one MV3 browser extension, built from one source file that also ships as a standalone userscript.
 
-v3.0.0 merges the two previously separate projects (the *GLP Enhanced Declutter* userscript and the *GodLikeProductions Enhanced Suite* userscript) into a single engine. Nothing is loaded from the network: no jQuery CDN, no remote fonts, no remote code of any kind.
+v3.0.0 merged the two previously separate projects (the *GLP Enhanced Declutter* userscript and the *GodLikeProductions Enhanced Suite* userscript) into a single engine. Nothing is loaded from the network: no jQuery CDN, no remote fonts, no remote code of any kind.
 
 ## What it does
 
-**114 settings across 17 sections**, all searchable from the in-page panel or the extension options page.
+**133 settings across 22 sections**, all searchable from the in-page panel or the extension options page.
 
 | Area | Highlights |
 | --- | --- |
@@ -21,6 +21,10 @@ v3.0.0 merges the two previously separate projects (the *GLP Enhanced Declutter*
 | Posts | compact/wider layouts, reader mode, OP highlighting, post numbers and permalinks, relative timestamps, collapsible posts, quote depth badges, nested-quote collapse, YouTube embedding, image lightbox with gallery navigation, in-thread quick search |
 | Moderation | mute users by name, block users by numeric user ID, hide image-only replies, hide `/sm/` reaction GIFs, per-user tags, hidden-thread manager |
 | Look | 10 dark themes, corner style, font size, line height, max width, custom CSS (scoped) |
+| Watcher | watch threads, unread-delta digest with last-checked age and failed-check state, hidden-tab pause, toolbar badge |
+| Export | thread to Markdown / HTML / JSON with a media manifest, copy thread link, full data backup and restore |
+| Recovery | one shelf listing hidden threads, muted and blocked users, and active filters, each restorable on its own |
+| Diagnostics | route, active features, per-feature worst-run timings, fetch queue state, and selector health with drift warnings |
 
 Every feature exposes `init`/`destroy` and unwinds itself completely when switched off. Errors in one feature can no longer take the rest of the page down with them.
 
@@ -49,8 +53,24 @@ and hit **Reload** on the extension card.
 
 ```bash
 npm run verify      # gates + build + structure checks
-npm run package     # dist/glp-ultra-v3.0.0.zip
+npm run package     # dist/glp-ultra-v3.1.0.zip
 ```
+
+### Firefox
+
+```bash
+npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.1.0.zip
+```
+
+Everything but the manifest is identical to the Chrome build. The Gecko variant swaps the
+service-worker background for an event page, and adds the extension id and `strict_min_version`
+Firefox requires. Load `dist/extension-firefox/manifest.json` through `about:debugging` >
+**This Firefox** > **Load Temporary Add-on**.
+
+Firefox treats host permissions as opt-in: the content scripts register regardless, but the
+network-level ad blocking stays inert until the host permission is granted from the add-on's
+permissions tab. The variant is gated structurally by `npm run verify:extension` — the runtime
+harness drives Chromium only, so Firefox behaviour is not machine-verified.
 
 ### Userscript
 
@@ -81,10 +101,13 @@ scripts/                     build, icons, package, verification gates
 | `npm run load` | Copies the extension path and opens `chrome://extensions` |
 | `npm run build` | Emits `dist/`, `extension/content/glp-ultra.user.js`, and the options-page schema |
 | `npm run verify:captures` | Asserts the selector registry still matches real captured GLP pages |
-| `npm run verify:extension` | Manifest/file/version/rule integrity |
+| `npm run verify:extension` | Manifest/file/version/rule integrity, both browser variants |
+| `npm run verify:runtime` | Loads the unpacked extension in Chromium and drives it against the real captures |
 | `npm run verify` | All of the above |
 | `npm run icons` | Regenerates PNG icons from `assets/icon.svg` |
+| `npm run build:firefox` | Generates `dist/extension-firefox/` |
 | `npm run package` | Deterministic `dist/glp-ultra-v<version>.zip` |
+| `npm run package:firefox` | Deterministic `dist/glp-ultra-firefox-v<version>.zip` |
 
 The build fails if a setting exists without a home in the panel, so the options page can never drift from the engine.
 

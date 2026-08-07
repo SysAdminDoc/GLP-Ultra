@@ -1,15 +1,25 @@
 # GLP Ultra Roadmap
 
-## Status — v3.0.0 (2026-08-06)
+## Status — v3.1.0 (2026-08-06)
 
 The two userscripts are merged and the MV3 extension is the primary vehicle, exactly as the delivery table below prescribes.
 
-- Shipped: single engine at `src/glp-ultra.user.js` (114 settings / 17 sections), MV3 extension with popup, options page, service worker, and `declarativeNetRequest` ad blocking, plus the userscript build from the same source.
+- Shipped: single engine at `src/glp-ultra.user.js` (133 settings / 22 sections), MV3 extension with popup, options page, service worker, and `declarativeNetRequest` ad blocking, plus the userscript build and the generated Firefox variant from the same source.
 - Absorbed from `GodLikeProductions Enhanced Suite` v9.0.0 (now deleted): sort toolbar, newest-first default, pinned-thread hiding, user blocking by ID, image-only reply filter, reaction-GIF filter, country-club nag bypass, collapse-quotes-by-default, corner style, lean reading preset.
 - Dropped deliberately: jQuery CDN dependency, key-driven surfaces (house rule), the Suite autopager (superseded by the engine's infinite scroll).
-- Verification: `npm run verify` (gates + captures + structure) and a Playwright run that loads the unpacked extension and replays the real GLP captures — 16/16 checks.
+- Verification: `npm run verify` (gates + captures + both builds + structure) and a Playwright run that loads the unpacked extension and replays the real GLP captures — 83/83 checks.
 
-Remaining roadmap items below are unchanged and still open.
+### v3.1.0 closes the remaining phase work
+
+- **v0.7.0 — Watcher, automation, recovery:** complete. Watch/unwatch, digest with unread delta, last-checked age and failed-check state, hidden-tab pause, and a recovery shelf covering hidden threads, muted users, blocked users, and active filters, each restorable on its own. Local history cleanup keeps its undo toast.
+- **v0.8.0 — MV3 extension build:** complete. Context-menu actions (hide thread, mute user, tag user, preview image, export thread), watcher-count toolbar badge, and the Firefox-compatible manifest variant generated into `dist/extension-firefox/`.
+- **v0.9.0 — Reliability and distribution:** diagnostics panel now reports settings version, enabled features, selector health, route, fetch queue status, and per-feature worst-run timings; self-healing selector warnings flag fallback hits and missing required surfaces; settings changes are announced per version bump.
+
+Still open, and blocked on inputs rather than effort:
+
+- Composer, profile/member, and logged-in notification pages were never captured, so the features that need those selectors cannot be designed against real DOM (see the risk table below).
+- Firefox behaviour is not machine-verified: the runtime harness drives Chromium only, and Firefox cannot load a temporary MV3 add-on from the command line without additional tooling. The variant is gated structurally instead.
+- Store listing prep is deliberately not started: the project ships unsigned artifacts from GitHub.
 
 
 Research date: 2026-05-19  
@@ -897,7 +907,7 @@ Features:
 
 Dependencies:
 
-- [ ] Source control initialized before implementation. Current folder is still not a Git repository; commit/push is skipped until the repo is initialized or moved under an existing GitHub repository.
+- [x] Source control initialized: the repository is `SysAdminDoc/GLP_Userscript` and every change since v3.0.0 has been committed and pushed to `main`.
 - [x] Build script for single-file userscript.
 
 Acceptance criteria:

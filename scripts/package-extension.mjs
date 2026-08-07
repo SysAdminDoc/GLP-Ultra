@@ -9,10 +9,14 @@ import path from 'node:path';
 import process from 'node:process';
 
 const root = process.cwd();
-const extensionDir = path.join(root, 'extension');
 const distDir = path.join(root, 'dist');
 const packageJson = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
-const zipPath = path.join(distDir, `glp-ultra-v${packageJson.version}.zip`);
+
+// `--firefox` packages the generated Gecko variant instead of the Chrome build. Both archives
+// are named for what they are, so a release cannot ship one under the other's name.
+const firefox = process.argv.includes('--firefox');
+const extensionDir = firefox ? path.join(distDir, 'extension-firefox') : path.join(root, 'extension');
+const zipPath = path.join(distDir, `glp-ultra${firefox ? '-firefox' : ''}-v${packageJson.version}.zip`);
 
 // Deterministic timestamp: the archive must not change when nothing in it changed.
 const DOS_TIME = 0x6000; // 12:00:00

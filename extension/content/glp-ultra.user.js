@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLP Ultra
 // @namespace    https://github.com/SysAdminDoc/GLP_Userscript
-// @version      3.0.0
+// @version      3.1.0
 // @description  Declutter, theming, filtering, blocking, and reading tools for Godlike Productions
 // @author       Matthew Parker
 // @match        *://www.godlikeproductions.com/*
@@ -17,7 +17,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '3.0.0';
+    const SCRIPT_VERSION = '3.1.0';
 
     // ============================================
     // DEFAULT SETTINGS

@@ -625,6 +625,128 @@ try {
     painted('warning', 0) && semantic.warning.border[1] > semantic.warning.border[2],
     JSON.stringify(semantic.warning));
 
+  // ---------------- Theme sweep ----------------
+  // `npm run shots` renders every surface in every theme, but nothing ever looked at the result,
+  // so five surfaces sat on hardcoded blues through all ten themes without anything noticing.
+  // This is the assertion that sweep was missing: paint each surface under two deliberately
+  // opposite palettes and require it to actually move. A hardcoded colour reads the same twice.
+  //
+  // These are stylesheet probes rather than opened features - the question is whether the rules
+  // that dress a surface are themed, and each feature's own open/close behaviour is asserted
+  // elsewhere. A probe still fails honestly: hardcode a background and both readings match.
+  const THEME_PROBES = [
+    { name: 'toast', markup: ['glp-toast'] },
+    { name: 'quick search panel', id: 'glp-quick-search' },
+    { name: 'tag picker', id: 'glp-tag-picker' },
+    { name: 'watch digest', id: 'glp-watch-digest' },
+    // The scrim itself stays theme-neutral on purpose: nothing should tint a full-screen image
+    // backdrop. Its controls are the part that has to belong to the theme.
+    { name: 'lightbox control', id: 'glp-lightbox', child: 'button', childClass: 'glp-gallery-nav' },
+    { name: 'thread toolbar button', id: 'glp-thread-tools-bar', child: 'button' }
+  ];
+
+  const readProbes = probes => page.evaluate(specs => {
+    // color-mix() resolves to `color(srgb 0.18 0.18 0.22)` - 0-1 floats, not 0-255 - and reading
+    // those as 8-bit channels makes a themed panel look both unthemed and nearly black.
+    const parse = value => {
+      const parts = (value.match(/[\d.]+/g) || []).map(Number);
+      if (parts.length < 3) return null;
+      const scale = /^color\(/.test(value.trim()) ? 255 : 1;
+      return {
+        r: parts[0] * scale,
+        g: parts[1] * scale,
+        b: parts[2] * scale,
+        a: parts.length > 3 ? parts[3] : 1
+      };
+    };
+    const pageBg = parse(getComputedStyle(document.body).backgroundColor) || { r: 0, g: 0, b: 0, a: 1 };
+    return specs.map(spec => {
+      const host = document.createElement('div');
+      host.style.cssText = 'position:fixed;left:-9999px;top:0';
+      (spec.markup || []).forEach(cls => host.classList.add(cls));
+      // Id-keyed rules only apply to the id, so borrow it from the real surface while measuring.
+      const real = spec.id ? document.getElementById(spec.id) : null;
+      if (real) real.removeAttribute('id');
+      if (spec.id) host.id = spec.id;
+      let target = host;
+      if (spec.child) {
+        target = document.createElement(spec.child);
+        if (spec.childClass) target.className = spec.childClass;
+        host.appendChild(target);
+      }
+      document.body.appendChild(host);
+      const style = getComputedStyle(target);
+      const reading = {
+        name: spec.name,
+        bg: parse(style.backgroundColor),
+        border: parse(style.borderTopColor) || parse(style.borderLeftColor),
+        text: parse(style.color),
+        pageBg
+      };
+      host.remove();
+      if (real && spec.id) real.id = spec.id;
+      return reading;
+    });
+  }, probes);
+
+  const setTheme = async theme => {
+    await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { colorTheme: theme } });
+    await page.waitForTimeout(450);
+  };
+
+  await setTheme('midnight');
+  const midnightProbes = await readProbes(THEME_PROBES);
+  await setTheme('alien');
+  const alienProbes = await readProbes(THEME_PROBES);
+
+  const distance = (one, two) => (one && two)
+    ? Math.abs(one.r - two.r) + Math.abs(one.g - two.g) + Math.abs(one.b - two.b)
+    : -1;
+
+  THEME_PROBES.forEach((probe, index) => {
+    const before = midnightProbes[index];
+    const after = alienProbes[index];
+    const moved = Math.max(distance(before?.bg, after?.bg), distance(before?.border, after?.border));
+    check(`theme: the ${probe.name} repaints between opposite palettes`, moved >= 24,
+      `channel distance ${moved} — midnight ${JSON.stringify(before?.bg)}/${JSON.stringify(before?.border)}`
+      + ` vs alien ${JSON.stringify(after?.bg)}/${JSON.stringify(after?.border)}`);
+  });
+
+  // Contrast on the same readings. A surface that themes itself into unreadable text is not a
+  // themed surface. Composited over the page background, so a translucent panel is judged on
+  // what the reader actually sees rather than on a colour nothing ever paints.
+  const contrastRatio = reading => {
+    if (!reading?.text || !reading?.bg) return 0;
+    const channel = value => {
+      const ratio = value / 255;
+      return ratio <= 0.03928 ? ratio / 12.92 : Math.pow((ratio + 0.055) / 1.055, 2.4);
+    };
+    const luminance = colour => 0.2126 * channel(colour.r) + 0.7152 * channel(colour.g) + 0.0722 * channel(colour.b);
+    const over = (top, bottom) => ({
+      r: top.r * top.a + bottom.r * (1 - top.a),
+      g: top.g * top.a + bottom.g * (1 - top.a),
+      b: top.b * top.a + bottom.b * (1 - top.a),
+      a: 1
+    });
+    const opaquePage = over(reading.pageBg, { r: 0, g: 0, b: 0, a: 1 });
+    const backdrop = over(reading.bg, opaquePage);
+    const foreground = over(reading.text, backdrop);
+    const lighter = Math.max(luminance(foreground), luminance(backdrop));
+    const darker = Math.min(luminance(foreground), luminance(backdrop));
+    return Number(((lighter + 0.05) / (darker + 0.05)).toFixed(2));
+  };
+
+  alienProbes.forEach(reading => {
+    check(`theme: ${reading.name} text clears 4.5:1 on the Alien palette`,
+      contrastRatio(reading) >= 4.5, `${contrastRatio(reading)}:1`);
+  });
+  midnightProbes.forEach(reading => {
+    check(`theme: ${reading.name} text clears 4.5:1 on the Midnight palette`,
+      contrastRatio(reading) >= 4.5, `${contrastRatio(reading)}:1`);
+  });
+
+  await setTheme('midnight');
+
   // ---------------- Accessibility overrides ----------------
   // Asserted as computed style on a real element: a rule that exists in the stylesheet but
   // loses to the theme is exactly the failure these settings are supposed to prevent.

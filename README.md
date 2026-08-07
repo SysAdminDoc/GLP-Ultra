@@ -1,6 +1,6 @@
 # GLP Ultra
 
-[![version](https://img.shields.io/badge/version-3.1.0-4a90d9)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-3.2.0-4a90d9)](CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Firefox%20%7C%20userscript-1f6feb)](#install)
 [![manifest](https://img.shields.io/badge/manifest-v3-8957e5)](extension/manifest.json)
@@ -11,7 +11,7 @@ v3.0.0 merged the two previously separate projects (the *GLP Enhanced Declutter*
 
 ## What it does
 
-**133 settings across 22 sections**, all searchable from the in-page panel or the extension options page.
+**140 settings across 23 sections**, all searchable from the in-page panel or the extension options page.
 
 | Area | Highlights |
 | --- | --- |
@@ -25,6 +25,11 @@ v3.0.0 merged the two previously separate projects (the *GLP Enhanced Declutter*
 | Export | thread to Markdown / HTML / JSON with a media manifest, copy thread link, full data backup and restore |
 | Recovery | one shelf listing hidden threads, muted and blocked users, and active filters, each restorable on its own |
 | Diagnostics | route, active features, per-feature worst-run timings, fetch queue state, and selector health with drift warnings |
+| Quote graph | who answered a post, inferred from the site's own "Quoting:" links — backlink chips with hover excerpts and in-page jumps |
+| Noise budget | a running count of what is being kept off the page, with a breakdown and a route to restore any of it |
+| Media | Save / Open / Copy link on post images, click-to-load third-party embeds, lightbox and gallery |
+| Accessibility | reduce motion, high contrast, larger click targets — emitted last so they beat the theme |
+| Portability | full backup and restore, shareable theme and filter packs, optional settings sync across devices |
 
 Every feature exposes `init`/`destroy` and unwinds itself completely when switched off. Errors in one feature can no longer take the rest of the page down with them.
 
@@ -53,13 +58,13 @@ and hit **Reload** on the extension card.
 
 ```bash
 npm run verify      # gates + build + structure checks
-npm run package     # dist/glp-ultra-v3.1.0.zip
+npm run package     # dist/glp-ultra-v3.2.0.zip
 ```
 
 ### Firefox
 
 ```bash
-npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.1.0.zip
+npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.2.0.zip
 ```
 
 Everything but the manifest is identical to the Chrome build. The Gecko variant swaps the

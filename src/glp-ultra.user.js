@@ -25,6 +25,7 @@
     const DEFAULT_SETTINGS = {
         // Core
         enabled: true,
+        safeMode: false,
 
         // Ad Removal
         removeAds: true,
@@ -230,6 +231,7 @@
 
     const SETTING_DESCRIPTIONS = {
         enabled: 'Turns every GLP Ultra page modification on or off without clearing saved settings.',
+        safeMode: 'Ignores your custom CSS for this browser. The way back when a rule you pasted has hidden the controls you would need to remove it.',
         removeAds: 'Targets MGID and common ad containers.',
         removeWidgets: 'Removes empty widget placeholders after ads are hidden.',
         removeMsgAds: 'Hides ad rows injected into thread pages.',
@@ -865,6 +867,16 @@ body.glp-enhanced-active { color-scheme: dark; }
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.glp-safe-mode-notice {
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    border: 1px solid var(--glpx-warning);
+    border-radius: var(--glpx-r-sm);
+    background: rgba(var(--glpx-warning-rgb), 0.12);
+    color: var(--glpx-text);
+    font-size: 12px;
 }
 
 .glp-settings-search-wrap {
@@ -3029,8 +3041,35 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
         }
 
         // Custom CSS injection
-        if (settings.customCSS && settings.customCSS.trim()) {
+        // Custom CSS is the one setting that can make the interface for changing settings
+        // unreachable, and it survives a reload, so "just refresh" is not a way out. Safe
+        // mode is reachable from surfaces page CSS cannot touch: the userscript manager's
+        // menu, and the extension popup.
+        if (settings.safeMode) {
+            css += `\n/* Safe mode: custom CSS is not applied. */\n`;
+        } else if (settings.customCSS && settings.customCSS.trim()) {
             css += `\n/* User Custom CSS - scoped */\n${scopeCustomCSS(settings.customCSS)}\n`;
+            // Emitted after the user's rules and at a specificity their scoped selectors can
+            // reach, so a blanket rule cannot take the recovery surfaces down with the page.
+            // Deliberately out-specifying this is still possible - safe mode answers that.
+            css += `
+body.glpx-enabled #glp-enhanced-overlay,
+body.glpx-enabled #glp-diagnostics,
+body.glpx-enabled #glp-recovery,
+body.glpx-enabled .glp-toast-stack,
+body.glpx-enabled #glp-enhanced-overlay *,
+body.glpx-enabled #glp-diagnostics *,
+body.glpx-enabled #glp-recovery *,
+body.glpx-enabled .glp-toast-stack * {
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+body.glpx-enabled #glp-enhanced-overlay { display: flex !important; }
+body.glpx-enabled #glp-diagnostics,
+body.glpx-enabled #glp-recovery { display: block !important; }
+body.glpx-enabled .glp-toast-stack { display: grid !important; }
+`;
         }
 
         return css;
@@ -3064,6 +3103,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
                     <div class="glp-settings-kicker">Premium control center</div>
                     <h2 id="glp-settings-title">GLP Ultra <span class="version">v${SCRIPT_VERSION}</span></h2>
                     <p class="glp-settings-subtitle">Tune the forum into a cleaner, quieter, faster reading surface. Changes are saved locally and can be exported at any time.</p>
+                    ${settings.safeMode ? '<p class="glp-safe-mode-notice" id="glp-safe-mode-notice">Safe mode is on - your custom CSS is not being applied. Switch it off under Core once the page looks right.</p>' : ''}
                 </div>
                 <div class="glp-settings-header-actions">
                     <button id="glp-enhanced-close-btn" aria-label="Close settings">&times;</button>
@@ -3088,7 +3128,8 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
                     <button type="button" class="glp-btn glp-btn-secondary" id="glp-settings-empty-reset">Clear filters</button>
                 </div>
                 ${createSettingsSection('Core', [
-                    { key: 'enabled', label: 'Enable GLP Ultra' }
+                    { key: 'enabled', label: 'Enable GLP Ultra' },
+                    { key: 'safeMode', label: 'Safe Mode (ignore custom CSS)' }
                 ])}
                 ${createSettingsSection('Ad Removal', [
                     { key: 'removeAds', label: 'Remove Advertisements (mgid)' },
@@ -7875,11 +7916,24 @@ ${manifest}
         }
     }
 
+    function toggleSafeMode() {
+        settings.safeMode = !settings.safeMode;
+        saveSettings();
+        applyStyles();
+        showNotification(settings.safeMode
+            ? 'Safe mode on - custom CSS is not being applied.'
+            : 'Safe mode off - custom CSS is applied again.', settings.safeMode ? 'warning' : 'success');
+        return settings.safeMode;
+    }
+
     function onDOMReady() {
         runtimeState.route = classifyRoute();
 
         if (typeof GM_registerMenuCommand !== 'undefined' && !runtimeState.menuRegistered) {
             GM_registerMenuCommand('GLP Ultra Settings', createSettingsPanel);
+            // Registered whatever state the page is in: this is what someone reaches for after
+            // pasting custom CSS that hid the settings button along with everything else.
+            GM_registerMenuCommand('GLP Ultra: toggle safe mode (ignore custom CSS)', toggleSafeMode);
             runtimeState.menuRegistered = true;
         }
 

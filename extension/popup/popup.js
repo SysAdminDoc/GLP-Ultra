@@ -116,6 +116,12 @@ async function init() {
     master.checked = settings.enabled !== false;
     master.addEventListener('change', () => patch({ enabled: master.checked }));
 
+    // Deliberately not part of the quick-toggle list: this is the way back when the page's own
+    // controls have been styled out of existence, so it must be present whatever else is.
+    const safeMode = document.getElementById('safe-mode');
+    safeMode.checked = settings.safeMode === true;
+    safeMode.addEventListener('change', () => patch({ safeMode: safeMode.checked }));
+
     const theme = document.getElementById('theme-select');
     theme.value = settings.colorTheme || 'midnight';
     theme.addEventListener('change', () => patch({ colorTheme: theme.value }));

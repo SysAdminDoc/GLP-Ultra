@@ -629,6 +629,61 @@ try {
     painted('warning', 0) && semantic.warning.border[1] > semantic.warning.border[2],
     JSON.stringify(semantic.warning));
 
+  // ---------------- Custom CSS lockout and safe mode ----------------
+  // Custom CSS is the only setting that can hide the interface for changing settings, and it is
+  // saved, so a reload does not undo it. Paste the classic footgun and prove there is a way back.
+  await sendMessage(worker, page, {
+    type: 'glp:patch-settings',
+    // Carries a marker: plenty of declutter rules legitimately emit `display: none !important`,
+    // so the safe-mode assertion below needs a string only this stylesheet can contribute.
+    patch: { customCSS: '* { display: none !important; } .glp-lockout-probe { outline: 3px solid magenta; }' }
+  });
+  await page.waitForTimeout(500);
+  await sendMessage(worker, page, { type: 'glp:open-settings' });
+  await page.waitForTimeout(400);
+  const lockedOut = await page.evaluate(() => {
+    const overlay = document.getElementById('glp-enhanced-overlay');
+    if (!overlay) return { open: false };
+    const style = getComputedStyle(overlay);
+    const box = overlay.getBoundingClientRect();
+    return { open: true, display: style.display, visibility: style.visibility, width: Math.round(box.width) };
+  });
+  check('custom css: a blanket display:none cannot hide the settings panel',
+    lockedOut.open && lockedOut.display !== 'none' && lockedOut.visibility !== 'hidden' && lockedOut.width > 200,
+    JSON.stringify(lockedOut));
+
+  // Safe mode is the answer to rules the armour cannot outrank, and it must survive the reload
+  // that a locked-out reader will inevitably try.
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { safeMode: true } });
+  await page.waitForTimeout(400);
+  const stylesheet = await page.evaluate(() =>
+    document.getElementById('glp-enhanced-styles')?.textContent ?? '');
+  check('safe mode: the custom CSS is no longer emitted at all',
+    !stylesheet.includes('glp-lockout-probe') && stylesheet.includes('Safe mode'),
+    `probe present: ${stylesheet.includes('glp-lockout-probe')}`);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1400);
+  const afterReload = await waitFor(
+    () => page.evaluate(() => ({
+      safe: document.getElementById('glp-enhanced-styles')?.textContent.includes('Safe mode') ?? false,
+      posts: document.querySelectorAll('.glp-post-number').length
+    })),
+    state => state.safe && state.posts > 0);
+  check('safe mode: it survives the reload a locked-out reader would try',
+    afterReload.safe, JSON.stringify(afterReload));
+  check('safe mode: the page still runs its features while it is on',
+    afterReload.posts > 0, JSON.stringify(afterReload));
+
+  await sendMessage(worker, page, { type: 'glp:open-settings' });
+  await page.waitForTimeout(400);
+  check('safe mode: the panel says why the custom CSS is not applied',
+    await page.locator('#glp-safe-mode-notice').count() === 1);
+  await page.locator('#glp-enhanced-close-btn').click();
+  await page.waitForTimeout(200);
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { safeMode: false, customCSS: '' } });
+  await page.waitForTimeout(400);
+
   // ---------------- Settings panel ----------------
   // The panel is the primary interface and had exactly two assertions against it: that it opens
   // and that one section exists. Everything the navigation rewrite added went unverified.

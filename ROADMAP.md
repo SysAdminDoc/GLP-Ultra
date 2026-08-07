@@ -365,9 +365,8 @@ Legend: `Y` = present or strongly represented, `P` = partial/weak/adjacent, `-` 
 
 ### Gap Analysis
 
-High-value gaps still open:
-
-1. Optional `chrome.storage.sync` for settings, with the userscript export as the fallback.
+High-value gaps: none open. Items blocked on input from outside the codebase live in
+`Roadmap_Blocked.md`.
 
 Weak implementations to replace:
 

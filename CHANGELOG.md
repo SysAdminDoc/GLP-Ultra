@@ -4,6 +4,7 @@
 
 ### Added
 
+- **Optional settings sync** (extension only, off by default). Turning it on keeps the settings — not mutes, blocks, tags, or history — on the browser account so another signed-in device picks them up. Most recent change wins, arbitrated by a stamp so a device that merely opened a tab cannot overwrite one that changed a setting. Only the settings payload is synced because `chrome.storage.sync` caps an item at 8KB and the user lists are unbounded; an oversized payload stays local and says so.
 - **Shareable packs.** A pack is one slice of a profile rather than a whole backup: a theme pack carries the look, a filter pack carries mutes, blocks, and keyword rules. Importing a filter pack *adds* — lists are unioned and keyword rules merged — so a pack someone else wrote can never delete your mutes. Under Presets.
 - **Noise budget.** A toolbar chip counts what GLP Ultra is keeping off the page — ads removed, posts from muted and blocked users, keyword hits, image-only replies, hidden and pinned threads, collapsed quotes — and opens a breakdown with a route straight to the recovery shelf. Every figure but the ad count is read off the live DOM, so it cannot drift from what is actually hidden.
 - **Save / Open / Copy link buttons on post images.** Saving fetches the blob so the file keeps its real name; a hotlinked third-party image cannot be fetched from a content script, so it falls back to opening the image and says why.

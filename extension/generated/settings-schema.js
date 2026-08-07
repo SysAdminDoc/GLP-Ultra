@@ -140,6 +140,7 @@ window.GLP_SCHEMA = {
     "hideFooter": true,
     "hideAllClfix": true,
     "updateNotices": true,
+    "syncSettings": false,
     "noiseBudget": true
   },
   "settingDescriptions": {
@@ -193,6 +194,7 @@ window.GLP_SCHEMA = {
     "hideThreadButtons": "Adds per-row hide controls and a recovery shelf.",
     "customCSS": "Injected after the theme; keep it scoped and reversible.",
     "hideAllClfix": "Removes spacer elements that create dead space.",
+    "syncSettings": "Extension only: keeps the settings (not your mutes, blocks, or history) on your browser account so another signed-in device picks them up. Off by default. The most recent change wins; a payload too large for the sync quota stays local and says so in the console.",
     "noiseBudget": "Shows how much this page is having kept off it - ads removed, muted and blocked posts, keyword hits, collapsed quotes - with a breakdown and a route to restore any of it.",
     "mediaActions": "Adds Save / Open / Copy link buttons under every content image in a post. A hotlinked third-party image cannot be fetched from the page, so saving it opens it instead and says so.",
     "updateNotices": "After an update, names the settings this version added so nothing new stays hidden.",
@@ -981,6 +983,10 @@ window.GLP_SCHEMA = {
         {
           "key": "noiseBudget",
           "label": "Noise Budget (What Is Being Hidden)"
+        },
+        {
+          "key": "syncSettings",
+          "label": "Sync Settings Across Devices (Extension Only)"
         }
       ],
       "specialId": null

@@ -344,6 +344,58 @@ try {
   check('thread: Markdown export quotes nested material', markdown.includes('\n> '));
   check('thread: Markdown export lists the media manifest', markdown.includes('## Media manifest'));
 
+  // ---------------- Settings sync (opt-in) ----------------
+  const syncAfterOff = await worker.evaluate(() => chrome.storage.sync.get(null));
+  check('sync: nothing is written to chrome.storage.sync while the setting is off',
+    Object.keys(syncAfterOff).length === 0, JSON.stringify(Object.keys(syncAfterOff)));
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { syncSettings: true } });
+  await page.waitForTimeout(500);
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { fontSize: 17 } });
+  await page.waitForTimeout(500);
+  const synced = await worker.evaluate(() => chrome.storage.sync.get(null));
+  check('sync: enabling it pushes the settings payload', typeof synced.glpEnhancedSettings === 'string',
+    JSON.stringify(Object.keys(synced)));
+  check('sync: the pushed payload carries the change', /"fontSize":17/.test(synced.glpEnhancedSettings || ''));
+  check('sync: a stamp is written so the newest change can win',
+    Number(synced.glpSettingsSyncedAt) > 0, String(synced.glpSettingsSyncedAt));
+  check('sync: only the settings ride along, not the user lists',
+    !('glpMutedUsers' in synced) && !('glpUserStats' in synced), JSON.stringify(Object.keys(synced)));
+
+  // A remote device changing a setting: newer stamp wins and reaches the running tab.
+  await worker.evaluate(async () => {
+    const current = await chrome.storage.sync.get('glpEnhancedSettings');
+    const parsed = JSON.parse(current.glpEnhancedSettings);
+    parsed.fontSize = 19;
+    await chrome.storage.sync.set({
+      glpEnhancedSettings: JSON.stringify(parsed),
+      glpSettingsSyncedAt: Date.now() + 5000
+    });
+  });
+  await page.waitForTimeout(800);
+  const afterRemote = await sendMessage(worker, page, { type: 'glp:get-state' });
+  check('sync: a newer remote change is adopted by the open tab',
+    afterRemote?.settings?.fontSize === 19, String(afterRemote?.settings?.fontSize));
+
+  // A stale remote write must lose rather than resurrect an old value.
+  await worker.evaluate(async () => {
+    const current = await chrome.storage.sync.get('glpEnhancedSettings');
+    const parsed = JSON.parse(current.glpEnhancedSettings);
+    parsed.fontSize = 11;
+    await chrome.storage.sync.set({
+      glpEnhancedSettings: JSON.stringify(parsed),
+      glpSettingsSyncedAt: 1
+    });
+  });
+  await page.waitForTimeout(800);
+  const afterStale = await sendMessage(worker, page, { type: 'glp:get-state' });
+  check('sync: an older remote write is ignored', afterStale?.settings?.fontSize === 19,
+    String(afterStale?.settings?.fontSize));
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { syncSettings: false, fontSize: 14 } });
+  await worker.evaluate(() => chrome.storage.sync.clear());
+  await page.waitForTimeout(400);
+
   // ---------------- Shareable packs ----------------
   // The property that matters is that a pack someone else wrote cannot delete what you have.
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { keywordHide: 'mine', colorTheme: 'midnight' } });

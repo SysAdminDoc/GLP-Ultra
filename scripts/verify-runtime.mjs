@@ -139,6 +139,18 @@ try {
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { mediaPrivacyMode: true } });
   await page.waitForTimeout(400);
 
+  // Persistence: the storage shim must hand back exactly what the engine stored, or every
+  // store silently resets to defaults on the next page load.
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { colorTheme: 'dracula', hideKarmaBar: false } });
+  await page.waitForTimeout(300);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1200);
+  const restored = await sendMessage(worker, page, { type: 'glp:get-state' });
+  check('thread: settings survive a reload', restored?.settings?.colorTheme === 'dracula', restored?.settings?.colorTheme);
+  check('thread: a non-default toggle survives a reload', restored?.settings?.hideKarmaBar === false, String(restored?.settings?.hideKarmaBar));
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { colorTheme: 'midnight', hideKarmaBar: true } });
+  await page.waitForTimeout(300);
+
   // User intelligence: the trust overlay is off by default and must appear on demand.
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { userReputationOverlay: true } });
   await page.waitForTimeout(400);
@@ -187,6 +199,33 @@ try {
   check('thread: Markdown export has a heading and posts', markdown.startsWith('# ') && markdown.includes('## #1 '));
   check('thread: Markdown export quotes nested material', markdown.includes('\n> '));
   check('thread: Markdown export lists the media manifest', markdown.includes('## Media manifest'));
+
+  // ---------------- Persistence: the stores that are not settings ----------------
+  // Mutes, blocks, tags and hidden threads each live in their own GM_* key and all went
+  // through the same double-parse, so cover one of them end to end. Runs last: a mute hides posts.
+  const muteTarget = await page.evaluate(() => {
+    const headers = [...document.querySelectorAll('.msg tr[id^="post_"] .author_header')];
+    for (let index = 0; index < headers.length; index++) {
+      const link = headers[index].querySelector('b a') || headers[index].querySelector('a');
+      const name = link ? link.textContent.trim() : '';
+      if (name && name !== 'Anonymous Coward') return { index, name };
+    }
+    return null;
+  });
+  check('thread: found a named author to mute', !!muteTarget, JSON.stringify(muteTarget));
+
+  if (muteTarget) {
+    await page.locator('.msg tr[id^="post_"] .author_header .glp-mute-btn').nth(muteTarget.index).click();
+    await page.waitForTimeout(300);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1200);
+
+    const afterReload = await sendMessage(worker, page, { type: 'glp:get-state' });
+    const mutedUsers = afterReload?.lists?.mutedUsers || [];
+    check('thread: the mute list survives a reload', mutedUsers.includes(muteTarget.name), JSON.stringify(mutedUsers));
+    check('thread: the muted author stays hidden after the reload',
+      await page.locator('.glp-muted-post').count() > 0);
+  }
 } finally {
   if (context) await context.close();
   await rm(userDataDir, { recursive: true, force: true }).catch(() => {});

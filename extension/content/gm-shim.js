@@ -17,7 +17,9 @@
         'glpMutedUsers',
         'glpBlockedUsers',
         'glpHiddenThreads',
-        'glpUserTags'
+        'glpUserTags',
+        'glpWatchedThreads',
+        'glpUserStats'
     ];
 
     let suppressMirror = false;
@@ -34,14 +36,15 @@
         window.localStorage.setItem(storageKey(key), serialized);
     }
 
+    /**
+     * Returns exactly what was stored, the way Tampermonkey does. The engine serializes
+     * before every write and parses after every read; parsing here as well made every
+     * `JSON.parse(GM_getValue(...))` in the engine throw on an already-parsed object, so
+     * settings, mutes, blocks, tags, and hidden threads all silently reset on reload.
+     */
     window.GM_getValue = function GM_getValue(key, defaultValue) {
         const raw = readLocal(key);
-        if (raw === null) return defaultValue;
-        try {
-            return JSON.parse(raw);
-        } catch (e) {
-            return raw;
-        }
+        return raw === null ? defaultValue : raw;
     };
 
     window.GM_setValue = function GM_setValue(key, value) {

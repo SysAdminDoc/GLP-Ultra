@@ -11,6 +11,8 @@
 
 ### Fixed
 
+- **Auto-refresh kept counting down in a background tab.** The fetch queue already deferred the request, but the countdown completed anyway and refreshes stacked up against the moment the tab came back. It now holds while `document.hidden`.
+- **Turning auto-refresh on did nothing until the next page load.** Its registry entry had no apply handler, because `initAutoRefresh` was not idempotent and would have stacked a second interval. It now tears its own timer and bar down first, so enabling it — or changing its interval — takes effect immediately.
 - **An extension tab could come up with the theme applied and not one feature running.** The shim's `chrome.storage` read lands at `document_start`; when the mirrored copy differed from localStorage it pushed the difference straight into the engine, which started the feature run against a body that had no posts in it yet and marked the run done. The real page was then never touched — CSS injected, body flagged active, no post numbers, no toolbar, no error. Feature startup now waits for the document when a settings push beats it.
 - **Unmuting your last muted user left their posts hidden until a reload.** `applyMuteList()` returned early when the list was empty, skipping the pass that takes the class back off. Switching the mute feature off entirely had the same effect — its `destroy` removed the buttons but never unhid the posts. Found by the noise budget disagreeing with itself.
 - Images still loading were silently treated as chrome and skipped by the lightbox, the gallery, and the new media actions: `naturalWidth` is 0 until an image loads, and the shared predicate measured it during a document-idle pass. It now falls back to the declared `width`/`height`, and re-checks on load.

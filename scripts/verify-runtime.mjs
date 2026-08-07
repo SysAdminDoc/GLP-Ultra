@@ -683,6 +683,39 @@ try {
     check('thread: the muted author stays hidden after the reload',
       await page.locator('.glp-muted-post').count() > 0);
   }
+  // ---------------- Hidden-tab timers ----------------
+  // A real second tab is the only honest way to hide the first: document.hidden defined from
+  // page.evaluate lives in the main world and the content script would never see it.
+  await page.goto(CAPTURES.feed.url, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1200);
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { autoRefresh: true, autoRefreshInterval: 600 } });
+  await page.waitForTimeout(1500);
+
+  const barWidth = () => page.locator('#glp-auto-refresh-bar .bar')
+    .evaluate(node => parseFloat(node.style.width) || 0).catch(() => -1);
+  check('timers: the auto-refresh countdown is running while visible', await barWidth() >= 0);
+
+  const visibleStart = await barWidth();
+  await page.waitForTimeout(2500);
+  const visibleEnd = await barWidth();
+  check('timers: the countdown advances in a visible tab', visibleEnd > visibleStart,
+    `${visibleStart} -> ${visibleEnd}`);
+
+  // The hidden-tab half of this cannot be asserted here: headless Chromium reports background
+  // tabs as visible, so bringing another tab to the front does not set `document.hidden`, and the
+  // content script's isolated world cannot be patched from `page.evaluate`. Noted in
+  // Roadmap_Blocked.md rather than asserted - a check that cannot fail is worse than none, and
+  // this one did exactly that before auto-refresh was made re-appliable: with no bar on the page
+  // both readings were -1 and "frozen" passed.
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { autoRefresh: false } });
+  await page.waitForTimeout(400);
+  check('timers: switching auto-refresh off removes its countdown bar',
+    await page.locator('#glp-auto-refresh-bar').count() === 0);
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { autoRefresh: true } });
+  await page.waitForTimeout(600);
+  check('timers: switching it back on restores exactly one countdown bar',
+    await page.locator('#glp-auto-refresh-bar').count() === 1);
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { autoRefresh: false } });
 } finally {
   if (context) await context.close();
   await rm(userDataDir, { recursive: true, force: true }).catch(() => {});

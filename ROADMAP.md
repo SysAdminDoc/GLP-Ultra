@@ -368,29 +368,16 @@ Legend: `Y` = present or strongly represented, `P` = partial/weak/adjacent, `-` 
 High-value gaps: none open. Items blocked on input from outside the codebase live in
 `Roadmap_Blocked.md`.
 
-Weak implementations to replace:
+Still to replace:
 
-- Direct `innerHTML` without a TrustedTypes-compatible helper.
-- Confirmation dialogs for reset/unhide operations.
-- Keyboard shortcut controls.
-- jQuery dependency in older suite.
-- Broad class or text selectors.
-- Full-document mutation rescans.
-- Timers that keep running in hidden tabs.
-- Theme CSS that assumes Dark Reader-generated variables.
-- Ad hiding that uses broad `[class*=ad]` and accidentally matches normal site classes.
-- Feature toggles that do not cleanup injected DOM/listeners.
-
-Net-new ideas for GLP Ultra:
-
-- Thread Radar: compact dashboard of watched threads, unread counts, hot movement, stale threads, and muted topics.
-- Trust Lens: local-only user tags, notes, profile history, and post frequency signals.
-- Noise Budget: per-page count of hidden ads, muted users, keyword-filtered posts, and collapsed quotes.
-- Selector Doctor: visible health panel that reports which stable/fallback selectors are active.
-- Capture Harness: future build tool that parses saved MHTML fixtures and verifies selectors without live-site access.
-- Clean Export: export a thread as clean Markdown/HTML/JSON with quote depth, media manifest, source URL, and timestamp.
-- Theme Lab: dark-only presets plus custom accent, density, contrast, font size, and CSS variable export.
-- Recovery Shelf: one place to restore hidden threads/posts/users during the current session.
+- Six features never re-apply at runtime: their registry entries carry `apply: () => {}` because
+  their `init` is not idempotent and would stack a second element, listener, or timer on every
+  apply. Turning any of them on in the panel does nothing until the next page load, which
+  contradicts "all settings apply immediately". `feed.autoRefresh` has been fixed as the pattern
+  to follow — make `init` tear its own surface down first, then point `apply` at it. Remaining:
+  `ui.backToTop`, `feed.infiniteScroll`, `thread.infiniteScroll`, `thread.scrollProgress`,
+  `feed.threadPreview`, `thread.quickSearch`. The three with scroll listeners need those tracked
+  and removed, not just their elements.
 
 ## Phase 3: Technical Reconnaissance
 

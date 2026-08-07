@@ -3545,7 +3545,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             { id: 'feed.pinnedVisibility', routes: ['feed'], init: applyPinnedVisibility, apply: applyPinnedVisibility, destroy: clearPinnedVisibility },
             { id: 'feed.hideThreads', routes: ['feed'], settingKey: 'hideThreadButtons', init: initHideThreadButtons, apply: applyHiddenThreads, destroy: () => document.querySelectorAll('.glp-hide-col, #glp-hidden-threads-bar').forEach(node => node.remove()) },
             { id: 'feed.keywordFilters', routes: ['feed'], init: applyKeywordFilters, apply: applyKeywordFilters, destroy: clearKeywordFilters },
-            { id: 'feed.autoRefresh', routes: ['feed'], settingKey: 'autoRefresh', init: initAutoRefresh, apply: () => {}, destroy: () => { if (refreshTimer) clearInterval(refreshTimer); document.getElementById('glp-auto-refresh-bar')?.remove(); } },
+            { id: 'feed.autoRefresh', routes: ['feed'], settingKey: 'autoRefresh', init: initAutoRefresh, apply: initAutoRefresh, destroy: () => { if (refreshTimer) clearInterval(refreshTimer); document.getElementById('glp-auto-refresh-bar')?.remove(); } },
             { id: 'users.tags', routes: ['thread', 'feed'], settingKey: 'userTags', init: initUserTags, apply: initUserTags, destroy: () => document.querySelectorAll('.glp-user-tag, .glp-tag-btn, #glp-tag-picker').forEach(node => node.remove()) },
             { id: 'thread.scrollProgress', routes: ['thread'], settingKey: 'scrollProgress', init: initScrollProgress, apply: () => {}, destroy: () => document.getElementById('glp-scroll-progress')?.remove() },
             { id: 'feed.threadPreview', routes: ['feed'], settingKey: 'threadPreview', init: initThreadPreview, apply: () => {}, destroy: removePreview },
@@ -5208,6 +5208,15 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
     let refreshBar = null;
 
     function initAutoRefresh() {
+        // Idempotent, so this can serve as the `apply` handler too: turning auto-refresh on (or
+        // changing its interval) has to take effect now, not at the next page load.
+        if (refreshTimer) {
+            clearInterval(refreshTimer);
+            refreshTimer = null;
+        }
+        document.getElementById('glp-auto-refresh-bar')?.remove();
+        refreshBar = null;
+
         if (!settings.autoRefresh) return;
         if (!document.querySelector('.threads')) return;
 
@@ -5224,6 +5233,10 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
         const tick = 1000;
 
         refreshTimer = setInterval(() => {
+            // A background tab must not keep counting down to a fetch nobody is looking at.
+            // The queue already defers the request itself; without this the countdown still
+            // completes and refreshes stack up against the moment the tab comes back.
+            if (document.hidden) return;
             elapsed += tick;
             const pct = (elapsed / interval) * 100;
             refreshBar.querySelector('.bar').style.width = `${Math.min(pct, 100)}%`;

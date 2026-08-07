@@ -31,6 +31,13 @@ Unblocks with: save-as-MHTML of those pages while logged in, dropped into `captu
 
 ## Cannot be machine-verified here
 
+- **Hidden-tab timer behaviour.** Auto-refresh and the thread watcher both pause while
+  `document.hidden`, but the harness cannot observe it: headless Chromium reports background tabs
+  as visible, so activating another tab does not set `document.hidden`, and the content script's
+  isolated world cannot be patched from `page.evaluate`. An assertion written anyway passed for
+  the wrong reason (both readings were -1 because no countdown bar existed at all), which is
+  worse than not asserting. Unblocks with a headed run or an isolated-world CDP evaluate.
+
 - **Firefox runtime verification.** The runtime harness drives Playwright's Chromium. Firefox
   will not load a temporary MV3 add-on from the command line without additional tooling
   (`web-ext` or a Remote Debugging session), so the Gecko variant is gated structurally by

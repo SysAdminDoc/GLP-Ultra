@@ -4,6 +4,14 @@
 
 ### Added
 
+- **Save / Open / Copy link buttons on post images.** Saving fetches the blob so the file keeps its real name; a hotlinked third-party image cannot be fetched from a content script, so it falls back to opening the image and says why.
+
+### Fixed
+
+- Images still loading were silently treated as chrome and skipped by the lightbox, the gallery, and the new media actions: `naturalWidth` is 0 until an image loads, and the shared predicate measured it during a document-idle pass. It now falls back to the declared `width`/`height`, and re-checks on load.
+
+### Added (continued)
+
 - **Accessibility controls.** A new panel section: *Reduce Motion* stops every animation and transition the script adds (the OS `prefers-reduced-motion` setting is still always honoured, this forces it on regardless), *High Contrast* lifts injected text and borders and stops muted text fading below a readable level, and *Larger Click Targets* grows the script's own buttons and chips to a 32px minimum without reflowing the site's tables. They are emitted last in the stylesheet on purpose — a theme that beats the motion or contrast setting is a bug.
 - **Quote backlinks.** GLP marks each post with its own `reply<id>` permalink and each quote block with a "Quoting:" footer naming the quoted author and linking the quoted post — enough to reconstruct who answered whom. A post now lists the replies that quoted it, each chip naming the answering post and author, hovering one shows an excerpt of that reply, and clicking scrolls to it and flashes it. Quotes that name a post on the same page gain an in-page jump beside the site's own link, which always left the page.
 

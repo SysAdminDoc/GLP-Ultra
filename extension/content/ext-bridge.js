@@ -39,6 +39,12 @@
                     : { ok: false });
                 return false;
 
+            case 'glp:context-action':
+                sendResponse(api
+                    ? { ok: true, result: api.runContextAction(message.action, message.payload || {}) }
+                    : { ok: false });
+                return false;
+
             case 'glp:patch-settings':
                 if (api) {
                     api.applyExternalSettings(message.patch || {});

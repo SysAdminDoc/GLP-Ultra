@@ -413,6 +413,8 @@
         settingsApplyTimer: null,
         featureErrors: [],
         featureTimings: {},
+        contextBound: false,
+        lastContext: null,
         newSettingKeys: [],
         previousVersion: '',
         fetchQueue: [],
@@ -6504,6 +6506,7 @@ ${manifest}
         document.body.classList.add('glp-enhanced-active', 'glpx-enabled');
 
         createToggleButton();
+        bindContextTracking();
         runFeatureRegistry('init');
 
         if (runtimeState.observer) runtimeState.observer.disconnect();
@@ -6530,6 +6533,119 @@ ${manifest}
 
         runtimeState.observer.observe(document.body, { childList: true, subtree: true });
         announceVersionChange();
+    }
+
+    // ============================================
+    // CONTEXT MENU ACTIONS (extension shell)
+    // ============================================
+
+    /**
+     * A context-menu click reaches the service worker, not the page, and MV3 never says which
+     * element was under the cursor. So the page remembers it: every right-click records the
+     * post, thread, author, and media it landed on, and the action reads that.
+     */
+    function bindContextTracking() {
+        if (runtimeState.contextBound) return;
+        runtimeState.contextBound = true;
+        document.addEventListener('contextmenu', event => {
+            runtimeState.lastContext = describeContextTarget(event.target);
+        }, true);
+    }
+
+    function describeContextTarget(target) {
+        const node = target && target.nodeType === 1 ? target : (target && target.parentElement);
+        const context = { author: '', threadId: '', threadTitle: '', mediaSrc: '' };
+        if (!node) return context;
+
+        const image = node.closest('img') || (node.matches?.('img') ? node : null);
+        if (image && image.src) context.mediaSrc = image.src;
+        const link = node.closest('a[href]');
+        if (!context.mediaSrc && link && /\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(link.href)) {
+            context.mediaSrc = link.href;
+        }
+
+        const post = node.closest('tr[id^="post_"]');
+        if (post) {
+            const header = post.querySelector('.author_header');
+            const nameLink = header?.querySelector('b a') || header?.querySelector('a');
+            const name = nameLink ? nameLink.textContent.trim() : '';
+            if (name && name !== 'Anonymous Coward') context.author = name;
+        }
+
+        const feedRow = node.closest('.threads tbody tr:not(.threads_header_row)');
+        if (feedRow) {
+            const info = normalizeThreadRow(feedRow);
+            if (info.id) {
+                context.threadId = info.id;
+                context.threadTitle = info.title;
+            }
+            if (!context.author) {
+                const feedAuthor = info.authorCell?.querySelector('a')?.textContent.trim() || '';
+                if (feedAuthor && feedAuthor !== 'Anonymous Coward') context.author = feedAuthor;
+            }
+        } else if (runtimeState.route === 'thread') {
+            const meta = currentThreadMeta();
+            context.threadId = meta.id;
+            context.threadTitle = meta.title;
+        }
+
+        if (link && !context.threadId) {
+            const linked = link.href.match(/message(\d+)/);
+            if (linked) {
+                context.threadId = linked[1];
+                context.threadTitle = link.textContent.trim();
+            }
+        }
+
+        return context;
+    }
+
+    /**
+     * Runs one context-menu action against whatever the last right-click landed on. Returns a
+     * reason rather than failing silently, so the shell can say why nothing happened.
+     */
+    function runContextAction(action, payload = {}) {
+        const context = { ...(runtimeState.lastContext || {}) };
+        if (payload.linkUrl) {
+            const linked = String(payload.linkUrl).match(/message(\d+)/);
+            if (linked) context.threadId = linked[1];
+        }
+        if (payload.srcUrl) context.mediaSrc = payload.srcUrl;
+
+        switch (action) {
+            case 'hide-thread':
+                if (!context.threadId) return { ok: false, reason: 'no thread under the cursor' };
+                hideThread(context.threadId, context.threadTitle || 'Thread');
+                return { ok: true, threadId: context.threadId };
+
+            case 'mute-user':
+                if (!context.author) return { ok: false, reason: 'no named author under the cursor' };
+                muteUser(context.author);
+                return { ok: true, author: context.author };
+
+            case 'tag-user': {
+                if (!context.author) return { ok: false, reason: 'no named author under the cursor' };
+                const header = [...document.querySelectorAll('.author_header')].find(node => {
+                    const link = node.querySelector('b a') || node.querySelector('a');
+                    return link && link.textContent.trim() === context.author;
+                }) || null;
+                showTagPicker(context.author, header);
+                return { ok: true, author: context.author };
+            }
+
+            case 'preview-media':
+                if (!context.mediaSrc) return { ok: false, reason: 'no image under the cursor' };
+                showLightbox(context.mediaSrc);
+                return { ok: true, src: context.mediaSrc };
+
+            case 'export-thread':
+                if (runtimeState.route !== 'thread') return { ok: false, reason: 'not a thread page' };
+                exportThreadAsMarkdown();
+                return { ok: true };
+
+            default:
+                return { ok: false, reason: `unknown action "${action}"` };
+        }
     }
 
     // ============================================
@@ -6725,7 +6841,9 @@ ${manifest}
         },
         getLists: () => ({ mutedUsers: [...mutedUsers], blockedUsers: blockedUsers.map(u => ({ ...u })), hiddenThreads: [...hiddenThreads] }),
         getDiagnostics: buildDiagnostics,
-        openDiagnostics: renderDiagnosticsPanel
+        openDiagnostics: renderDiagnosticsPanel,
+        runContextAction,
+        describeContext: () => ({ ...(runtimeState.lastContext || {}) })
     };
 
     init();

@@ -288,6 +288,39 @@ try {
   check('thread: Markdown export quotes nested material', markdown.includes('\n> '));
   check('thread: Markdown export lists the media manifest', markdown.includes('## Media manifest'));
 
+  // ---------------- Context menu actions ----------------
+  // Playwright cannot open a native context menu, so drive the two halves separately: the
+  // worker must actually register the items, and the engine must act on a right-click it saw.
+  const menuIds = await worker.evaluate(() => self.GLP_MENU_IDS || []);
+  for (const id of ['glp-hide-thread', 'glp-mute-user', 'glp-tag-user', 'glp-preview-media', 'glp-export-thread']) {
+    check(`context: the worker registers ${id}`, menuIds.includes(id), JSON.stringify(menuIds));
+  }
+
+  await page.locator('.msg tr[id^="post_"] .author_header b a').first().click({ button: 'right' });
+  await page.waitForTimeout(200);
+  const seenContext = await sendMessage(worker, page, { type: 'glp:get-state' })
+    .then(() => worker.evaluate(async () => {
+      const tabs = await chrome.tabs.query({ url: '*://*.godlikeproductions.com/*' });
+      return chrome.tabs.sendMessage(tabs[tabs.length - 1].id, { type: 'glp:context-action', action: 'tag-user' });
+    }));
+  check('context: a right-click on a post identifies its author', seenContext?.result?.ok === true,
+    JSON.stringify(seenContext));
+  check('context: the tag action opens the picker for that author',
+    await page.locator('#glp-tag-picker').count() === 1);
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.locator('#glp-tag-picker').evaluate(node => node.remove()).catch(() => {});
+
+  const exported = await Promise.all([
+    page.waitForEvent('download', { timeout: 10000 }),
+    sendMessage(worker, page, { type: 'glp:context-action', action: 'export-thread' })
+  ]).then(([dl]) => dl);
+  check('context: the export action downloads the thread', /\.md$/.test(exported.suggestedFilename()),
+    exported.suggestedFilename());
+
+  const noThread = await sendMessage(worker, page, { type: 'glp:context-action', action: 'preview-media' });
+  check('context: an action with nothing under the cursor reports why', noThread?.result?.ok === false,
+    JSON.stringify(noThread));
+
   // ---------------- Persistence: the stores that are not settings ----------------
   // Mutes, blocks, tags and hidden threads each live in their own GM_* key and all went
   // through the same double-parse, so cover one of them end to end. Runs last: a mute hides posts.

@@ -683,6 +683,34 @@ try {
     check('thread: the muted author stays hidden after the reload',
       await page.locator('.glp-muted-post').count() > 0);
   }
+  // ---------------- Settings that used to need a reload ----------------
+  // Six features carried no apply handler, so switching them on did nothing until the next page
+  // load. Each must now appear on toggle and appear exactly once after repeated applies.
+  const TOGGLES = [
+    { key: 'backToTopButton', selector: '#glp-back-to-top', label: 'back-to-top button' },
+    { key: 'scrollProgress', selector: '#glp-scroll-progress', label: 'scroll progress bar' },
+    { key: 'threadQuickSearch', selector: '#glp-quick-search', label: 'quick search panel' }
+  ];
+  for (const toggle of TOGGLES) {
+    await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { [toggle.key]: false } });
+    await page.waitForTimeout(350);
+    check(`apply: the ${toggle.label} goes away when switched off`,
+      await page.locator(toggle.selector).count() === 0);
+
+    await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { [toggle.key]: true } });
+    await page.waitForTimeout(350);
+    check(`apply: the ${toggle.label} appears without a reload`,
+      await page.locator(toggle.selector).count() === 1);
+
+    // A second apply must not stack a duplicate.
+    await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { fontSize: 15 } });
+    await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { fontSize: 14 } });
+    await page.waitForTimeout(350);
+    check(`apply: repeated applies leave exactly one ${toggle.label}`,
+      await page.locator(toggle.selector).count() === 1,
+      String(await page.locator(toggle.selector).count()));
+  }
+
   // ---------------- Hidden-tab timers ----------------
   // A real second tab is the only honest way to hide the first: document.hidden defined from
   // page.evaluate lives in the main world and the content script would never see it.

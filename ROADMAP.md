@@ -368,16 +368,7 @@ Legend: `Y` = present or strongly represented, `P` = partial/weak/adjacent, `-` 
 High-value gaps: none open. Items blocked on input from outside the codebase live in
 `Roadmap_Blocked.md`.
 
-Still to replace:
-
-- Six features never re-apply at runtime: their registry entries carry `apply: () => {}` because
-  their `init` is not idempotent and would stack a second element, listener, or timer on every
-  apply. Turning any of them on in the panel does nothing until the next page load, which
-  contradicts "all settings apply immediately". `feed.autoRefresh` has been fixed as the pattern
-  to follow — make `init` tear its own surface down first, then point `apply` at it. Remaining:
-  `ui.backToTop`, `feed.infiniteScroll`, `thread.infiniteScroll`, `thread.scrollProgress`,
-  `feed.threadPreview`, `thread.quickSearch`. The three with scroll listeners need those tracked
-  and removed, not just their elements.
+Nothing open. Items blocked on input from outside the codebase live in `Roadmap_Blocked.md`.
 
 ## Phase 3: Technical Reconnaissance
 

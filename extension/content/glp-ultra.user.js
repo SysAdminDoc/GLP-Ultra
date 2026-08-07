@@ -432,6 +432,7 @@
         featureTimings: {},
         quoteGraphBound: false,
         mediaActionsBound: false,
+        threadPreviewBound: false,
         adsRemoved: 0,
         contextBound: false,
         lastContext: null,
@@ -3526,13 +3527,13 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             { id: 'dom.cleanup', routes: ['all'], init: applyDOMModifications, apply: applyDOMModifications, destroy: () => {} },
             { id: 'nav.threadForumLink', routes: ['thread'], init: injectForumLink, apply: injectForumLink, destroy: () => document.querySelectorAll('.glp-forum-link, .glp-nav-gear').forEach(node => node.remove()) },
             { id: 'nav.forumToolbar', routes: ['feed', 'generic'], init: injectForumToolbar, apply: injectForumToolbar, destroy: () => document.getElementById('glp-forum-toolbar')?.remove() },
-            { id: 'ui.backToTop', routes: ['all'], settingKey: 'backToTopButton', init: initBackToTop, apply: () => {}, destroy: () => document.getElementById('glp-back-to-top')?.remove() },
+            { id: 'ui.backToTop', routes: ['all'], settingKey: 'backToTopButton', init: initBackToTop, apply: initBackToTop, destroy: () => document.getElementById('glp-back-to-top')?.remove() },
             { id: 'media.lightbox', routes: ['thread'], settingKey: 'imageLightbox', init: initGalleryLightbox, apply: initGalleryLightbox, destroy: destroyGalleryLightbox },
             { id: 'ui.noiseBudget', routes: ['thread', 'feed'], settingKey: 'noiseBudget', init: renderNoiseBudget, apply: renderNoiseBudget, destroy: destroyNoiseBudget },
             { id: 'media.actions', routes: ['thread'], settingKey: 'mediaActions', init: initMediaActions, apply: initMediaActions, destroy: destroyMediaActions },
             { id: 'thread.collapsiblePosts', routes: ['thread'], settingKey: 'collapsiblePosts', init: initCollapsiblePosts, apply: initCollapsiblePosts, destroy: () => document.querySelectorAll('.glp-collapse-indicator').forEach(node => node.remove()) },
-            { id: 'feed.infiniteScroll', routes: ['feed'], settingKey: 'infiniteScroll', init: initInfiniteScroll, apply: () => {}, destroy: () => document.getElementById('glp-infinite-loader')?.remove() },
-            { id: 'thread.infiniteScroll', routes: ['thread'], settingKey: 'infiniteThreadScroll', init: initInfiniteThreadScroll, apply: () => {}, destroy: () => document.getElementById('glp-infinite-loader')?.remove() },
+            { id: 'feed.infiniteScroll', routes: ['feed'], settingKey: 'infiniteScroll', init: initInfiniteScroll, apply: initInfiniteScroll, destroy: () => document.getElementById('glp-infinite-loader')?.remove() },
+            { id: 'thread.infiniteScroll', routes: ['thread'], settingKey: 'infiniteThreadScroll', init: initInfiniteThreadScroll, apply: initInfiniteThreadScroll, destroy: () => document.getElementById('glp-infinite-loader')?.remove() },
             { id: 'thread.highlightOPPosts', routes: ['thread'], settingKey: 'highlightOPPosts', init: highlightOPPosts, apply: highlightOPPosts, destroy: () => document.querySelectorAll('.glp-op-post').forEach(node => node.classList.remove('glp-op-post')) },
             { id: 'thread.highlightOPBadges', routes: ['thread'], settingKey: 'highlightOP', init: highlightOPBadges, apply: highlightOPBadges, destroy: () => document.querySelectorAll('.glp-op-badge').forEach(node => node.classList.remove('glp-op-badge')) },
             { id: 'thread.postNumbers', routes: ['thread'], settingKey: 'inlinePostNumbers', init: addPostNumbers, apply: addPostNumbers, destroy: () => document.querySelectorAll('.glp-post-number').forEach(node => node.remove()) },
@@ -3547,8 +3548,8 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             { id: 'feed.keywordFilters', routes: ['feed'], init: applyKeywordFilters, apply: applyKeywordFilters, destroy: clearKeywordFilters },
             { id: 'feed.autoRefresh', routes: ['feed'], settingKey: 'autoRefresh', init: initAutoRefresh, apply: initAutoRefresh, destroy: () => { if (refreshTimer) clearInterval(refreshTimer); document.getElementById('glp-auto-refresh-bar')?.remove(); } },
             { id: 'users.tags', routes: ['thread', 'feed'], settingKey: 'userTags', init: initUserTags, apply: initUserTags, destroy: () => document.querySelectorAll('.glp-user-tag, .glp-tag-btn, #glp-tag-picker').forEach(node => node.remove()) },
-            { id: 'thread.scrollProgress', routes: ['thread'], settingKey: 'scrollProgress', init: initScrollProgress, apply: () => {}, destroy: () => document.getElementById('glp-scroll-progress')?.remove() },
-            { id: 'feed.threadPreview', routes: ['feed'], settingKey: 'threadPreview', init: initThreadPreview, apply: () => {}, destroy: removePreview },
+            { id: 'thread.scrollProgress', routes: ['thread'], settingKey: 'scrollProgress', init: initScrollProgress, apply: initScrollProgress, destroy: () => document.getElementById('glp-scroll-progress')?.remove() },
+            { id: 'feed.threadPreview', routes: ['feed'], settingKey: 'threadPreview', init: initThreadPreview, apply: initThreadPreview, destroy: removePreview },
             { id: 'thread.readerMode', routes: ['thread'], settingKey: 'readerMode', init: initReaderMode, apply: initReaderMode, destroy: destroyReaderMode },
             { id: 'thread.quoteDepthBadges', routes: ['thread'], settingKey: 'quoteDepthBadges', init: initQuoteDepthBadges, apply: initQuoteDepthBadges, destroy: () => document.querySelectorAll('.glp-quote-depth').forEach(n => n.remove()) },
             { id: 'thread.quoteGraph', routes: ['thread'], settingKey: 'quoteBacklinks', init: buildQuoteGraph, apply: buildQuoteGraph, destroy: destroyQuoteGraph },
@@ -3557,7 +3558,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             { id: 'media.youtube', routes: ['thread'], settingKey: 'youtubeEmbed', init: embedYouTubeLinks, apply: embedYouTubeLinks, destroy: () => document.querySelectorAll('.glp-yt-embed').forEach(node => node.remove()) },
             { id: 'thread.opNav', routes: ['thread'], settingKey: 'opPostNav', init: initOPPostNav, apply: initOPPostNav, destroy: () => document.querySelectorAll('.glp-op-nav').forEach(node => node.remove()) },
             { id: 'thread.collapseAll', routes: ['thread'], settingKey: 'collapseExpandAll', init: initCollapseExpandAll, apply: initCollapseExpandAll, destroy: () => document.querySelectorAll('[data-glp-thread-tool="collapse-all"], [data-glp-thread-tool="search"]').forEach(node => node.remove()) },
-            { id: 'thread.quickSearch', routes: ['thread'], settingKey: 'threadQuickSearch', init: initQuickSearch, apply: () => {}, destroy: () => document.getElementById('glp-quick-search')?.remove() },
+            { id: 'thread.quickSearch', routes: ['thread'], settingKey: 'threadQuickSearch', init: initQuickSearch, apply: initQuickSearch, destroy: () => document.getElementById('glp-quick-search')?.remove() },
             { id: 'thread.watcher', routes: ['thread', 'feed'], settingKey: 'watcherEnabled', init: initWatcher, apply: initWatcher, destroy: destroyWatcher },
             { id: 'users.reputation', routes: ['thread'], settingKey: 'userReputationOverlay', init: applyReputationOverlay, apply: applyReputationOverlay, destroy: destroyReputationOverlay },
             { id: 'thread.export', routes: ['thread'], init: initThreadExport, apply: initThreadExport, destroy: destroyThreadExport },
@@ -3656,6 +3657,9 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
     // ============================================
     function initBackToTop() {
         if (!settings.backToTopButton) return;
+        // Re-entry guard: this doubles as the `apply` handler, so a second call must not stack
+        // another button and another scroll listener on top of the first.
+        if (document.getElementById('glp-back-to-top')) return;
 
         const btn = document.createElement('button');
         btn.id = 'glp-back-to-top';
@@ -4082,6 +4086,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
     // ============================================
     function initInfiniteScroll() {
         if (!settings.infiniteScroll) return;
+        if (document.getElementById('glp-infinite-loader')) return;
 
         const tbody = document.querySelector('.threads tbody');
         if (!tbody) return;
@@ -4824,6 +4829,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
     // ============================================
     function initInfiniteThreadScroll() {
         if (!settings.infiniteThreadScroll) return;
+        if (document.getElementById('glp-infinite-loader')) return;
 
         const msgTable = document.querySelector('.msg tbody');
         if (!msgTable) return;
@@ -5720,6 +5726,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
     function initScrollProgress() {
         if (!settings.scrollProgress) return;
         if (!document.querySelector('.msg')) return; // thread pages only
+        if (document.getElementById('glp-scroll-progress')) return;
 
         const bar = document.createElement('div');
         bar.id = 'glp-scroll-progress';
@@ -5750,8 +5757,13 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
 
     function initThreadPreview() {
         if (!settings.threadPreview) return;
+        if (runtimeState.threadPreviewBound) return;
+        runtimeState.threadPreviewBound = true;
 
+        // These live on `document` for the life of the page, so they read the setting at call
+        // time: switching previews off has to stop them firing, not just remove the last card.
         document.addEventListener('mouseover', (e) => {
+            if (!settings.threadPreview) return;
             const link = e.target.closest('.threads .sfr > a');
             if (!link) return;
             const token = ++previewToken;
@@ -5802,6 +5814,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
         });
 
         document.addEventListener('mouseout', (e) => {
+            if (!settings.threadPreview) return;
             if (e.target.closest('.threads .sfr > a')) {
                 previewToken++;
                 clearTimeout(previewTimeout);
@@ -6011,6 +6024,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
     function initQuickSearch() {
         if (!settings.threadQuickSearch) return;
         if (!document.querySelector('.msg')) return;
+        if (document.getElementById('glp-quick-search')) return;
 
         const panel = document.createElement('div');
         panel.id = 'glp-quick-search';

@@ -113,6 +113,11 @@ window.GLP_SCHEMA = {
     "keywordHighlight": "",
     "keywordHide": "",
     "customCSS": "",
+    "exportThreadMarkdown": true,
+    "exportThreadHtml": true,
+    "exportThreadJson": true,
+    "exportMediaManifest": true,
+    "exportCopyThreadLink": true,
     "autoExpandImages": false,
     "hideFooter": true,
     "hideAllClfix": true
@@ -166,7 +171,12 @@ window.GLP_SCHEMA = {
     "autoRefresh": "Refreshes the thread list on a timer.",
     "hideThreadButtons": "Adds per-row hide controls and a recovery shelf.",
     "customCSS": "Injected after the theme; keep it scoped and reversible.",
-    "hideAllClfix": "Removes spacer elements that create dead space."
+    "hideAllClfix": "Removes spacer elements that create dead space.",
+    "exportThreadMarkdown": "Adds a Markdown export button to the thread toolbar. Quotes keep their nesting depth.",
+    "exportThreadHtml": "Adds a standalone dark HTML export of the thread with the original post markup preserved.",
+    "exportThreadJson": "Adds a structured JSON export: posts, authors, dates, quote depth, links, and media.",
+    "exportMediaManifest": "Appends the list of every image, embed, and outbound link found in the thread to each export.",
+    "exportCopyThreadLink": "Adds a button that copies the canonical thread URL without page or tracking suffixes."
   },
   "sectionDescriptions": {
     "Core": "Master controls for GLP Ultra itself.",
@@ -182,6 +192,7 @@ window.GLP_SCHEMA = {
     "Post Enhancements": "Add reader tools for posts, timestamps, OP replies, and links.",
     "UI Enhancements": "Enable high-value helpers for scrolling, media, previews, and feedback.",
     "Filtering & Custom": "Filter noisy topics, low-effort replies, and add carefully scoped custom CSS.",
+    "Export & Data": "Save a thread as a clean local file. Nothing is uploaded anywhere.",
     "Muted Users": "Review and restore users muted by the local script.",
     "Blocked Users": "Review and restore users blocked by numeric user ID.",
     "Presets": "One-click configurations for common browsing modes.",
@@ -742,6 +753,32 @@ window.GLP_SCHEMA = {
           "key": "customCSS",
           "label": "Custom CSS",
           "type": "textarea"
+        }
+      ],
+      "specialId": null
+    },
+    {
+      "title": "Export & Data",
+      "items": [
+        {
+          "key": "exportThreadMarkdown",
+          "label": "Export Thread as Markdown"
+        },
+        {
+          "key": "exportThreadHtml",
+          "label": "Export Thread as HTML"
+        },
+        {
+          "key": "exportThreadJson",
+          "label": "Export Thread as JSON"
+        },
+        {
+          "key": "exportMediaManifest",
+          "label": "Include Media Manifest"
+        },
+        {
+          "key": "exportCopyThreadLink",
+          "label": "Copy Thread Link Button"
         }
       ],
       "specialId": null

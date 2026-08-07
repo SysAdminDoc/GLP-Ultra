@@ -991,23 +991,17 @@ Acceptance criteria:
 
 Features:
 
-- Image lightbox and gallery.
 - Hover preview option.
-- Safe auto-expand image option.
 - YouTube link embedder with privacy mode.
 - X/Twitter embed normalization and fallback links.
-- Thread export to Markdown, clean HTML, JSON, and media manifest.
-- Copy thread/post links with toast.
 
 Dependencies:
 
-- Media adapter registry and export serializer.
+- Media adapter registry.
 
 Acceptance criteria:
 
 - Third-party embeds default to click-to-load in privacy mode.
-- Lightbox/gallery destroy removes all listeners and DOM.
-- Exports include source URL, capture timestamp, page/post ids, quote depth, and media manifest.
 
 ### v0.6.0 - User Intelligence And Moderation
 

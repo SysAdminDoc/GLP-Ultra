@@ -12,6 +12,10 @@
     "package": "node scripts/package-extension.mjs",
     "verify:captures": "node scripts/verify-captures.mjs",
     "verify:extension": "node scripts/verify-extension.mjs",
-    "verify": "npm run check && npm run verify:captures && npm run build && npm run verify:extension"
+    "verify:runtime": "node scripts/verify-runtime.mjs",
+    "verify": "npm run check && npm run verify:captures && npm run build && npm run verify:extension && npm run verify:runtime"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
   }
 }

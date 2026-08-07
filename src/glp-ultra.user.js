@@ -160,6 +160,13 @@
         keywordHide: '',
         customCSS: '',
 
+        // Export & Data
+        exportThreadMarkdown: true,
+        exportThreadHtml: true,
+        exportThreadJson: true,
+        exportMediaManifest: true,
+        exportCopyThreadLink: true,
+
         // Misc
         autoExpandImages: false,
         hideFooter: true,
@@ -180,6 +187,7 @@
         'Post Enhancements': 'Add reader tools for posts, timestamps, OP replies, and links.',
         'UI Enhancements': 'Enable high-value helpers for scrolling, media, previews, and feedback.',
         'Filtering & Custom': 'Filter noisy topics, low-effort replies, and add carefully scoped custom CSS.',
+        'Export & Data': 'Save a thread as a clean local file. Nothing is uploaded anywhere.',
         'Muted Users': 'Review and restore users muted by the local script.',
         'Blocked Users': 'Review and restore users blocked by numeric user ID.',
         'Presets': 'One-click configurations for common browsing modes.',
@@ -235,7 +243,12 @@
         autoRefresh: 'Refreshes the thread list on a timer.',
         hideThreadButtons: 'Adds per-row hide controls and a recovery shelf.',
         customCSS: 'Injected after the theme; keep it scoped and reversible.',
-        hideAllClfix: 'Removes spacer elements that create dead space.'
+        hideAllClfix: 'Removes spacer elements that create dead space.',
+        exportThreadMarkdown: 'Adds a Markdown export button to the thread toolbar. Quotes keep their nesting depth.',
+        exportThreadHtml: 'Adds a standalone dark HTML export of the thread with the original post markup preserved.',
+        exportThreadJson: 'Adds a structured JSON export: posts, authors, dates, quote depth, links, and media.',
+        exportMediaManifest: 'Appends the list of every image, embed, and outbound link found in the thread to each export.',
+        exportCopyThreadLink: 'Adds a button that copies the canonical thread URL without page or tracking suffixes.'
     };
 
     function escapeHTML(value) {
@@ -2319,6 +2332,13 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     { key: 'keywordHide', label: 'Hide Keywords (comma-sep)', type: 'text' },
                     { key: 'customCSS', label: 'Custom CSS', type: 'textarea' }
                 ])}
+                ${createSettingsSection('Export & Data', [
+                    { key: 'exportThreadMarkdown', label: 'Export Thread as Markdown' },
+                    { key: 'exportThreadHtml', label: 'Export Thread as HTML' },
+                    { key: 'exportThreadJson', label: 'Export Thread as JSON' },
+                    { key: 'exportMediaManifest', label: 'Include Media Manifest' },
+                    { key: 'exportCopyThreadLink', label: 'Copy Thread Link Button' }
+                ])}
                 ${createSettingsSection('Muted Users', [], 'mute-list')}
                 ${createSettingsSection('Blocked Users', [], 'block-list')}
                 ${createSettingsSection('Presets', [], 'presets')}
@@ -2805,7 +2825,8 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             { id: 'media.youtube', routes: ['thread'], settingKey: 'youtubeEmbed', init: embedYouTubeLinks, apply: embedYouTubeLinks, destroy: () => document.querySelectorAll('.glp-yt-embed').forEach(node => node.remove()) },
             { id: 'thread.opNav', routes: ['thread'], settingKey: 'opPostNav', init: initOPPostNav, apply: initOPPostNav, destroy: () => document.querySelectorAll('.glp-op-nav').forEach(node => node.remove()) },
             { id: 'thread.collapseAll', routes: ['thread'], settingKey: 'collapseExpandAll', init: initCollapseExpandAll, apply: initCollapseExpandAll, destroy: () => document.querySelectorAll('[data-glp-thread-tool="collapse-all"], [data-glp-thread-tool="search"]').forEach(node => node.remove()) },
-            { id: 'thread.quickSearch', routes: ['thread'], settingKey: 'threadQuickSearch', init: initQuickSearch, apply: () => {}, destroy: () => document.getElementById('glp-quick-search')?.remove() }
+            { id: 'thread.quickSearch', routes: ['thread'], settingKey: 'threadQuickSearch', init: initQuickSearch, apply: () => {}, destroy: () => document.getElementById('glp-quick-search')?.remove() },
+            { id: 'thread.export', routes: ['thread'], init: initThreadExport, apply: initThreadExport, destroy: destroyThreadExport }
         ];
     }
 
@@ -4825,6 +4846,386 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         });
         searchMatches = [];
         searchCurrentIdx = -1;
+    }
+
+    // ============================================
+    // THREAD EXPORT
+    // ============================================
+    // Everything GLP Ultra injects is tagged so the serializer can strip it back out;
+    // an export must look like the thread, not like the thread plus our chrome.
+    const EXPORT_STRIP_SELECTOR = [
+        '.glp-post-number', '.glp-quote-depth', '.glp-nested-toggle', '.glp-collapse-indicator',
+        '.glp-mute-btn', '.glp-block-btn', '.glp-tag-btn', '.glp-user-tag', '.glp-yt-embed',
+        '.glp-media-placeholder', 'script', 'style', 'noscript', '[data-type="_mgwidget"]', 'amp-embed'
+    ].join(', ');
+
+    const EXPORT_BLOCK_TAGS = new Set(['DIV', 'P', 'BLOCKQUOTE', 'LI', 'UL', 'OL', 'TR', 'TABLE', 'H1', 'H2', 'H3', 'H4', 'PRE', 'HR']);
+
+    function exportSlug(text, fallback = 'thread') {
+        const slug = String(text || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 60);
+        return slug || fallback;
+    }
+
+    function currentThreadMeta() {
+        const path = window.location.pathname;
+        const id = (path.match(/message(\d+)/) || [])[1] || '';
+        const page = parseInt((path.match(/\/pg(\d+)/) || [])[1] || '1', 10);
+        const titleEl = document.querySelector('.msgtitle h1') || document.querySelector('.msgtitle');
+        const title = titleEl ? titleEl.textContent.replace(/\s+/g, ' ').trim() : document.title.trim();
+        return {
+            id,
+            page,
+            title,
+            url: `${window.location.origin}${path.replace(/\/pg\d+$/, '')}`,
+            pageUrl: window.location.href
+        };
+    }
+
+    function exportPushLine(state) {
+        const last = state.lines[state.lines.length - 1];
+        if (last && last.text === '' && last.depth === state.quoteDepth) return;
+        state.lines.push({ depth: state.quoteDepth, text: '' });
+    }
+
+    function exportAppend(state, text) {
+        if (!text) return;
+        const last = state.lines[state.lines.length - 1];
+        if (last.depth !== state.quoteDepth) {
+            exportPushLine(state);
+            state.lines[state.lines.length - 1].depth = state.quoteDepth;
+        }
+        state.lines[state.lines.length - 1].text += text;
+    }
+
+    function walkExportNode(node, state) {
+        if (node.nodeType === 3) {
+            exportAppend(state, node.nodeValue.replace(/\s+/g, ' '));
+            return;
+        }
+        if (node.nodeType !== 1) return;
+
+        const tag = node.tagName;
+        if (tag === 'BR') { exportPushLine(state); return; }
+
+        if (tag === 'IMG') {
+            const src = node.getAttribute('src') || '';
+            if (!src) return;
+            const absolute = new URL(src, window.location.href).href;
+            state.media.push({ type: 'image', url: absolute, alt: node.getAttribute('alt') || '' });
+            exportAppend(state, `![${node.getAttribute('alt') || 'image'}](${absolute})`);
+            return;
+        }
+
+        if (tag === 'IFRAME' || tag === 'VIDEO' || tag === 'EMBED') {
+            const src = node.getAttribute('src') || node.querySelector?.('source')?.getAttribute('src') || '';
+            if (!src) return;
+            const absolute = new URL(src, window.location.href).href;
+            state.media.push({ type: 'embed', url: absolute, alt: '' });
+            exportPushLine(state);
+            exportAppend(state, `[embedded media](${absolute})`);
+            exportPushLine(state);
+            return;
+        }
+
+        if (tag === 'A') {
+            const href = node.getAttribute('href') || '';
+            const text = node.textContent.replace(/\s+/g, ' ').trim();
+            if (href) {
+                const absolute = new URL(href, window.location.href).href;
+                state.links.push({ text, url: absolute });
+                exportAppend(state, text ? `[${text}](${absolute})` : absolute);
+            } else if (text) {
+                exportAppend(state, text);
+            }
+            return;
+        }
+
+        const isQuote = node.classList && node.classList.contains('quoteo');
+        if (isQuote) {
+            exportPushLine(state);
+            state.quoteDepth++;
+            state.maxQuoteDepth = Math.max(state.maxQuoteDepth, state.quoteDepth);
+            exportPushLine(state);
+        } else if (EXPORT_BLOCK_TAGS.has(tag)) {
+            exportPushLine(state);
+        }
+
+        node.childNodes.forEach(child => walkExportNode(child, state));
+
+        if (isQuote) {
+            state.quoteDepth--;
+            exportPushLine(state);
+        } else if (EXPORT_BLOCK_TAGS.has(tag)) {
+            exportPushLine(state);
+        }
+    }
+
+    function serializePostBody(bodyEl) {
+        const state = { lines: [{ depth: 0, text: '' }], quoteDepth: 0, maxQuoteDepth: 0, media: [], links: [] };
+        if (bodyEl) bodyEl.childNodes.forEach(child => walkExportNode(child, state));
+
+        const rendered = [];
+        state.lines.forEach(line => {
+            const text = line.text.replace(/\s+/g, ' ').trim();
+            const prefix = line.depth > 0 ? `${'> '.repeat(line.depth)}` : '';
+            if (!text) {
+                if (rendered.length && rendered[rendered.length - 1] !== '') rendered.push('');
+                return;
+            }
+            rendered.push(`${prefix}${text}`);
+        });
+        while (rendered.length && rendered[rendered.length - 1] === '') rendered.pop();
+
+        return { text: rendered.join('\n'), media: state.media, links: state.links, maxQuoteDepth: state.maxQuoteDepth };
+    }
+
+    function collectThreadExport() {
+        const meta = currentThreadMeta();
+        const posts = [];
+        const media = [];
+        const links = [];
+
+        document.querySelectorAll('.msg tr[id^="post_"]').forEach((tr, index) => {
+            const authorCell = tr.querySelector('.messageauthor, .replyauthor');
+            const bodyEl = tr.querySelector('.post_main');
+            if (!bodyEl) return;
+
+            const clone = bodyEl.cloneNode(true);
+            clone.querySelectorAll(EXPORT_STRIP_SELECTOR).forEach(node => node.remove());
+
+            const nameEl = authorCell?.querySelector('.author_header b a')
+                || authorCell?.querySelector('.author_header b')
+                || authorCell?.querySelector('.author_header');
+            const dateEl = authorCell?.querySelector('.author_date');
+            const profileLink = authorCell?.querySelector('a[href*="/members/"], a[href*="profile"]');
+            const uidMatch = tr.className.match(/post_uid_(\d+)/);
+            const memberMatch = tr.className.match(/post_member_(\d+)/);
+            const serialized = serializePostBody(clone);
+
+            serialized.media.forEach(item => media.push({ ...item, post: index + 1 }));
+            serialized.links.forEach(item => links.push({ ...item, post: index + 1 }));
+
+            posts.push({
+                number: index + 1,
+                id: tr.id.replace('post_', ''),
+                author: nameEl ? nameEl.textContent.replace(/\(OP\)/g, '').replace(/\s+/g, ' ').trim() : 'Anonymous',
+                profileUrl: profileLink ? profileLink.href : '',
+                userId: uidMatch ? uidMatch[1] : '',
+                memberId: memberMatch ? memberMatch[1] : '',
+                isOP: !!(memberMatch && document.querySelector('.msg tr[id="post_1"]')?.classList.contains(`post_member_${memberMatch[1]}`)),
+                date: dateEl ? (dateEl.getAttribute('title') || dateEl.textContent.replace(/\s+/g, ' ').trim()) : '',
+                maxQuoteDepth: serialized.maxQuoteDepth,
+                text: serialized.text,
+                html: clone.innerHTML,
+                media: serialized.media,
+                links: serialized.links
+            });
+        });
+
+        return {
+            generator: `GLP Ultra v${SCRIPT_VERSION}`,
+            exportedAt: new Date().toISOString(),
+            source: meta.pageUrl,
+            thread: meta,
+            postCount: posts.length,
+            posts,
+            media,
+            links
+        };
+    }
+
+    function downloadExport(filename, text, mime) {
+        const blob = new Blob([text], { type: `${mime};charset=utf-8` });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }
+
+    function buildMediaManifestMarkdown(data) {
+        if (!settings.exportMediaManifest) return '';
+        const lines = ['', '---', '', '## Media manifest', ''];
+        if (!data.media.length) lines.push('_No images or embeds in this page._');
+        data.media.forEach(item => lines.push(`- \`${item.type}\` post #${item.post} - ${item.url}`));
+        lines.push('', '## Outbound links', '');
+        if (!data.links.length) lines.push('_No links in this page._');
+        data.links.forEach(item => lines.push(`- post #${item.post} - [${item.text || item.url}](${item.url})`));
+        return lines.join('\n');
+    }
+
+    function exportThreadAsMarkdown() {
+        const data = collectThreadExport();
+        const head = [
+            `# ${data.thread.title || 'GLP thread'}`,
+            '',
+            `- Source: ${data.source}`,
+            `- Thread id: ${data.thread.id || 'unknown'}`,
+            `- Page: ${data.thread.page}`,
+            `- Posts on this page: ${data.postCount}`,
+            `- Exported: ${data.exportedAt}`,
+            `- Generated by: ${data.generator}`,
+            ''
+        ];
+        const body = data.posts.map(post => {
+            const badge = post.isOP ? ' (OP)' : '';
+            const meta = [post.date, post.userId ? `uid ${post.userId}` : ''].filter(Boolean).join(' - ');
+            return [`## #${post.number} ${post.author}${badge}`, '', meta ? `*${meta}*` : '', '', post.text, ''].join('\n');
+        }).join('\n---\n\n');
+
+        const text = `${head.join('\n')}\n${body}${buildMediaManifestMarkdown(data)}\n`;
+        downloadExport(`glp-${data.thread.id || 'thread'}-${exportSlug(data.thread.title)}-pg${data.thread.page}.md`, text, 'text/markdown');
+        showNotification(`Exported ${data.postCount} posts as Markdown.`, 'success');
+    }
+
+    function exportThreadAsHtml() {
+        const data = collectThreadExport();
+        const manifest = settings.exportMediaManifest
+            ? `<section class="manifest"><h2>Media manifest</h2><ul>${
+                data.media.map(item => `<li><code>${escapeHTML(item.type)}</code> post #${item.post} - <a href="${escapeAttribute(item.url)}">${escapeHTML(item.url)}</a></li>`).join('')
+                || '<li>No images or embeds in this page.</li>'
+            }</ul><h2>Outbound links</h2><ul>${
+                data.links.map(item => `<li>post #${item.post} - <a href="${escapeAttribute(item.url)}">${escapeHTML(item.text || item.url)}</a></li>`).join('')
+                || '<li>No links in this page.</li>'
+            }</ul></section>`
+            : '';
+
+        const articles = data.posts.map(post => `
+    <article id="post-${escapeAttribute(post.id)}">
+      <header><span class="num">#${post.number}</span> <span class="who">${escapeHTML(post.author)}${post.isOP ? ' <em>(OP)</em>' : ''}</span> <span class="when">${escapeHTML(post.date)}</span></header>
+      <div class="body">${post.html}</div>
+    </article>`).join('\n');
+
+        const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHTML(data.thread.title || 'GLP thread')}</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 32px 16px; background: #0d0d1a; color: #e8ecf6;
+         font: 15px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 8px; }
+  .meta { color: #93a1c0; font-size: 13px; margin-bottom: 24px; }
+  .meta a { color: #6ab0f3; }
+  article { border: 1px solid #2a3350; border-radius: 10px; padding: 14px 16px; margin: 0 0 14px; background: #121826; }
+  article header { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+                   border-bottom: 1px solid #232c46; padding-bottom: 8px; margin-bottom: 10px; }
+  .num { color: #6ab0f3; font-weight: 700; }
+  .who { font-weight: 650; }
+  .when { color: #8592b0; font-size: 12px; margin-left: auto; }
+  .body img { max-width: 100%; height: auto; border-radius: 6px; }
+  .quoteo { border-left: 3px solid #4a90d9; padding-left: 12px; margin: 8px 0; color: #b8c4dd; }
+  a { color: #6ab0f3; }
+  .manifest { margin-top: 28px; border-top: 1px solid #232c46; padding-top: 16px; font-size: 13px; }
+  .manifest h2 { font-size: 15px; }
+  code { background: #1b2336; padding: 1px 5px; border-radius: 4px; }
+</style></head>
+<body><main>
+  <h1>${escapeHTML(data.thread.title || 'GLP thread')}</h1>
+  <p class="meta">
+    <a href="${escapeAttribute(data.source)}">${escapeHTML(data.source)}</a><br>
+    Thread ${escapeHTML(data.thread.id || 'unknown')} - page ${data.thread.page} - ${data.postCount} posts<br>
+    Exported ${escapeHTML(data.exportedAt)} by ${escapeHTML(data.generator)}
+  </p>
+${articles}
+${manifest}
+</main></body></html>
+`;
+        downloadExport(`glp-${data.thread.id || 'thread'}-${exportSlug(data.thread.title)}-pg${data.thread.page}.html`, html, 'text/html');
+        showNotification(`Exported ${data.postCount} posts as HTML.`, 'success');
+    }
+
+    function exportThreadAsJson() {
+        const data = collectThreadExport();
+        if (!settings.exportMediaManifest) {
+            delete data.media;
+            delete data.links;
+        }
+        downloadExport(
+            `glp-${data.thread.id || 'thread'}-${exportSlug(data.thread.title)}-pg${data.thread.page}.json`,
+            JSON.stringify(data, null, 2),
+            'application/json'
+        );
+        showNotification(`Exported ${data.postCount} posts as JSON.`, 'success');
+    }
+
+    function copyThreadLink() {
+        const meta = currentThreadMeta();
+        copyTextToClipboard(meta.url, 'Thread link copied.');
+    }
+
+    function copyTextToClipboard(text, successMessage) {
+        const done = () => showNotification(successMessage, 'success');
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+            return;
+        }
+        fallbackCopy(text, done);
+    }
+
+    function fallbackCopy(text, done) {
+        const helper = document.createElement('textarea');
+        helper.value = text;
+        helper.setAttribute('readonly', 'readonly');
+        helper.style.position = 'fixed';
+        helper.style.opacity = '0';
+        document.body.appendChild(helper);
+        helper.select();
+        try {
+            document.execCommand('copy');
+            done();
+        } catch (error) {
+            showNotification('Copy failed. The link is in the console.', 'error');
+            console.info('[GLP Ultra] link:', text);
+        }
+        helper.remove();
+    }
+
+    const EXPORT_ACTIONS = Object.freeze([
+        { tool: 'export-md', settingKey: 'exportThreadMarkdown', label: 'Export MD', run: exportThreadAsMarkdown },
+        { tool: 'export-html', settingKey: 'exportThreadHtml', label: 'Export HTML', run: exportThreadAsHtml },
+        { tool: 'export-json', settingKey: 'exportThreadJson', label: 'Export JSON', run: exportThreadAsJson },
+        { tool: 'copy-thread-link', settingKey: 'exportCopyThreadLink', label: 'Copy Link', run: copyThreadLink }
+    ]);
+
+    function initThreadExport() {
+        if (!document.querySelector('.msg tr[id^="post_"]')) return;
+        const enabled = EXPORT_ACTIONS.filter(action => settings[action.settingKey]);
+        if (!enabled.length) {
+            destroyThreadExport();
+            return;
+        }
+
+        const bar = getThreadToolsBar();
+        EXPORT_ACTIONS.forEach(action => {
+            const existing = bar.querySelector(`[data-glp-thread-tool="${action.tool}"]`);
+            if (!settings[action.settingKey]) {
+                existing?.remove();
+                return;
+            }
+            if (existing) return;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.dataset.glpThreadTool = action.tool;
+            btn.textContent = action.label;
+            btn.addEventListener('click', action.run);
+            bar.appendChild(btn);
+        });
+    }
+
+    function destroyThreadExport() {
+        EXPORT_ACTIONS.forEach(action => {
+            document.querySelectorAll(`[data-glp-thread-tool="${action.tool}"]`).forEach(node => node.remove());
+        });
     }
 
     // ============================================

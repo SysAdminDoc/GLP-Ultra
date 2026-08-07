@@ -446,6 +446,8 @@
         fetchQueue: [],
         fetchActive: false,
         lastFetchAt: 0,
+        fetchFailures: 0,
+        fetchBackoffUntil: 0,
         mediaHoverBound: false,
         lightboxBound: false
     };
@@ -461,6 +463,22 @@
         });
     }
 
+    // The floor between requests, and the ceiling on how far failure backs us off. A watcher
+    // with twenty threads on it is twenty requests per cycle, so the failure path is the one that
+    // decides whether a bad afternoon looks like a client or looks like a flood.
+    const FETCH_BACKOFF_CAP_MS = 60000;
+
+    function fetchRetryDelay(response) {
+        if (!response || (response.status !== 429 && response.status !== 503)) return 0;
+        const header = response.headers?.get?.('retry-after');
+        if (!header) return 0;
+        const seconds = Number(header);
+        if (Number.isFinite(seconds)) return Math.min(Math.max(seconds, 0) * 1000, FETCH_BACKOFF_CAP_MS);
+        const date = Date.parse(header);
+        if (!Number.isFinite(date)) return 0;
+        return Math.min(Math.max(date - Date.now(), 0), FETCH_BACKOFF_CAP_MS);
+    }
+
     async function processFetchQueue() {
         if (runtimeState.fetchActive) return;
         runtimeState.fetchActive = true;
@@ -472,17 +490,33 @@
             }
 
             const next = runtimeState.fetchQueue.shift();
-            const elapsed = Date.now() - runtimeState.lastFetchAt;
             const minDelay = next.options.minDelay ?? 1000;
+            // Failures used to leave lastFetchAt untouched, so a run of them made `elapsed` large
+            // and the limiter waited for nothing: the queue then drained as fast as the network
+            // could refuse it. Both outcomes stamp the clock now, and a refusal also backs off.
+            const backoffWait = runtimeState.fetchBackoffUntil - Date.now();
+            if (backoffWait > 0) await wait(Math.min(backoffWait, FETCH_BACKOFF_CAP_MS));
+            const elapsed = Date.now() - runtimeState.lastFetchAt;
             if (elapsed < minDelay) await wait(minDelay - elapsed);
 
+            let response = null;
             try {
-                const response = await fetch(next.url, next.options.fetchOptions || {});
-                runtimeState.lastFetchAt = Date.now();
+                response = await fetch(next.url, next.options.fetchOptions || {});
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                next.resolve(await response.text());
+                const text = await response.text();
+                runtimeState.fetchFailures = 0;
+                runtimeState.fetchBackoffUntil = 0;
+                next.resolve(text);
             } catch (error) {
+                runtimeState.fetchFailures += 1;
+                // The server's own number when it gave one, otherwise back off exponentially from
+                // the caller's floor. Capped, so a long outage does not park the queue for hours.
+                const stated = fetchRetryDelay(response);
+                const backoff = stated || Math.min(minDelay * (2 ** runtimeState.fetchFailures), FETCH_BACKOFF_CAP_MS);
+                runtimeState.fetchBackoffUntil = Date.now() + backoff;
                 next.reject(error);
+            } finally {
+                runtimeState.lastFetchAt = Date.now();
             }
         }
 
@@ -8550,6 +8584,8 @@ ${manifest}
                 .map(entry => ({ ...entry, worstMs: Number(entry.worstMs.toFixed(2)), lastMs: Number(entry.lastMs.toFixed(2)) })),
             fetchQueue: {
                 pending: runtimeState.fetchQueue.length,
+                consecutiveFailures: runtimeState.fetchFailures,
+                backoffMs: Math.max(0, runtimeState.fetchBackoffUntil - Date.now()),
                 active: runtimeState.fetchActive,
                 lastFetchAge: runtimeState.lastFetchAt ? relativeAge(runtimeState.lastFetchAt) : 'never'
             }
@@ -8701,6 +8737,9 @@ ${manifest}
         diagnosticsRow(queue, 'Pending', String(report.fetchQueue.pending));
         diagnosticsRow(queue, 'Active', report.fetchQueue.active ? 'yes' : 'no');
         diagnosticsRow(queue, 'Last fetch', report.fetchQueue.lastFetchAge);
+        diagnosticsRow(queue, 'Consecutive failures', String(report.fetchQueue.consecutiveFailures));
+        diagnosticsRow(queue, 'Backing off', report.fetchQueue.backoffMs
+            ? `${Math.ceil(report.fetchQueue.backoffMs / 1000)}s` : 'no');
 
         panel.append(header, body);
         document.body.appendChild(panel);

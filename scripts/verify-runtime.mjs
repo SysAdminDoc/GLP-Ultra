@@ -629,6 +629,48 @@ try {
     painted('warning', 0) && semantic.warning.border[1] > semantic.warning.border[2],
     JSON.stringify(semantic.warning));
 
+  // ---------------- Fetch queue backoff ----------------
+  // A watcher with twenty threads on it is twenty requests a cycle, and failures used to leave
+  // the limiter's clock untouched — so `elapsed` grew, the delay computed negative, and a site
+  // that was refusing got hammered as fast as it could refuse. Make it refuse and watch.
+  const before = await workerDiagnostics(worker, page);
+  check('fetch: a healthy queue reports no backoff',
+    before?.fetchQueue?.backoffMs === 0 && before?.fetchQueue?.consecutiveFailures === 0,
+    JSON.stringify(before?.fetchQueue));
+
+  // Page-level routes win over the context-level capture router, so this only affects the
+  // watcher's own polling for as long as it is installed. Matched as a glob: the watcher polls
+  // the thread's *base* URL, not the /pg1 one the capture is keyed on.
+  const threadGlob = `${withoutPage(CAPTURES.thread.url)}*`;
+  await page.route(threadGlob, route => route.fulfill({
+    status: 429,
+    headers: { 'retry-after': '7' },
+    contentType: 'text/plain',
+    body: 'slow down'
+  }));
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { watcherEnabled: true } });
+  await page.waitForTimeout(700);
+  await page.locator('[data-glp-thread-tool="watch"]').click();
+  await page.waitForTimeout(300);
+  await page.locator('[data-glp-thread-tool="watch-digest"]').click();
+
+  const backedOff = await waitFor(
+    () => workerDiagnostics(worker, page),
+    state => (state?.fetchQueue?.consecutiveFailures ?? 0) > 0,
+    15000);
+  check('fetch: a refusal is counted as a failure', (backedOff?.fetchQueue?.consecutiveFailures ?? 0) > 0,
+    JSON.stringify(backedOff?.fetchQueue));
+  // 7s stated by the server, so anything near that proves the header was read rather than the
+  // exponential default (which from a 1s floor would be 2s on the first failure).
+  check('fetch: the queue honours the Retry-After the server stated',
+    (backedOff?.fetchQueue?.backoffMs ?? 0) > 3000, `${backedOff?.fetchQueue?.backoffMs}ms`);
+
+  await page.unroute(threadGlob);
+  await page.locator('#glp-watch-digest [data-watch-action="unwatch"]').click().catch(() => {});
+  await page.evaluate(() => document.getElementById('glp-watch-digest')?.remove());
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { watcherEnabled: false } });
+  await page.waitForTimeout(400);
+
   // ---------------- Pre-upgrade settings backup ----------------
   // Loading keeps only keys the current schema declares, and the next save writes the pruned
   // object back — so an upgrade silently discards whatever a predecessor stored under a name

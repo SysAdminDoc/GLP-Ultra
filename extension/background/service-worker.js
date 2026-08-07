@@ -58,10 +58,30 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes[NETWORK_BLOCK_KEY]) syncNetworkBlocking();
 });
 
+// Tabs that reported a watched-thread unread count keep it on the badge; the plain
+// "on" marker is only for GLP tabs that have nothing to report.
+const watchCounts = new Map();
+
+function paintBadge(tabId, onGLP) {
+    const unread = watchCounts.get(tabId) || 0;
+    const text = unread > 0 ? String(unread) : (onGLP ? 'on' : '');
+    chrome.action.setBadgeText({ tabId, text }, () => void chrome.runtime.lastError);
+    chrome.action.setBadgeBackgroundColor({ tabId, color: unread > 0 ? '#e6a820' : '#4a90d9' },
+        () => void chrome.runtime.lastError);
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message && message.type === 'glp:network-block-state') {
         syncNetworkBlocking().then(enabled => sendResponse({ ok: true, enabled }));
         return true;
+    }
+    if (message && message.type === 'glp:watch-count' && sender.tab && sender.tab.id != null) {
+        const count = Number(message.count) || 0;
+        if (count > 0) watchCounts.set(sender.tab.id, count);
+        else watchCounts.delete(sender.tab.id);
+        paintBadge(sender.tab.id, true);
+        sendResponse({ ok: true });
+        return false;
     }
     return false;
 });
@@ -70,6 +90,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
     if (!info.status || !tab.url) return;
     const onGLP = tab.url.includes('godlikeproductions.com');
-    chrome.action.setBadgeText({ tabId, text: onGLP ? 'on' : '' });
-    chrome.action.setBadgeBackgroundColor({ tabId, color: '#4a90d9' });
+    if (!onGLP) watchCounts.delete(tabId);
+    paintBadge(tabId, onGLP);
 });
+
+chrome.tabs.onRemoved.addListener(tabId => watchCounts.delete(tabId));

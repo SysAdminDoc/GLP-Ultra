@@ -9,6 +9,13 @@
         return window.__GLP_ULTRA__ || null;
     }
 
+    // The engine knows nothing about extension APIs; it announces the watched-thread
+    // unread count on the window and this bridge is what turns it into a toolbar badge.
+    window.addEventListener('glp:watch-count', event => {
+        const count = Number(event.detail && event.detail.count) || 0;
+        chrome.runtime.sendMessage({ type: 'glp:watch-count', count }, () => void chrome.runtime.lastError);
+    });
+
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const api = engine();
 

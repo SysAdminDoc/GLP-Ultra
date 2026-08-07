@@ -113,6 +113,11 @@ window.GLP_SCHEMA = {
     "keywordHighlight": "",
     "keywordHide": "",
     "customCSS": "",
+    "watcherEnabled": false,
+    "watcherIntervalMinutes": 15,
+    "watcherDigest": true,
+    "watcherBadge": true,
+    "watcherPauseHidden": true,
     "userMuteMatchMode": "exact",
     "userNotes": true,
     "userReputationOverlay": false,
@@ -192,7 +197,12 @@ window.GLP_SCHEMA = {
     "userMuteMatchMode": "How a muted name is matched: exactly, anywhere in the name, or as a regular expression.",
     "userNotes": "Adds a private note field to the tag editor. Notes are stored with the tag and never sent anywhere.",
     "userReputationOverlay": "Counts how often you have seen each poster locally and shows it beside their name. No public scoring, no network calls.",
-    "userHistoryCap": "How many posters the local history keeps before the least recently seen are dropped."
+    "userHistoryCap": "How many posters the local history keeps before the least recently seen are dropped.",
+    "watcherEnabled": "Adds a Watch button to threads and checks them on a timer through the shared request queue.",
+    "watcherIntervalMinutes": "Minutes between watched-thread checks. Checks are queued, never parallel.",
+    "watcherDigest": "Adds a digest panel listing every watched thread, its unread count, and when it was last checked.",
+    "watcherBadge": "Shows the total unread count on the digest button, and on the extension toolbar icon.",
+    "watcherPauseHidden": "Skips checks entirely while the tab is in the background."
   },
   "sectionDescriptions": {
     "Core": "Master controls for GLP Ultra itself.",
@@ -208,6 +218,7 @@ window.GLP_SCHEMA = {
     "Post Enhancements": "Add reader tools for posts, timestamps, OP replies, and links.",
     "UI Enhancements": "Enable high-value helpers for scrolling, media, previews, and feedback.",
     "Filtering & Custom": "Filter noisy topics, low-effort replies, and add carefully scoped custom CSS.",
+    "Thread Watcher": "Follow threads and see what changed without leaving them open in tabs.",
     "User Intelligence": "Local-only knowledge about the people you read. None of it leaves this browser.",
     "User Data": "Back up or clear everything GLP Ultra has learned about users.",
     "Media & Embeds": "Decide how third-party media behaves before it can phone home.",
@@ -772,6 +783,35 @@ window.GLP_SCHEMA = {
           "key": "customCSS",
           "label": "Custom CSS",
           "type": "textarea"
+        }
+      ],
+      "specialId": null
+    },
+    {
+      "title": "Thread Watcher",
+      "items": [
+        {
+          "key": "watcherEnabled",
+          "label": "Enable Thread Watcher"
+        },
+        {
+          "key": "watcherIntervalMinutes",
+          "label": "Check Interval (minutes)",
+          "type": "number",
+          "min": 5,
+          "max": 240
+        },
+        {
+          "key": "watcherDigest",
+          "label": "Show Watched-Thread Digest"
+        },
+        {
+          "key": "watcherBadge",
+          "label": "Show Unread Count Badge"
+        },
+        {
+          "key": "watcherPauseHidden",
+          "label": "Pause Checks in Background Tabs"
         }
       ],
       "specialId": null

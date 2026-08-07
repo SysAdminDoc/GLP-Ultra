@@ -160,6 +160,13 @@
         keywordHide: '',
         customCSS: '',
 
+        // Watcher
+        watcherEnabled: false,
+        watcherIntervalMinutes: 15,
+        watcherDigest: true,
+        watcherBadge: true,
+        watcherPauseHidden: true,
+
         // User Intelligence
         userMuteMatchMode: 'exact',
         userNotes: true,
@@ -199,6 +206,7 @@
         'Post Enhancements': 'Add reader tools for posts, timestamps, OP replies, and links.',
         'UI Enhancements': 'Enable high-value helpers for scrolling, media, previews, and feedback.',
         'Filtering & Custom': 'Filter noisy topics, low-effort replies, and add carefully scoped custom CSS.',
+        'Thread Watcher': 'Follow threads and see what changed without leaving them open in tabs.',
         'User Intelligence': 'Local-only knowledge about the people you read. None of it leaves this browser.',
         'User Data': 'Back up or clear everything GLP Ultra has learned about users.',
         'Media & Embeds': 'Decide how third-party media behaves before it can phone home.',
@@ -271,7 +279,12 @@
         userMuteMatchMode: 'How a muted name is matched: exactly, anywhere in the name, or as a regular expression.',
         userNotes: 'Adds a private note field to the tag editor. Notes are stored with the tag and never sent anywhere.',
         userReputationOverlay: 'Counts how often you have seen each poster locally and shows it beside their name. No public scoring, no network calls.',
-        userHistoryCap: 'How many posters the local history keeps before the least recently seen are dropped.'
+        userHistoryCap: 'How many posters the local history keeps before the least recently seen are dropped.',
+        watcherEnabled: 'Adds a Watch button to threads and checks them on a timer through the shared request queue.',
+        watcherIntervalMinutes: 'Minutes between watched-thread checks. Checks are queued, never parallel.',
+        watcherDigest: 'Adds a digest panel listing every watched thread, its unread count, and when it was last checked.',
+        watcherBadge: 'Shows the total unread count on the digest button, and on the extension toolbar icon.',
+        watcherPauseHidden: 'Skips checks entirely while the tab is in the background.'
     };
 
     function escapeHTML(value) {
@@ -2165,6 +2178,50 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
 }
 `;
 
+        // ---- Thread watcher ----
+        css += `
+#glp-watch-toggle { display: inline-flex; align-items: center; gap: 6px; }
+.glp-watch-badge { display: none; }
+.glp-watch-badge-active {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 6px;
+    background: ${t.accent}; color: #04101f; font-size: 11px; font-weight: 800;
+}
+[data-glp-thread-tool="watch"].glp-watching { border-color: ${t.accent} !important; color: ${t.link} !important; }
+#glp-watch-digest {
+    position: fixed; right: 18px; bottom: 18px; width: min(420px, 92vw);
+    max-height: min(60vh, 560px); overflow-y: auto; z-index: 1000000;
+    background: ${t.headerBg}; border: 1px solid ${t.border}; border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.55); color: #e7eeff; font-size: 12px;
+}
+.glp-watch-digest-header {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    border-bottom: 1px solid ${t.border}; font-weight: 700; position: sticky; top: 0;
+    background: ${t.headerBg};
+}
+.glp-watch-digest-header span { flex: 1; }
+.glp-watch-digest-header button,
+.glp-watch-actions button {
+    background: rgba(255,255,255,0.06); border: 1px solid ${t.border}; color: #dce7ff;
+    border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 11px; font-weight: 650;
+}
+.glp-watch-digest-header button:hover,
+.glp-watch-actions button:hover { background: ${t.hover}; border-color: ${t.accent}; }
+.glp-watch-row {
+    display: grid; grid-template-columns: 1fr auto; gap: 4px 10px;
+    padding: 10px 12px; border-bottom: 1px solid ${t.border};
+}
+.glp-watch-row:last-child { border-bottom: none; }
+.glp-watch-title { grid-column: 1; color: ${t.link} !important; font-weight: 650; text-decoration: none !important; }
+.glp-watch-title:hover { text-decoration: underline !important; }
+.glp-watch-meta { grid-column: 1; color: #8592b0; font-size: 11px; }
+.glp-watch-actions { grid-column: 2; grid-row: 1 / span 2; display: flex; flex-direction: column; gap: 4px; align-self: center; }
+.glp-watch-unread .glp-watch-title { color: #fff !important; }
+.glp-watch-unread { background: ${t.accent}14; }
+.glp-watch-error .glp-watch-meta { color: #ff8f8f; }
+.glp-watch-empty { padding: 16px 12px; color: #8592b0; }
+`;
+
         // ---- User intelligence ----
         css += `
 .glp-user-rep {
@@ -2419,6 +2476,13 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     { key: 'keywordHighlight', label: 'Highlight Keywords (comma-sep)', type: 'text' },
                     { key: 'keywordHide', label: 'Hide Keywords (comma-sep)', type: 'text' },
                     { key: 'customCSS', label: 'Custom CSS', type: 'textarea' }
+                ])}
+                ${createSettingsSection('Thread Watcher', [
+                    { key: 'watcherEnabled', label: 'Enable Thread Watcher' },
+                    { key: 'watcherIntervalMinutes', label: 'Check Interval (minutes)', type: 'number', min: 5, max: 240 },
+                    { key: 'watcherDigest', label: 'Show Watched-Thread Digest' },
+                    { key: 'watcherBadge', label: 'Show Unread Count Badge' },
+                    { key: 'watcherPauseHidden', label: 'Pause Checks in Background Tabs' }
                 ])}
                 ${createSettingsSection('User Intelligence', [
                     { key: 'userMuteMatchMode', label: 'Mute Match Mode', type: 'select', options: {exact:'Exact name',contains:'Name contains',regex:'Regular expression'} },
@@ -2876,6 +2940,11 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             refreshTimer = null;
         }
 
+        if (watcherTimer) {
+            clearInterval(watcherTimer);
+            watcherTimer = null;
+        }
+
         if (previewTimeout) {
             clearTimeout(previewTimeout);
             previewTimeout = null;
@@ -2897,6 +2966,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             '#glp-quick-search',
             '#glp-forum-toolbar',
             '#glp-media-preview',
+            '#glp-watch-digest',
             '.glp-thread-preview',
             '.glp-op-nav',
             '.glp-copied-toast',
@@ -2991,6 +3061,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             { id: 'thread.opNav', routes: ['thread'], settingKey: 'opPostNav', init: initOPPostNav, apply: initOPPostNav, destroy: () => document.querySelectorAll('.glp-op-nav').forEach(node => node.remove()) },
             { id: 'thread.collapseAll', routes: ['thread'], settingKey: 'collapseExpandAll', init: initCollapseExpandAll, apply: initCollapseExpandAll, destroy: () => document.querySelectorAll('[data-glp-thread-tool="collapse-all"], [data-glp-thread-tool="search"]').forEach(node => node.remove()) },
             { id: 'thread.quickSearch', routes: ['thread'], settingKey: 'threadQuickSearch', init: initQuickSearch, apply: () => {}, destroy: () => document.getElementById('glp-quick-search')?.remove() },
+            { id: 'thread.watcher', routes: ['thread', 'feed'], settingKey: 'watcherEnabled', init: initWatcher, apply: initWatcher, destroy: destroyWatcher },
             { id: 'users.reputation', routes: ['thread'], settingKey: 'userReputationOverlay', init: applyReputationOverlay, apply: applyReputationOverlay, destroy: destroyReputationOverlay },
             { id: 'thread.export', routes: ['thread'], init: initThreadExport, apply: initThreadExport, destroy: destroyThreadExport },
             // X normalization runs first: a rendered widget only carries its provenance
@@ -5203,6 +5274,377 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         });
         searchMatches = [];
         searchCurrentIdx = -1;
+    }
+
+    // ============================================
+    // THREAD WATCHER
+    // ============================================
+    // Watched threads are tracked by the highest post number seen, which is the only
+    // monotonic signal GLP exposes without an API. Every check goes through the shared
+    // fetch queue, so the watcher can never outrun the site's rate budget.
+    const WATCH_LIMIT = 25;
+
+    let watchedThreads = [];
+    let watcherTimer = null;
+    let watcherRunning = false;
+
+    function loadWatchedThreads() {
+        try {
+            const parsed = JSON.parse(GM_getValue('glpWatchedThreads', '[]'));
+            watchedThreads = Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            watchedThreads = [];
+        }
+    }
+
+    function saveWatchedThreads() {
+        GM_setValue('glpWatchedThreads', JSON.stringify(watchedThreads.slice(0, WATCH_LIMIT)));
+    }
+
+    function highestPostNumber(root = document) {
+        let highest = 0;
+        root.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
+            const value = parseInt(tr.id.replace('post_', ''), 10);
+            if (Number.isFinite(value) && value > highest) highest = value;
+        });
+        return highest;
+    }
+
+    function watchedEntryFor(threadId) {
+        return watchedThreads.find(entry => entry.id === String(threadId)) || null;
+    }
+
+    function totalUnread() {
+        return watchedThreads.reduce((sum, entry) => sum + (entry.unread || 0), 0);
+    }
+
+    function publishWatchCount() {
+        const count = settings.watcherBadge ? totalUnread() : 0;
+        // The engine stays vehicle-agnostic: the extension bridge listens for this and
+        // forwards it to the service worker, and a plain userscript simply has no listener.
+        window.dispatchEvent(new CustomEvent('glp:watch-count', { detail: { count } }));
+        const badge = document.querySelector('#glp-watch-toggle .glp-watch-badge');
+        if (badge) {
+            badge.textContent = count > 0 ? String(count) : '';
+            badge.classList.toggle('glp-watch-badge-active', count > 0);
+        }
+    }
+
+    function watchCurrentThread() {
+        const meta = currentThreadMeta();
+        if (!meta.id) return;
+        loadWatchedThreads();
+
+        if (watchedEntryFor(meta.id)) {
+            unwatchThread(meta.id);
+            return;
+        }
+
+        if (watchedThreads.length >= WATCH_LIMIT) {
+            showNotification(`Watch list is full (${WATCH_LIMIT} threads). Unwatch one first.`, 'warning');
+            return;
+        }
+
+        watchedThreads.push({
+            id: meta.id,
+            url: meta.url,
+            title: meta.title,
+            lastSeenPost: highestPostNumber(),
+            unread: 0,
+            lastCheckedAt: Date.now(),
+            error: ''
+        });
+        saveWatchedThreads();
+        renderWatchControls();
+        publishWatchCount();
+        showNotification(`Watching "${meta.title.slice(0, 48)}".`, 'success', {
+            label: 'Undo',
+            onClick: () => unwatchThread(meta.id, { silent: true })
+        });
+    }
+
+    function unwatchThread(threadId, { silent = false } = {}) {
+        loadWatchedThreads();
+        const entry = watchedEntryFor(threadId);
+        if (!entry) return;
+        watchedThreads = watchedThreads.filter(item => item.id !== String(threadId));
+        saveWatchedThreads();
+        renderWatchControls();
+        renderWatchDigest();
+        publishWatchCount();
+        if (!silent) {
+            showNotification('Stopped watching.', 'info', {
+                label: 'Undo',
+                onClick: () => {
+                    loadWatchedThreads();
+                    watchedThreads.push(entry);
+                    saveWatchedThreads();
+                    renderWatchControls();
+                    renderWatchDigest();
+                    publishWatchCount();
+                }
+            });
+        }
+    }
+
+    function markWatchedRead(threadId) {
+        loadWatchedThreads();
+        const entry = watchedEntryFor(threadId);
+        if (!entry) return;
+        entry.lastSeenPost = entry.latestPost || entry.lastSeenPost;
+        entry.unread = 0;
+        saveWatchedThreads();
+        renderWatchDigest();
+        publishWatchCount();
+    }
+
+    async function checkWatchedThread(entry) {
+        const firstPage = await fetchTextQueued(entry.url, { minDelay: 1200 });
+        const parser = new DOMParser();
+        let doc = parser.parseFromString(firstPage, 'text/html');
+
+        let lastPage = 1;
+        doc.querySelectorAll('.navpages a[href*="/pg"]').forEach(link => {
+            const value = parseInt((link.getAttribute('href') || '').match(/\/pg(\d+)/)?.[1] || '0', 10);
+            if (Number.isFinite(value) && value > lastPage) lastPage = value;
+        });
+
+        if (lastPage > 1) {
+            const lastHtml = await fetchTextQueued(`${entry.url}/pg${lastPage}`, { minDelay: 1200 });
+            doc = parser.parseFromString(lastHtml, 'text/html');
+        }
+
+        const latest = highestPostNumber(doc);
+        const title = doc.querySelector('.msgtitle h1')?.textContent.replace(/\s+/g, ' ').trim();
+
+        entry.latestPost = latest || entry.lastSeenPost;
+        entry.unread = Math.max(0, entry.latestPost - (entry.lastSeenPost || 0));
+        entry.lastCheckedAt = Date.now();
+        entry.pages = lastPage;
+        entry.error = '';
+        if (title) entry.title = title;
+    }
+
+    async function runWatcherPass({ manual = false } = {}) {
+        if (watcherRunning) return;
+        if (!settings.watcherEnabled) return;
+        if (!manual && settings.watcherPauseHidden && document.hidden) return;
+
+        loadWatchedThreads();
+        if (!watchedThreads.length) return;
+
+        watcherRunning = true;
+        try {
+            for (const entry of watchedThreads) {
+                if (!manual && settings.watcherPauseHidden && document.hidden) break;
+                try {
+                    await checkWatchedThread(entry);
+                } catch (error) {
+                    entry.error = error && error.message ? error.message : String(error);
+                    entry.lastCheckedAt = Date.now();
+                }
+            }
+            saveWatchedThreads();
+            renderWatchDigest();
+            publishWatchCount();
+        } finally {
+            watcherRunning = false;
+        }
+    }
+
+    function relativeAge(timestamp) {
+        if (!timestamp) return 'never';
+        const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+        if (seconds < 60) return 'just now';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        return `${Math.floor(seconds / 86400)}d ago`;
+    }
+
+    function watchHostBar() {
+        if (runtimeState.route === 'thread') return getThreadToolsBar();
+        return document.getElementById('glp-forum-toolbar');
+    }
+
+    function renderWatchControls() {
+        if (!settings.watcherEnabled) {
+            destroyWatchControls();
+            return;
+        }
+
+        loadWatchedThreads();
+        const bar = watchHostBar();
+        if (!bar) return;
+
+        if (runtimeState.route === 'thread') {
+            const meta = currentThreadMeta();
+            let btn = bar.querySelector('[data-glp-thread-tool="watch"]');
+            if (!btn) {
+                btn = document.createElement('button');
+                btn.type = 'button';
+                btn.dataset.glpThreadTool = 'watch';
+                btn.addEventListener('click', watchCurrentThread);
+                bar.appendChild(btn);
+            }
+            const watching = !!watchedEntryFor(meta.id);
+            btn.textContent = watching ? 'Unwatch' : 'Watch';
+            btn.classList.toggle('glp-watching', watching);
+
+            // Opening the thread is the natural "I have read this" signal.
+            if (watching) {
+                const entry = watchedEntryFor(meta.id);
+                const seen = highestPostNumber();
+                if (seen > (entry.lastSeenPost || 0)) {
+                    entry.lastSeenPost = seen;
+                    entry.latestPost = Math.max(seen, entry.latestPost || 0);
+                    entry.unread = 0;
+                    saveWatchedThreads();
+                }
+            }
+        }
+
+        if (settings.watcherDigest) {
+            let toggle = bar.querySelector('#glp-watch-toggle');
+            if (!toggle) {
+                toggle = document.createElement('button');
+                toggle.type = 'button';
+                toggle.id = 'glp-watch-toggle';
+                toggle.dataset.glpThreadTool = 'watch-digest';
+                const label = document.createElement('span');
+                label.textContent = 'Watched';
+                const badge = document.createElement('span');
+                badge.className = 'glp-watch-badge';
+                toggle.append(label, badge);
+                toggle.addEventListener('click', toggleWatchDigest);
+                bar.appendChild(toggle);
+            }
+        }
+
+        publishWatchCount();
+    }
+
+    function destroyWatchControls() {
+        document.querySelectorAll('[data-glp-thread-tool="watch"], #glp-watch-toggle').forEach(node => node.remove());
+    }
+
+    function toggleWatchDigest() {
+        const panel = document.getElementById('glp-watch-digest');
+        if (panel) {
+            panel.remove();
+            return;
+        }
+        renderWatchDigest({ open: true });
+        runWatcherPass({ manual: true });
+    }
+
+    function renderWatchDigest({ open = false } = {}) {
+        let panel = document.getElementById('glp-watch-digest');
+        if (!panel && !open) return;
+
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'glp-watch-digest';
+            panel.setAttribute('role', 'region');
+            panel.setAttribute('aria-label', 'Watched threads');
+            panel.addEventListener('click', onWatchDigestClick);
+            document.body.appendChild(panel);
+        }
+
+        loadWatchedThreads();
+        panel.replaceChildren();
+
+        const header = document.createElement('div');
+        header.className = 'glp-watch-digest-header';
+        const title = document.createElement('span');
+        title.textContent = `Watched threads (${watchedThreads.length})`;
+        const refresh = document.createElement('button');
+        refresh.type = 'button';
+        refresh.dataset.watchAction = 'refresh';
+        refresh.textContent = watcherRunning ? 'Checking...' : 'Check now';
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.dataset.watchAction = 'close';
+        close.textContent = 'Close';
+        close.setAttribute('aria-label', 'Close watched threads');
+        header.append(title, refresh, close);
+        panel.appendChild(header);
+
+        if (!watchedThreads.length) {
+            const empty = document.createElement('div');
+            empty.className = 'glp-watch-empty';
+            empty.textContent = 'Nothing watched yet. Open a thread and press Watch.';
+            panel.appendChild(empty);
+            return;
+        }
+
+        watchedThreads.forEach(entry => {
+            const row = document.createElement('div');
+            row.className = 'glp-watch-row';
+            if (entry.unread > 0) row.classList.add('glp-watch-unread');
+            if (entry.error) row.classList.add('glp-watch-error');
+
+            const link = document.createElement('a');
+            link.className = 'glp-watch-title';
+            link.href = entry.url;
+            link.textContent = entry.title || `Thread ${entry.id}`;
+
+            const meta = document.createElement('span');
+            meta.className = 'glp-watch-meta';
+            meta.textContent = entry.error
+                ? `check failed - ${entry.error} (${relativeAge(entry.lastCheckedAt)})`
+                : `${entry.unread || 0} new - checked ${relativeAge(entry.lastCheckedAt)}`;
+
+            const actions = document.createElement('span');
+            actions.className = 'glp-watch-actions';
+            const read = document.createElement('button');
+            read.type = 'button';
+            read.dataset.watchAction = 'read';
+            read.dataset.watchId = entry.id;
+            read.textContent = 'Mark read';
+            const drop = document.createElement('button');
+            drop.type = 'button';
+            drop.dataset.watchAction = 'unwatch';
+            drop.dataset.watchId = entry.id;
+            drop.textContent = 'Unwatch';
+            actions.append(read, drop);
+
+            row.append(link, meta, actions);
+            panel.appendChild(row);
+        });
+    }
+
+    function onWatchDigestClick(event) {
+        const btn = event.target.closest('[data-watch-action]');
+        if (!btn) return;
+        const action = btn.dataset.watchAction;
+        if (action === 'close') document.getElementById('glp-watch-digest')?.remove();
+        else if (action === 'refresh') runWatcherPass({ manual: true }).then(() => renderWatchDigest());
+        else if (action === 'read') markWatchedRead(btn.dataset.watchId);
+        else if (action === 'unwatch') unwatchThread(btn.dataset.watchId);
+    }
+
+    function initWatcher() {
+        if (!settings.watcherEnabled) {
+            destroyWatcher();
+            return;
+        }
+
+        loadWatchedThreads();
+        renderWatchControls();
+
+        if (watcherTimer) clearInterval(watcherTimer);
+        const minutes = Math.max(5, Number(settings.watcherIntervalMinutes) || 15);
+        watcherTimer = setInterval(() => runWatcherPass(), minutes * 60000);
+    }
+
+    function destroyWatcher() {
+        if (watcherTimer) {
+            clearInterval(watcherTimer);
+            watcherTimer = null;
+        }
+        destroyWatchControls();
+        document.getElementById('glp-watch-digest')?.remove();
+        window.dispatchEvent(new CustomEvent('glp:watch-count', { detail: { count: 0 } }));
     }
 
     // ============================================

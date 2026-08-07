@@ -36,6 +36,15 @@ function extractHtml(mhtml) {
   return decodeQuotedPrintable(nextBoundary ? rest.slice(0, nextBoundary.index) : rest);
 }
 
+function withoutPage(url) {
+  return url.replace(/\/$/, '').replace(/\/pg\d+$/, '');
+}
+
+function captureKeyFor(url) {
+  const target = withoutPage(url);
+  return Object.keys(CAPTURES).find(key => withoutPage(CAPTURES[key].url) === target) || null;
+}
+
 const results = [];
 function check(label, ok, detail = '') {
   results.push({ label, ok, detail });
@@ -63,13 +72,14 @@ try {
   check('service worker registered', !!worker);
 
   // The captures' subresources are dead links; only the documents themselves are served.
+  // Page numbers are ignored when matching so the engine's own background fetches - the thread
+  // watcher polls the thread's base URL, infinite scroll asks for /pgN - reach the capture too.
   await context.route('**/*', async route => {
     const url = route.request().url();
-    for (const [key, capture] of Object.entries(CAPTURES)) {
-      if (url === capture.url || url === `${capture.url}/`) {
-        await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html[key] });
-        return;
-      }
+    const key = captureKeyFor(url);
+    if (key) {
+      await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html[key] });
+      return;
     }
     if (route.request().resourceType() === 'document' && url.includes('godlikeproductions.com')) {
       await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: '<html><body></body></html>' });
@@ -150,6 +160,48 @@ try {
   check('thread: a non-default toggle survives a reload', restored?.settings?.hideKarmaBar === false, String(restored?.settings?.hideKarmaBar));
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { colorTheme: 'midnight', hideKarmaBar: true } });
   await page.waitForTimeout(300);
+
+  // Thread watcher: off by default, so drive it through the extension shell.
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { watcherEnabled: true } });
+  await page.waitForTimeout(500);
+  check('thread: watch button appears when the watcher is on',
+    await page.locator('[data-glp-thread-tool="watch"]').count() === 1);
+  check('thread: watched digest toggle appears',
+    await page.locator('#glp-watch-toggle').count() === 1);
+
+  await page.locator('[data-glp-thread-tool="watch"]').click();
+  await page.waitForTimeout(300);
+  check('thread: watching flips the button to Unwatch',
+    (await page.locator('[data-glp-thread-tool="watch"]').innerText()).trim() === 'Unwatch');
+
+  await page.locator('#glp-watch-toggle').click();
+  await page.waitForTimeout(600);
+  check('thread: digest lists the watched thread',
+    await page.locator('#glp-watch-digest .glp-watch-row').count() === 1);
+
+  // Opening the digest kicks a manual pass; it fetches the thread's base URL through the
+  // engine's rate-limited queue, so poll rather than guess a timeout.
+  const digestMeta = await page
+    .waitForFunction(() => {
+      const meta = document.querySelector('#glp-watch-digest .glp-watch-meta');
+      return meta && /checked/.test(meta.textContent) ? meta.textContent : false;
+    }, null, { timeout: 15000 })
+    .then(handle => handle.jsonValue())
+    .catch(async () => page.locator('#glp-watch-digest .glp-watch-meta').first().innerText());
+  check('thread: watcher check completes against the real thread page', /checked/.test(digestMeta), digestMeta);
+  check('thread: a check with no new posts reports zero unread', /^0 new/.test(digestMeta.trim()), digestMeta);
+  check('thread: the digest row is not in an error state',
+    await page.locator('#glp-watch-digest .glp-watch-error').count() === 0);
+
+  await page.locator('#glp-watch-digest [data-watch-action="unwatch"]').click();
+  await page.waitForTimeout(300);
+  check('thread: unwatching empties the digest',
+    await page.locator('#glp-watch-digest .glp-watch-empty').count() === 1);
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { watcherEnabled: false } });
+  await page.waitForTimeout(400);
+  check('thread: disabling the watcher removes its controls',
+    await page.locator('[data-glp-thread-tool="watch"], #glp-watch-toggle, #glp-watch-digest').count() === 0);
 
   // User intelligence: the trust overlay is off by default and must appear on demand.
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { userReputationOverlay: true } });

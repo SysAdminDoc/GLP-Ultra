@@ -1,3 +1,25 @@
+/**
+ * Paints this extension page with the palette the user picked for the site. Without it the
+ * options page and popup stay blue while the forum is green, which reads as two products.
+ */
+function applyPageTheme(themeName) {
+    const palettes = (window.GLP_SCHEMA && window.GLP_SCHEMA.palettes) || {};
+    const palette = palettes[themeName] || palettes.midnight;
+    if (!palette) return;
+    const rgb = hex => {
+        const value = String(hex || '').replace('#', '');
+        const full = value.length === 3 ? value.split('').map(c => c + c).join('') : value;
+        const int = parseInt(full, 16);
+        if (!Number.isFinite(int) || full.length !== 6) return '74,144,217';
+        return `${(int >> 16) & 255},${(int >> 8) & 255},${int & 255}`;
+    };
+    const root = document.documentElement.style;
+    root.setProperty('--accent', palette.accent);
+    root.setProperty('--accent-rgb', rgb(palette.accent));
+    root.setProperty('--link', palette.link);
+    root.setProperty('--bg', palette.bg);
+}
+
 /* GLP Ultra options page. The schema is generated from the engine source at build time,
    so this page can never drift from the settings the content script actually reads. */
 
@@ -32,6 +54,11 @@ function parseJSON(raw, fallback) {
 
 async function loadAll() {
     const stored = await chrome.storage.local.get([SETTINGS_KEY, ...Object.values(LIST_KEYS)]);
+    try {
+        applyPageTheme(JSON.parse(stored[SETTINGS_KEY] || '{}').colorTheme);
+    } catch (e) {
+        applyPageTheme('midnight');
+    }
     settings = { ...schema.defaults, ...parseJSON(stored[SETTINGS_KEY], {}) };
     lists = {
         muted: parseJSON(stored[LIST_KEYS.muted], []),

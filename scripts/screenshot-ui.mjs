@@ -69,6 +69,9 @@ try {
   if (!worker) worker = await context.waitForEvent('serviceworker', { timeout: 15000 });
 
   await context.route('**/*', async route => {
+    // The extension's own pages load their CSS and JS through this router too; aborting those
+    // renders the options page as unstyled HTML with no sections.
+    if (!route.request().url().startsWith('http')) return route.continue();
     const target = withoutPage(route.request().url());
     const key = Object.keys(CAPTURES).find(k => withoutPage(CAPTURES[k].url) === target);
     if (key) return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html[key] });
@@ -123,6 +126,15 @@ try {
     await page.goto(CAPTURES.feed.url, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1100);
     await shoot(`${theme}-06-feed`);
+
+    // The extension's own pages are separate documents; they theme from the shared schema.
+    const extensionId = new URL(worker.url()).host;
+    await page.goto(`chrome-extension://${extensionId}/options/options.html`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(700);
+    await shoot(`${theme}-07-options`);
+    await page.goto(`chrome-extension://${extensionId}/popup/popup.html`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(600);
+    await shoot(`${theme}-08-popup`);
   }
 } finally {
   if (context) await context.close();

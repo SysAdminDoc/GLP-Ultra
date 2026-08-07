@@ -1,3 +1,25 @@
+/**
+ * Paints this extension page with the palette the user picked for the site. Without it the
+ * options page and popup stay blue while the forum is green, which reads as two products.
+ */
+function applyPageTheme(themeName) {
+    const palettes = (window.GLP_SCHEMA && window.GLP_SCHEMA.palettes) || {};
+    const palette = palettes[themeName] || palettes.midnight;
+    if (!palette) return;
+    const rgb = hex => {
+        const value = String(hex || '').replace('#', '');
+        const full = value.length === 3 ? value.split('').map(c => c + c).join('') : value;
+        const int = parseInt(full, 16);
+        if (!Number.isFinite(int) || full.length !== 6) return '74,144,217';
+        return `${(int >> 16) & 255},${(int >> 8) & 255},${int & 255}`;
+    };
+    const root = document.documentElement.style;
+    root.setProperty('--accent', palette.accent);
+    root.setProperty('--accent-rgb', rgb(palette.accent));
+    root.setProperty('--link', palette.link);
+    root.setProperty('--bg', palette.bg);
+}
+
 /* GLP Ultra popup: quick control over the settings the engine reads from chrome.storage.local. */
 
 const SETTINGS_KEY = 'glpEnhancedSettings';
@@ -27,6 +49,11 @@ function setStatus(message) {
 
 async function readSettings() {
     const stored = await chrome.storage.local.get(SETTINGS_KEY);
+    try {
+        applyPageTheme(JSON.parse(stored[SETTINGS_KEY] || '{}').colorTheme);
+    } catch (e) {
+        applyPageTheme('midnight');
+    }
     const raw = stored[SETTINGS_KEY];
     if (typeof raw !== 'string') return {};
     try {

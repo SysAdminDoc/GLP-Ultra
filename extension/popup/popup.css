@@ -1,10 +1,21 @@
 :root {
     color-scheme: dark;
-    --bg: #0c0f16;
+    /* Mirrors the options page and the injected layer; the accent is themed at load. */
+    --bg: #0d0d1a;
     --panel: #131826;
     --panel-2: #182036;
-    --border: #24304a;
-    --text: #e8eefc;
+    --border: rgba(var(--accent-rgb), 0.20);
+    --border-strong: rgba(var(--accent-rgb), 0.46);
+    --accent-rgb: 74,144,217;
+    --link: #6ab0f3;
+    --r-xs: 4px;
+    --r-sm: 6px;
+    --r-md: 8px;
+    --r-lg: 10px;
+    --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.28);
+    --focus: 0 0 0 3px rgba(var(--accent-rgb), 0.38);
+    --ease: 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
+    --text: #eef3ff;
     --muted: #93a1c0;
     --accent: #4a90d9;
     --danger: #e05a4c;
@@ -144,3 +155,10 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .btn:hover { background: var(--panel-2); border-color: var(--accent); transform: translateY(-1px); }
 .btn.primary { background: rgba(74, 144, 217, 0.18); border-color: rgba(74, 144, 217, 0.5); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+
+/* Never hide a focus ring. */
+:where(button, input, select, a):focus-visible {
+    outline: none;
+    box-shadow: var(--focus);
+}

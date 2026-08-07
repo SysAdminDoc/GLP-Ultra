@@ -1,6 +1,6 @@
 # GLP Ultra
 
-[![version](https://img.shields.io/badge/version-3.2.0-4a90d9)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-3.3.0-4a90d9)](CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Firefox%20%7C%20userscript-1f6feb)](#install)
 [![manifest](https://img.shields.io/badge/manifest-v3-8957e5)](extension/manifest.json)
@@ -58,13 +58,13 @@ and hit **Reload** on the extension card.
 
 ```bash
 npm run verify      # gates + build + structure checks
-npm run package     # dist/glp-ultra-v3.2.0.zip
+npm run package     # dist/glp-ultra-v3.3.0.zip
 ```
 
 ### Firefox
 
 ```bash
-npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.2.0.zip
+npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.3.0.zip
 ```
 
 Everything but the manifest is identical to the Chrome build. The Gecko variant swaps the
@@ -109,6 +109,7 @@ scripts/                     build, icons, package, verification gates
 | `npm run verify:extension` | Manifest/file/version/rule integrity, both browser variants |
 | `npm run verify:runtime` | Loads the unpacked extension in Chromium and drives it against the real captures |
 | `npm run verify` | All of the above |
+| `npm run shots` | Screenshots every surface in every theme into `dist/ui-shots/` |
 | `npm run icons` | Regenerates PNG icons from `assets/icon.svg` |
 | `npm run build:firefox` | Generates `dist/extension-firefox/` |
 | `npm run package` | Deterministic `dist/glp-ultra-v<version>.zip` |

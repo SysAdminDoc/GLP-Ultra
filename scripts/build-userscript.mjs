@@ -143,6 +143,9 @@ try {
   const defaults = evalObjectLiteral('const DEFAULT_SETTINGS =');
   const settingDescriptions = evalObjectLiteral('const SETTING_DESCRIPTIONS =');
   const sectionDescriptions = evalObjectLiteral('const SECTION_DESCRIPTIONS =');
+  // The extension pages are separate documents and cannot read the injected token layer, so the
+  // palette travels with the schema. One source, three surfaces, one theme.
+  const palettes = evalObjectLiteral('const THEME_PALETTES = Object.freeze(');
   const sections = extractSections();
 
   if (sections.length === 0) fail('no settings sections were extracted from the engine source');
@@ -153,7 +156,7 @@ try {
     fail(`settings missing from the panel schema: ${missing.join(', ')}`);
   }
 
-  schemaPayload = { version: packageJson.version, defaults, settingDescriptions, sectionDescriptions, sections };
+  schemaPayload = { version: packageJson.version, defaults, settingDescriptions, sectionDescriptions, sections, palettes };
 } catch (error) {
   fail(error.message);
 }

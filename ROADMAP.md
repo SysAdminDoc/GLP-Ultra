@@ -368,7 +368,19 @@ Legend: `Y` = present or strongly represented, `P` = partial/weak/adjacent, `-` 
 High-value gaps: none open. Items blocked on input from outside the codebase live in
 `Roadmap_Blocked.md`.
 
-Nothing open. Items blocked on input from outside the codebase live in `Roadmap_Blocked.md`.
+Open — surfaces the v3.3.0 design pass did not reach. All eight main surfaces (feed, thread,
+settings panel, diagnostics, recovery shelf, noise budget, options page, popup) were audited in
+all ten themes; these smaller ones were not:
+
+1. Watch digest, tag picker, quick-search panel, image lightbox, and the toast stack still carry
+   their own spacing and colour decisions rather than the shared tokens. They read fine, but they
+   are the next places drift will appear.
+2. The settings panel's footer holds seven buttons in one row with no grouping beyond
+   left/right; the destructive Reset sits next to Export.
+3. `npm run shots` captures surfaces but nothing asserts on them — a per-theme contrast check over
+   the captured DOM would turn the theme sweep from a thing to look at into a gate.
+
+Items blocked on input from outside the codebase live in `Roadmap_Blocked.md`.
 
 ## Phase 3: Technical Reconnaissance
 

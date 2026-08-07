@@ -1,5 +1,50 @@
 # Changelog
 
+## 3.3.0 — 2026-08-06
+
+A design-system pass over every surface, and the layout defects looking properly at each one
+turned up.
+
+### Changed
+
+- **One design-token layer, derived from the chosen theme.** The palette exposed eight values
+  while the interface it was meant to theme carried 87 hardcoded literals, so picking Alien Green
+  or Blood recoloured the forum and left every control the script owns — settings panel, toasts,
+  diagnostics, recovery, chips — the same blue. Tokens for surfaces, text, borders, semantic
+  colour, radius, elevation, and the focus ring are now emitted first and unconditionally. The
+  accent is also published as an RGB channel so existing `rgba()` rules could be repointed at it
+  without altering a single alpha. Semantic colours stay fixed: success is green on Blood too.
+- **The options page and popup theme themselves.** They are separate documents and cannot read
+  the injected layer, so the palette now travels with the generated schema. Three surfaces, one
+  theme, one vocabulary of tokens.
+- **The settings panel is navigable.** 140 controls across 23 sections had a search box and
+  nothing else. It now has a section rail down the side, an *Only changed* filter, a live match
+  count, a proper empty state, a dot on every row that differs from its default (echoed in the
+  section header and the rail), and per-section reset with undo.
+- Stray 2px/3px/5px radii normalised onto the 4/6/8/10/12 scale.
+
+### Fixed
+
+- **The thread toolbar rendered as a 92px vertical stack of nine wrapped buttons pinned to the
+  right edge.** `.msgtitle` is a div parented straight to a `<tr>`, so inserting after it made the
+  toolbar a child of that `<tr>` as well — and a div is not table content. Anchored outside the
+  table, it is the horizontal toolbar it was always meant to be.
+- **About 450px of dead space** above the first post, most of it rows the ad removal had emptied.
+  `:empty` cannot match a row holding whitespace, so those are marked as they are emptied.
+- The OP previous/next buttons were unthemed yellow and floated on top of the author column.
+- The author column stacked one action chip per line, and mute/block/tag were three sizes and
+  three colour stories inches apart.
+- Nav links rendered as a bare vertical list of underlined text.
+- **Diagnostics and the recovery shelf covered the settings panel that launches them**, including
+  its rail and its buttons. They hand the screen over now, and offer the way back.
+- The nav's theme picker went stale when the theme was changed from the panel, the popup, or
+  another device.
+
+### Added
+
+- `npm run shots` captures every surface in every theme into `dist/ui-shots/`, so a polish pass
+  cannot quietly become a one-screen-one-theme pass.
+
 ## 3.2.0 — 2026-08-06
 
 ### Added

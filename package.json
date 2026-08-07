@@ -1,6 +1,6 @@
 {
   "name": "glp-ultra",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "private": true,
   "type": "module",
   "description": "Declutter, theming, filtering, blocking, and reading tools for Godlike Productions - MV3 extension and userscript from one source.",
@@ -12,6 +12,7 @@
     "icons": "node scripts/build-icons.mjs",
     "package": "node scripts/package-extension.mjs",
     "package:firefox": "npm run build:firefox && node scripts/package-extension.mjs --firefox",
+    "shots": "node scripts/screenshot-ui.mjs",
     "verify:captures": "node scripts/verify-captures.mjs",
     "verify:extension": "node scripts/verify-extension.mjs",
     "verify:runtime": "node scripts/verify-runtime.mjs",

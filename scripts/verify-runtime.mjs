@@ -164,6 +164,28 @@ try {
   check('thread: tools bar rendered', await page.locator('#glp-thread-tools-bar').count() === 1);
   check('thread: OP navigation rendered', await page.locator('.glp-op-nav').count() > 0);
 
+  // Quote graph: inferred from the site's own "Quoting:" links, so it must find real edges in
+  // the capture rather than merely rendering an empty bar.
+  check('thread: quote backlinks rendered', await page.locator('.glp-backlinks').count() > 0);
+  check('thread: in-page jump added to a quote that names a post on this page',
+    await page.locator('.glp-quote-jump').count() > 0);
+  const backlinkLabel = await page.locator('.glp-backlink').first().innerText().catch(() => '');
+  check('thread: a backlink names the answering post and its author', /^#\d+\s+\S/.test(backlinkLabel), backlinkLabel);
+
+  await page.locator('.glp-backlink').first().hover();
+  await page.waitForTimeout(250);
+  check('thread: hovering a backlink opens a context card',
+    await page.locator('#glp-backlink-card.glp-backlink-card-visible').count() === 1);
+  const cardText = await page.locator('#glp-backlink-card').innerText();
+  check('thread: the context card carries the answering post, not the quote it contains',
+    cardText.trim().length > 0 && !cardText.includes('Quoting:'), cardText.slice(0, 80));
+
+  const jumpTarget = await page.locator('.glp-backlink').first().getAttribute('data-glp-jump-to');
+  await page.locator('.glp-backlink').first().click();
+  await page.waitForTimeout(300);
+  check('thread: clicking a backlink flashes the post it points at',
+    await page.locator(`#${jumpTarget}.glp-post-flash`).count() === 1, jumpTarget);
+
   const threadDiag = await workerDiagnostics(worker, page);
   check('thread: route classified as thread', threadDiag?.route === 'thread', JSON.stringify(threadDiag));
   check('thread: no feature errors', (threadDiag?.errors || []).length === 0, JSON.stringify(threadDiag?.errors));

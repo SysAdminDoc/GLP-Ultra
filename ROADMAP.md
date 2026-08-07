@@ -15,11 +15,7 @@ The two userscripts are merged and the MV3 extension is the primary vehicle, exa
 - **v0.8.0 — MV3 extension build:** complete. Context-menu actions (hide thread, mute user, tag user, preview image, export thread), watcher-count toolbar badge, and the Firefox-compatible manifest variant generated into `dist/extension-firefox/`.
 - **v0.9.0 — Reliability and distribution:** diagnostics panel now reports settings version, enabled features, selector health, route, fetch queue status, and per-feature worst-run timings; self-healing selector warnings flag fallback hits and missing required surfaces; settings changes are announced per version bump.
 
-Still open, and blocked on inputs rather than effort:
-
-- Composer, profile/member, and logged-in notification pages were never captured, so the features that need those selectors cannot be designed against real DOM (see the risk table below).
-- Firefox behaviour is not machine-verified: the runtime harness drives Chromium only, and Firefox cannot load a temporary MV3 add-on from the command line without additional tooling. The variant is gated structurally instead.
-- Store listing prep is deliberately not started: the project ships unsigned artifacts from GitHub.
+Items blocked on input from outside the codebase live in `Roadmap_Blocked.md`.
 
 
 Research date: 2026-05-19  
@@ -369,20 +365,13 @@ Legend: `Y` = present or strongly represented, `P` = partial/weak/adjacent, `-` 
 
 ### Gap Analysis
 
-High-value gaps no current GLP-specific tool delivers well:
+High-value gaps still open:
 
-1. Lifecycle-safe feature registry: every feature can be enabled, disabled, and reapplied without page reload.
-2. Selector health and self-healing: selector groups, fallbacks, diagnostics, and capture-based validation.
-3. Thread watcher with unread deltas: watch threads, track last seen post/page, show digest, pause on hidden tabs.
-4. Backlink/quote graph: infer reply relationships from quote blocks and post links, surface context cards.
-5. Reader mode: transform table-heavy thread pages into a premium dense reading surface without losing original actions.
-6. Floating reply launcher and draft autosave: needs live composer reconnaissance before build.
-7. Local user intelligence: tags, notes, mute history, reputation signals, import/export.
-8. Data export: thread to Markdown, HTML, JSON, media manifest, and settings bundle.
-9. MV3 DNR cleanup: block ad/widget and anti-blocker noise before DOM paint.
-10. Accessibility and reduced-motion controls: high contrast dark, font scaling, line height, target size, motion limits.
-11. Built-in diagnostics: current route, processed nodes, enabled features, selector hits/misses, fetch queue, storage size.
-12. Store-grade packaging: userscript single-file plus MV3 ZIP/CRX/AMO package from the same source.
+1. Accessibility and reduced-motion controls: high contrast dark, font scaling, line height, target size, motion limits. Only the `prefers-reduced-motion` media query exists; none of it is user-controllable.
+2. Download/open media actions: save or open an image straight from a post.
+3. Noise budget: per-page count of hidden ads, muted users, keyword-filtered posts, and collapsed quotes.
+4. Importable filter/theme packs.
+5. Optional `chrome.storage.sync` for settings, with the userscript export as the fallback.
 
 Weak implementations to replace:
 

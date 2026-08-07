@@ -108,6 +108,7 @@
         collapseNestedQuotes: true,
         collapseQuotesByDefault: false,
         quoteBorderColor: '#4a90d9',
+        quoteBacklinks: true,
 
         // Visual Enhancements
         colorTheme: 'midnight',
@@ -246,6 +247,7 @@
         readerMode: 'Distraction-free reading surface: hides author metadata, sidebar, and non-essential chrome.',
         hideRelatedThreads: 'Hides the related threads section at the bottom of thread pages.',
         quoteDepthBadges: 'Shows quote nesting depth with a small numbered badge.',
+        quoteBacklinks: 'Reads the "Quoting:" links to work out who answered whom, then lists the replies to a post underneath it and adds an in-page jump to the post being quoted.',
         collapseNestedQuotes: 'Collapses quote chains deeper than two levels with an expand toggle.',
         darkModeEnhance: 'Applies the selected GLP Ultra dark theme.',
         smoothScrolling: 'Uses smoother page movement where supported.',
@@ -413,6 +415,7 @@
         settingsApplyTimer: null,
         featureErrors: [],
         featureTimings: {},
+        quoteGraphBound: false,
         contextBound: false,
         lastContext: null,
         newSettingKeys: [],
@@ -1632,6 +1635,52 @@ body.glpx-reader-active .glp-reader-byline {
 `;
         }
 
+        if (settings.quoteBacklinks) {
+            css += `
+.glp-backlinks {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    margin-top: 10px; padding-top: 8px;
+    border-top: 1px solid rgba(147,168,211,0.14);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 11px;
+}
+.glp-backlinks-label { color: #8592b0; font-weight: 650; letter-spacing: 0.02em; }
+.glp-backlink,
+.glp-quote-jump {
+    cursor: pointer; font-size: 11px; line-height: 1.5;
+    color: #dce7ff; background: rgba(106,168,255,0.10);
+    border: 1px solid rgba(106,168,255,0.24);
+    border-radius: 5px; padding: 2px 7px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.glp-backlink:hover,
+.glp-quote-jump:hover,
+.glp-backlink:focus-visible,
+.glp-quote-jump:focus-visible {
+    background: rgba(106,168,255,0.20); border-color: rgba(106,168,255,0.46);
+    transform: translateY(-1px);
+}
+.glp-quote-jump { margin-left: 6px; vertical-align: middle; }
+.glp-post-flash { animation: glp-post-flash 1.6s ease-out; }
+@keyframes glp-post-flash {
+    0% { box-shadow: inset 0 0 0 9999px rgba(106,168,255,0.22); }
+    100% { box-shadow: inset 0 0 0 9999px rgba(106,168,255,0); }
+}
+#glp-backlink-card {
+    position: absolute; z-index: 2147483645; pointer-events: none;
+    max-width: 340px; padding: 8px 10px;
+    background: #0d1220; color: #e6ecf7;
+    border: 1px solid rgba(147,168,211,0.26); border-radius: 8px;
+    box-shadow: 0 14px 36px rgba(0,0,0,0.5);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 12px; line-height: 1.45;
+    opacity: 0; transition: opacity 0.12s ease;
+}
+#glp-backlink-card.glp-backlink-card-visible { opacity: 1; }
+`;
+        }
+
         if (settings.collapseNestedQuotes) {
             css += `
 .glp-nested-collapsed {
@@ -2549,6 +2598,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 ${createSettingsSection('Quote Styling', [
                     { key: 'compactQuotes', label: 'Compact Quotes' },
                     { key: 'quoteDepthBadges', label: 'Quote Depth Badges' },
+                    { key: 'quoteBacklinks', label: 'Quote Backlinks (who answered this post)' },
                     { key: 'collapseNestedQuotes', label: 'Collapse Nested Quote Chains' },
                     { key: 'collapseQuotesByDefault', label: 'Collapse Every Quote by Default' },
                     { key: 'quoteBorderColor', label: 'Quote Border Color', type: 'color' }
@@ -3122,6 +3172,9 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             '.glp-yt-embed',
             '.glp-reader-byline',
             '.glp-quote-depth',
+            '.glp-backlinks',
+            '.glp-quote-jump',
+            '#glp-backlink-card',
             '.glp-nested-toggle',
             '.glp-block-btn',
             '.glp-sort-group'
@@ -3194,6 +3247,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             { id: 'feed.threadPreview', routes: ['feed'], settingKey: 'threadPreview', init: initThreadPreview, apply: () => {}, destroy: removePreview },
             { id: 'thread.readerMode', routes: ['thread'], settingKey: 'readerMode', init: initReaderMode, apply: initReaderMode, destroy: destroyReaderMode },
             { id: 'thread.quoteDepthBadges', routes: ['thread'], settingKey: 'quoteDepthBadges', init: initQuoteDepthBadges, apply: initQuoteDepthBadges, destroy: () => document.querySelectorAll('.glp-quote-depth').forEach(n => n.remove()) },
+            { id: 'thread.quoteGraph', routes: ['thread'], settingKey: 'quoteBacklinks', init: buildQuoteGraph, apply: buildQuoteGraph, destroy: destroyQuoteGraph },
             { id: 'thread.nestedQuoteCollapse', routes: ['thread'], settingKey: 'collapseNestedQuotes', init: initNestedQuoteCollapse, apply: initNestedQuoteCollapse, destroy: () => { document.querySelectorAll('.glp-nested-toggle').forEach(n => n.remove()); document.querySelectorAll('.glp-nested-collapsed').forEach(n => { n.classList.remove('glp-nested-collapsed', 'glp-nested-expanded'); delete n.dataset.glpNestedProcessed; }); } },
             { id: 'thread.permalinks', routes: ['thread'], settingKey: 'postPermalinks', init: initPostPermalinks, apply: addPostNumbers, destroy: () => {} },
             { id: 'media.youtube', routes: ['thread'], settingKey: 'youtubeEmbed', init: embedYouTubeLinks, apply: embedYouTubeLinks, destroy: () => document.querySelectorAll('.glp-yt-embed').forEach(node => node.remove()) },
@@ -3388,6 +3442,163 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                 }
             }
         });
+    }
+
+    // ============================================
+    // QUOTE GRAPH (backlinks)
+    // ============================================
+
+    /**
+     * GLP marks every post with its own `reply<id>` permalink and every quote block with a
+     * "Quoting:" footer carrying the quoted author and a link to the post being quoted. That is
+     * enough to reconstruct who answered whom on this page — forward, which the site already
+     * offers, and *backward*, which it does not: a post has no idea it was quoted.
+     */
+    function postReplyId(row) {
+        const link = row.querySelector('a.sm_postn[href*="/reply"], a[href*="/reply"][title^="Post #"]');
+        return (link?.getAttribute('href') || '').match(/reply(\d+)/)?.[1] || '';
+    }
+
+    function postNumberOf(row) {
+        return (row.id || '').replace('post_', '');
+    }
+
+    function postAuthorOf(row) {
+        const header = row.querySelector('.author_header');
+        const link = header?.querySelector('b a') || header?.querySelector('a');
+        return link ? link.textContent.trim() : 'Anonymous Coward';
+    }
+
+    function postExcerpt(row, limit = 180) {
+        const body = row.querySelector('.post_main');
+        if (!body) return '';
+        const clone = body.cloneNode(true);
+        clone.querySelectorAll('.quoteo, .glp-backlinks, .glp-quote-jump, .glp-quote-depth').forEach(node => node.remove());
+        const text = clone.textContent.replace(/\s+/g, ' ').trim();
+        return text.length > limit ? `${text.slice(0, limit)}...` : text;
+    }
+
+    function buildQuoteGraph() {
+        if (!settings.quoteBacklinks) return;
+
+        const rows = [...document.querySelectorAll('.msg tr[id^="post_"]')];
+        if (!rows.length) return;
+
+        const byReplyId = new Map();
+        rows.forEach(row => {
+            const id = postReplyId(row);
+            if (id) byReplyId.set(id, row);
+        });
+
+        // replyId of the quoted post -> the rows that quoted it, in page order.
+        const backlinks = new Map();
+
+        rows.forEach(row => {
+            row.querySelectorAll('.quoteo').forEach(quote => {
+                const footer = quote.querySelector(':scope > font[size="1"]');
+                const target = footer?.querySelector('a[href*="/reply"]');
+                const quotedId = (target?.getAttribute('href') || '').match(/reply(\d+)/)?.[1] || '';
+                if (!quotedId) return;
+
+                const quotedRow = byReplyId.get(quotedId);
+                if (!quotedRow || quotedRow === row) return;
+
+                if (!backlinks.has(quotedId)) backlinks.set(quotedId, []);
+                if (!backlinks.get(quotedId).includes(row)) backlinks.get(quotedId).push(row);
+
+                // Forward jump: the site's own link leaves the page even when the quoted post is
+                // right here, so offer an in-page hop beside it.
+                if (!footer.querySelector('.glp-quote-jump')) {
+                    const jump = document.createElement('button');
+                    jump.type = 'button';
+                    jump.className = 'glp-quote-jump';
+                    jump.dataset.glpJumpTo = quotedRow.id;
+                    jump.textContent = `#${postNumberOf(quotedRow)}`;
+                    jump.title = `Jump to post #${postNumberOf(quotedRow)} on this page`;
+                    footer.appendChild(jump);
+                }
+            });
+        });
+
+        backlinks.forEach((quotingRows, quotedId) => {
+            const row = byReplyId.get(quotedId);
+            if (!row) return;
+
+            const body = row.querySelector('.post_main');
+            if (!body) return;
+
+            row.querySelector(':scope .glp-backlinks')?.remove();
+
+            const bar = document.createElement('div');
+            bar.className = 'glp-backlinks';
+            const label = document.createElement('span');
+            label.className = 'glp-backlinks-label';
+            label.textContent = quotingRows.length === 1 ? 'Answered by' : `Answered by ${quotingRows.length}`;
+            bar.appendChild(label);
+
+            quotingRows.forEach(quoting => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'glp-backlink';
+                chip.dataset.glpJumpTo = quoting.id;
+                chip.dataset.glpExcerpt = postExcerpt(quoting);
+                chip.textContent = `#${postNumberOf(quoting)} ${postAuthorOf(quoting)}`;
+                bar.appendChild(chip);
+            });
+
+            body.appendChild(bar);
+        });
+
+        bindQuoteGraphEvents();
+    }
+
+    function bindQuoteGraphEvents() {
+        if (runtimeState.quoteGraphBound) return;
+        runtimeState.quoteGraphBound = true;
+
+        document.addEventListener('click', event => {
+            const jump = event.target.closest('[data-glp-jump-to]');
+            if (!jump) return;
+            event.preventDefault();
+            const target = document.getElementById(jump.dataset.glpJumpTo);
+            if (!target) return;
+            target.scrollIntoView({ behavior: settings.smoothScrolling ? 'smooth' : 'auto', block: 'center' });
+            target.classList.add('glp-post-flash');
+            window.setTimeout(() => target.classList.remove('glp-post-flash'), 1600);
+        });
+
+        // Context card: reading who answered you should not cost a scroll.
+        document.addEventListener('mouseover', event => {
+            const chip = event.target.closest('.glp-backlink');
+            if (!chip || !chip.dataset.glpExcerpt) return;
+            showBacklinkCard(chip);
+        });
+        document.addEventListener('mouseout', event => {
+            if (event.target.closest('.glp-backlink')) hideBacklinkCard();
+        });
+    }
+
+    function showBacklinkCard(chip) {
+        let card = document.getElementById('glp-backlink-card');
+        if (!card) {
+            card = document.createElement('div');
+            card.id = 'glp-backlink-card';
+            document.body.appendChild(card);
+        }
+        card.textContent = chip.dataset.glpExcerpt;
+        const rect = chip.getBoundingClientRect();
+        card.style.top = `${Math.max(8, rect.top + window.scrollY - card.offsetHeight - 8)}px`;
+        card.style.left = `${Math.min(window.innerWidth - 340, rect.left + window.scrollX)}px`;
+        card.classList.add('glp-backlink-card-visible');
+    }
+
+    function hideBacklinkCard() {
+        document.getElementById('glp-backlink-card')?.classList.remove('glp-backlink-card-visible');
+    }
+
+    function destroyQuoteGraph() {
+        document.querySelectorAll('.glp-backlinks, .glp-quote-jump').forEach(node => node.remove());
+        document.getElementById('glp-backlink-card')?.remove();
     }
 
     function initNestedQuoteCollapse() {

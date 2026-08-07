@@ -72,6 +72,7 @@ window.GLP_SCHEMA = {
     "collapseNestedQuotes": true,
     "collapseQuotesByDefault": false,
     "quoteBorderColor": "#4a90d9",
+    "quoteBacklinks": true,
     "colorTheme": "midnight",
     "shapeStyle": "default",
     "fontSize": 14,
@@ -164,6 +165,7 @@ window.GLP_SCHEMA = {
     "readerMode": "Distraction-free reading surface: hides author metadata, sidebar, and non-essential chrome.",
     "hideRelatedThreads": "Hides the related threads section at the bottom of thread pages.",
     "quoteDepthBadges": "Shows quote nesting depth with a small numbered badge.",
+    "quoteBacklinks": "Reads the \"Quoting:\" links to work out who answered whom, then lists the replies to a post underneath it and adds an in-page jump to the post being quoted.",
     "collapseNestedQuotes": "Collapses quote chains deeper than two levels with an expand toggle.",
     "darkModeEnhance": "Applies the selected GLP Ultra dark theme.",
     "smoothScrolling": "Uses smoother page movement where supported.",
@@ -543,6 +545,10 @@ window.GLP_SCHEMA = {
         {
           "key": "quoteDepthBadges",
           "label": "Quote Depth Badges"
+        },
+        {
+          "key": "quoteBacklinks",
+          "label": "Quote Backlinks (who answered this post)"
         },
         {
           "key": "collapseNestedQuotes",

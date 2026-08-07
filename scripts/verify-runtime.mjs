@@ -344,6 +344,49 @@ try {
   check('thread: Markdown export quotes nested material', markdown.includes('\n> '));
   check('thread: Markdown export lists the media manifest', markdown.includes('## Media manifest'));
 
+  // ---------------- Noise budget ----------------
+  // The whole point is that the number matches what is actually hidden, so mute someone and
+  // watch it move rather than asserting a chip exists.
+  check('noise: budget chip rendered in the thread tools bar',
+    await page.locator('#glp-noise-chip').count() === 1);
+  const noiseBefore = await page.locator('#glp-noise-chip').innerText();
+
+  const noiseAuthor = await page.evaluate(() => {
+    const header = [...document.querySelectorAll('.msg tr[id^="post_"] .author_header')]
+      .find(node => {
+        const link = node.querySelector('b a') || node.querySelector('a');
+        return link && link.textContent.trim() && link.textContent.trim() !== 'Anonymous Coward';
+      });
+    const link = header?.querySelector('b a') || header?.querySelector('a');
+    return link ? link.textContent.trim() : '';
+  });
+  await page.locator('.msg tr[id^="post_"] .author_header .glp-mute-btn').first().click();
+  await page.waitForTimeout(400);
+  const noiseAfter = await page.locator('#glp-noise-chip').innerText();
+  const hiddenNow = await page.locator('.glp-muted-post').count();
+  check('noise: muting a user raises the count by the posts it actually hid',
+    hiddenNow > 0 && noiseAfter !== noiseBefore, `${noiseBefore} -> ${noiseAfter} (${hiddenNow} hidden, ${noiseAuthor})`);
+
+  await page.locator('#glp-noise-chip').click();
+  await page.waitForTimeout(300);
+  const noisePanel = await page.locator('#glp-noise-panel').innerText();
+  check('noise: the breakdown names muted posts and their count',
+    /Posts from muted users/.test(noisePanel), noisePanel.replace(/\n/g, ' | ').slice(0, 120));
+  check('noise: the breakdown offers a route back to the recovery shelf',
+    await page.locator('#glp-noise-panel button:text("Recovery shelf")').count() === 1);
+  check('noise: only non-zero rows are listed',
+    !/Pinned threads hidden/.test(noisePanel), noisePanel.replace(/\n/g, ' | ').slice(0, 160));
+
+  // Unmute through the shelf so the rest of the run sees an unfiltered thread.
+  await page.locator('#glp-noise-panel button:text("Recovery shelf")').click();
+  await page.waitForTimeout(400);
+  await page.locator('#glp-recovery .glp-recovery-row button:text("Unmute")').first().click();
+  await page.waitForTimeout(400);
+  check('noise: unmuting from the shelf clears the hidden posts',
+    await page.locator('.glp-muted-post').count() === 0);
+  await page.locator('#glp-recovery .glp-diag-header .glp-btn').click();
+  await page.waitForTimeout(200);
+
   // ---------------- Media actions ----------------
   // The thread capture carries no in-post content image (only avatars, banner, and smileys), so
   // plant the three cases the predicate has to separate: a loaded content image, a loaded

@@ -197,7 +197,8 @@
         autoExpandImages: false,
         hideFooter: true,
         hideAllClfix: true,
-        updateNotices: true
+        updateNotices: true,
+        noiseBudget: true
     };
 
     const SECTION_DESCRIPTIONS = {
@@ -277,6 +278,7 @@
         hideThreadButtons: 'Adds per-row hide controls and a recovery shelf.',
         customCSS: 'Injected after the theme; keep it scoped and reversible.',
         hideAllClfix: 'Removes spacer elements that create dead space.',
+        noiseBudget: 'Shows how much this page is having kept off it - ads removed, muted and blocked posts, keyword hits, collapsed quotes - with a breakdown and a route to restore any of it.',
         mediaActions: 'Adds Save / Open / Copy link buttons under every content image in a post. A hotlinked third-party image cannot be fetched from the page, so saving it opens it instead and says so.',
         updateNotices: 'After an update, names the settings this version added so nothing new stays hidden.',
         reduceMotion: 'Stops every animation and transition GLP Ultra adds. Your operating system setting is always honoured; this forces it on regardless.',
@@ -428,6 +430,7 @@
         featureTimings: {},
         quoteGraphBound: false,
         mediaActionsBound: false,
+        adsRemoved: 0,
         contextBound: false,
         lastContext: null,
         newSettingKeys: [],
@@ -1178,6 +1181,17 @@ body.glp-enhanced-active { color-scheme: dark; }
 .glp-diag-warn span:last-child { color: #e6c14a; }
 .glp-diag-bad span:last-child { color: #ff8f8f; }
 .glp-diag-empty { color: #8592b0; padding: 3px 0; }
+
+#glp-noise-panel {
+    position: fixed; right: 18px; bottom: 18px; z-index: 2147483646;
+    width: min(420px, calc(100vw - 36px)); max-height: min(60vh, 520px);
+    display: flex; flex-direction: column;
+    background: var(--glp-panel-bg, #0d1220);
+    border: 1px solid var(--glp-panel-border, rgba(147, 168, 211, 0.22));
+    border-radius: 12px; box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+    color: var(--glp-panel-text, #e6ecf7);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px;
+}
 
 #glp-recovery {
     position: fixed; left: 18px; bottom: 18px; z-index: 2147483646;
@@ -2817,7 +2831,8 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
                     { key: 'autoExpandImages', label: 'Auto-Expand Images' },
                     { key: 'hideFooter', label: 'Hide Footer' },
                     { key: 'hideAllClfix', label: 'Remove Layout Spacers (br/clfix)' },
-                    { key: 'updateNotices', label: 'Announce New Settings After An Update' }
+                    { key: 'updateNotices', label: 'Announce New Settings After An Update' },
+                    { key: 'noiseBudget', label: 'Noise Budget (What Is Being Hidden)' }
                 ])}
             </div>
             <div id="glp-enhanced-settings-footer">
@@ -3303,6 +3318,8 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             '.glp-quote-depth',
             '.glp-backlinks',
             '.glp-media-actions',
+            '#glp-noise-chip',
+            '#glp-noise-panel',
             '.glp-quote-jump',
             '#glp-backlink-card',
             '.glp-nested-toggle',
@@ -3356,6 +3373,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             { id: 'nav.forumToolbar', routes: ['feed', 'generic'], init: injectForumToolbar, apply: injectForumToolbar, destroy: () => document.getElementById('glp-forum-toolbar')?.remove() },
             { id: 'ui.backToTop', routes: ['all'], settingKey: 'backToTopButton', init: initBackToTop, apply: () => {}, destroy: () => document.getElementById('glp-back-to-top')?.remove() },
             { id: 'media.lightbox', routes: ['thread'], settingKey: 'imageLightbox', init: initGalleryLightbox, apply: initGalleryLightbox, destroy: destroyGalleryLightbox },
+            { id: 'ui.noiseBudget', routes: ['thread', 'feed'], settingKey: 'noiseBudget', init: renderNoiseBudget, apply: renderNoiseBudget, destroy: destroyNoiseBudget },
             { id: 'media.actions', routes: ['thread'], settingKey: 'mediaActions', init: initMediaActions, apply: initMediaActions, destroy: destroyMediaActions },
             { id: 'thread.collapsiblePosts', routes: ['thread'], settingKey: 'collapsiblePosts', init: initCollapsiblePosts, apply: initCollapsiblePosts, destroy: () => document.querySelectorAll('.glp-collapse-indicator').forEach(node => node.remove()) },
             { id: 'feed.infiniteScroll', routes: ['feed'], settingKey: 'infiniteScroll', init: initInfiniteScroll, apply: () => {}, destroy: () => document.getElementById('glp-infinite-loader')?.remove() },
@@ -3366,7 +3384,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             { id: 'time.relative', routes: ['all'], settingKey: 'relativeTimestamps', init: convertTimestamps, apply: convertTimestamps, destroy: () => {} },
             { id: 'feed.hotBadges', routes: ['feed'], settingKey: 'hotThreadBadge', init: applyHotThreadBadges, apply: applyHotThreadBadges, destroy: () => {} },
             { id: 'feed.freshness', routes: ['feed'], settingKey: 'freshnessColors', init: applyFreshnessColors, apply: applyFreshnessColors, destroy: () => document.querySelectorAll('.glp-fresh-now, .glp-fresh-recent, .glp-fresh-stale').forEach(node => node.classList.remove('glp-fresh-now', 'glp-fresh-recent', 'glp-fresh-stale')) },
-            { id: 'users.muteButtons', routes: ['all'], settingKey: 'userMuteList', init: initMuteButtons, apply: applyMuteList, destroy: () => document.querySelectorAll('.glp-mute-btn').forEach(node => node.remove()) },
+            { id: 'users.muteButtons', routes: ['all'], settingKey: 'userMuteList', init: initMuteButtons, apply: applyMuteList, destroy: () => { document.querySelectorAll('.glp-mute-btn').forEach(node => node.remove()); document.querySelectorAll('.glp-muted-post').forEach(node => node.classList.remove('glp-muted-post')); } },
             { id: 'users.blockButtons', routes: ['thread'], settingKey: 'userBlockList', init: initUserBlockButtons, apply: initUserBlockButtons, destroy: () => { document.querySelectorAll('.glp-block-btn').forEach(node => node.remove()); document.querySelectorAll('.glp-user-blocked').forEach(node => node.classList.remove('glp-user-blocked')); } },
             { id: 'thread.memeFilter', routes: ['thread'], settingKey: 'hideMemeReplies', init: applyMemeFilter, apply: applyMemeFilter, destroy: clearMemeFilter },
             { id: 'feed.pinnedVisibility', routes: ['feed'], init: applyPinnedVisibility, apply: applyPinnedVisibility, destroy: clearPinnedVisibility },
@@ -3447,21 +3465,25 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
     // DOM MODIFICATIONS
     // ============================================
     function applyDOMModifications() {
+        // Everything else the noise budget reports can be counted off the live DOM. A removed ad
+        // leaves nothing behind, so it has to be counted at the moment it goes.
+        const removeAndCount = (nodes) => {
+            nodes.forEach(el => el.remove());
+            runtimeState.adsRemoved += nodes.length;
+        };
+
         if (settings.removeWidgets) {
-            document.querySelectorAll('[data-type="_mgwidget"]').forEach(el => el.remove());
+            removeAndCount([...document.querySelectorAll('[data-type="_mgwidget"]')]);
         }
 
         if (settings.removeAmpEmbeds) {
-            document.querySelectorAll('amp-embed').forEach(el => el.remove());
+            removeAndCount([...document.querySelectorAll('amp-embed')]);
         }
 
         if (settings.hideInlineReplyAds) {
-            document.querySelectorAll('.post_main > div[style*="float"]').forEach(div => {
-                if (div.querySelector('[data-type="_mgwidget"], amp-embed') ||
-                    div.innerHTML.includes('replies inline')) {
-                    div.remove();
-                }
-            });
+            removeAndCount([...document.querySelectorAll('.post_main > div[style*="float"]')].filter(div =>
+                div.querySelector('[data-type="_mgwidget"], amp-embed') ||
+                div.innerHTML.includes('replies inline')));
         }
 
         if (settings.autoExpandImages) {
@@ -4057,8 +4079,10 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
     }
 
     function applyMuteList() {
-        if (!settings.userMuteList || mutedUsers.length === 0) return;
-        const isMuted = buildMuteMatcher();
+        if (!settings.userMuteList) return;
+        // Not `mutedUsers.length === 0 -> return`: unmuting the last name has to run the pass
+        // that takes the class back off, or those posts stay hidden until a reload.
+        const isMuted = mutedUsers.length ? buildMuteMatcher() : () => false;
 
         // Thread list: hide rows by muted poster
         document.querySelectorAll('.threads .hfr').forEach(td => {
@@ -4072,6 +4096,8 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             const name = postAuthorName(tr);
             if (name) tr.classList.toggle('glp-muted-post', isMuted(name));
         });
+
+        renderNoiseBudget();
     }
 
     function postAuthorName(tr) {
@@ -4255,6 +4281,8 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             const blocked = !!(settings.userBlockList && match && isUserBlocked(match[1]));
             tr.classList.toggle('glp-user-blocked', blocked);
         });
+
+        renderNoiseBudget();
     }
 
     function initUserBlockButtons(root = document) {
@@ -4329,6 +4357,8 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             const text = clone.textContent.replace(/\s+/g, ' ').trim();
             tr.classList.toggle('glp-meme-hidden', text.length < 20);
         });
+
+        renderNoiseBudget();
     }
 
     function clearMemeFilter() {
@@ -4815,6 +4845,8 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
         });
 
         updateHiddenBar(hiddenCount);
+
+        renderNoiseBudget();
     }
 
     function updateHiddenBar(count) {
@@ -4956,6 +4988,8 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
         });
 
         updateKeywordFilterStatus(hiddenCount, highlightCount);
+
+        renderNoiseBudget();
     }
 
     function updateKeywordFilterStatus(hiddenCount, highlightCount) {
@@ -7063,6 +7097,123 @@ ${manifest}
 
         runtimeState.observer.observe(document.body, { childList: true, subtree: true });
         announceVersionChange();
+    }
+
+    // ============================================
+    // NOISE BUDGET
+    // ============================================
+
+    /**
+     * What this page would have looked like without GLP Ultra, as a number. Hiding things
+     * silently is how a filter loses trust: a reader has no way to tell an empty thread from an
+     * over-eager mute list. Every count is read off the live DOM except removed ads, which leave
+     * nothing to count.
+     */
+    function noiseBudget() {
+        const count = selector => document.querySelectorAll(selector).length;
+        const items = [
+            { key: 'ads', label: 'Ads and widgets removed', value: runtimeState.adsRemoved },
+            { key: 'mutedPosts', label: 'Posts from muted users', value: count('.glp-muted-post') },
+            { key: 'blockedPosts', label: 'Posts from blocked users', value: count('.glp-user-blocked') },
+            { key: 'keyword', label: 'Posts hidden by keyword', value: count('.glp-keyword-hidden') },
+            { key: 'imageOnly', label: 'Image-only replies hidden', value: count('.glp-meme-hidden') },
+            { key: 'hiddenThreads', label: 'Threads hidden on this page', value: count('.glp-thread-hidden') },
+            { key: 'pinned', label: 'Pinned threads hidden', value: count('.glp-pinned-hidden') },
+            { key: 'quotes', label: 'Nested quotes collapsed', value: count('.glp-nested-collapsed:not(.glp-nested-expanded)') }
+        ];
+        return { items, total: items.reduce((sum, item) => sum + item.value, 0) };
+    }
+
+    function renderNoiseBudget() {
+        if (!settings.noiseBudget) {
+            destroyNoiseBudget();
+            return;
+        }
+
+        const bar = runtimeState.route === 'thread' ? getThreadToolsBar() : document.getElementById('glp-forum-toolbar');
+        if (!bar) return;
+
+        const budget = noiseBudget();
+        let chip = bar.querySelector('#glp-noise-chip');
+        if (!chip) {
+            chip = document.createElement('button');
+            chip.type = 'button';
+            chip.id = 'glp-noise-chip';
+            chip.className = 'glp-toolbar-btn';
+            chip.addEventListener('click', toggleNoisePanel);
+            bar.appendChild(chip);
+        }
+        chip.textContent = budget.total ? `Filtered ${budget.total}` : 'Filtered nothing';
+        chip.title = 'What GLP Ultra is keeping off this page';
+
+        if (document.getElementById('glp-noise-panel')) renderNoisePanel();
+    }
+
+    function toggleNoisePanel() {
+        if (document.getElementById('glp-noise-panel')) {
+            document.getElementById('glp-noise-panel').remove();
+            return;
+        }
+        renderNoisePanel();
+    }
+
+    function renderNoisePanel() {
+        const budget = noiseBudget();
+        let panel = document.getElementById('glp-noise-panel');
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'glp-noise-panel';
+            panel.setAttribute('role', 'region');
+            panel.setAttribute('aria-label', 'Noise budget');
+            document.body.appendChild(panel);
+        }
+        panel.replaceChildren();
+
+        const header = document.createElement('div');
+        header.className = 'glp-diag-header';
+        const title = document.createElement('span');
+        title.textContent = `Kept off this page (${budget.total})`;
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'glp-btn glp-btn-secondary';
+        close.textContent = 'Close';
+        close.addEventListener('click', () => panel.remove());
+        header.append(title, close);
+
+        const body = document.createElement('div');
+        body.className = 'glp-diag-body';
+        const group = diagnosticsGroup(body, 'Breakdown');
+        budget.items.filter(item => item.value > 0)
+            .forEach(item => diagnosticsRow(group, item.label, String(item.value)));
+
+        if (!budget.total) {
+            const empty = document.createElement('div');
+            empty.className = 'glp-diag-empty';
+            empty.textContent = 'Nothing on this page is being hidden.';
+            group.appendChild(empty);
+        }
+
+        const recovery = document.createElement('div');
+        recovery.className = 'glp-recovery-row';
+        const hint = document.createElement('span');
+        hint.className = 'glp-recovery-label';
+        hint.textContent = 'Restore any of it';
+        const openShelf = document.createElement('button');
+        openShelf.type = 'button';
+        openShelf.textContent = 'Recovery shelf';
+        openShelf.addEventListener('click', () => {
+            panel.remove();
+            renderRecoveryShelf();
+        });
+        recovery.append(hint, openShelf);
+        body.appendChild(recovery);
+
+        panel.append(header, body);
+    }
+
+    function destroyNoiseBudget() {
+        document.getElementById('glp-noise-chip')?.remove();
+        document.getElementById('glp-noise-panel')?.remove();
     }
 
     // ============================================

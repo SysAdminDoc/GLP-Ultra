@@ -435,6 +435,7 @@
         threadPreviewBound: false,
         adsRemoved: 0,
         contextBound: false,
+        returnToSettings: null,
         lastContext: null,
         newSettingKeys: [],
         previousVersion: '',
@@ -7961,6 +7962,7 @@ ${manifest}
         close.type = 'button';
         close.className = 'glp-btn glp-btn-secondary';
         close.textContent = 'Close';
+        close.dataset.glpClose = '1';
         close.addEventListener('click', () => panel.remove());
         header.append(title, close);
 
@@ -8052,6 +8054,7 @@ ${manifest}
             existing.remove();
             return;
         }
+        leaveSettingsFor('recovery');
         renderRecoveryShelf();
     }
 
@@ -8073,8 +8076,13 @@ ${manifest}
         close.type = 'button';
         close.className = 'glp-btn glp-btn-secondary';
         close.textContent = 'Close';
+        close.dataset.glpClose = '1';
         close.addEventListener('click', () => panel.remove());
-        header.append(title, close);
+        const actions = document.createElement('div');
+        actions.className = 'glp-footer-group';
+        actions.appendChild(close);
+        header.append(title, actions);
+        addBackToSettings(header);
 
         const body = document.createElement('div');
         body.className = 'glp-diag-body';
@@ -8330,12 +8338,42 @@ ${manifest}
         return group;
     }
 
+    /**
+     * Diagnostics and the recovery shelf are opened from the settings footer, then rendered as
+     * fixed panels - straight over the panel that launched them, covering its nav rail and its
+     * buttons. They are full inspectors, so hand the screen over and offer the way back.
+     */
+    function leaveSettingsFor(surface) {
+        const overlay = document.getElementById('glp-enhanced-overlay');
+        if (!overlay) return false;
+        overlay.remove();
+        runtimeState.returnToSettings = surface;
+        return true;
+    }
+
+    function addBackToSettings(header) {
+        if (!runtimeState.returnToSettings) return;
+        const back = document.createElement('button');
+        back.type = 'button';
+        back.className = 'glp-btn glp-btn-secondary';
+        back.textContent = 'Back to settings';
+        back.addEventListener('click', () => {
+            document.getElementById('glp-diagnostics')?.remove();
+            document.getElementById('glp-recovery')?.remove();
+            runtimeState.returnToSettings = null;
+            createSettingsPanel();
+        });
+        header.querySelector('.glp-footer-group')?.prepend(back);
+        if (!header.querySelector('.glp-footer-group')) header.appendChild(back);
+    }
+
     function toggleDiagnosticsPanel() {
         const existing = document.getElementById('glp-diagnostics');
         if (existing) {
             existing.remove();
             return;
         }
+        leaveSettingsFor('diagnostics');
         renderDiagnosticsPanel();
     }
 
@@ -8369,10 +8407,12 @@ ${manifest}
         close.type = 'button';
         close.className = 'glp-btn glp-btn-secondary';
         close.textContent = 'Close';
+        close.dataset.glpClose = '1';
         close.addEventListener('click', () => panel.remove());
 
         actions.append(copy, close);
         header.append(title, actions);
+        addBackToSettings(header);
 
         const body = document.createElement('div');
         body.className = 'glp-diag-body';
@@ -8441,6 +8481,10 @@ ${manifest}
             });
             saveSettings();
             applyStyles();
+            // The nav's theme picker is a plain <select>; nothing repaints it when the theme is
+            // changed from the panel, the popup, or another device.
+            const themeSelect = document.getElementById('glp-theme-select');
+            if (themeSelect && themeSelect.value !== settings.colorTheme) themeSelect.value = settings.colorTheme;
             if (!settings.enabled) {
                 destroyEnhancedUI({ keepStyles: true });
             } else if (!runtimeState.featuresStarted) {

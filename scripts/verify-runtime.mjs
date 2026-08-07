@@ -147,11 +147,13 @@ try {
   check('feed: the shelf then reports nothing hidden',
     (await page.locator('#glp-recovery .glp-diag-group').first().innerText()).includes('Nothing hidden'));
 
-  await page.locator('#glp-recovery .glp-diag-header .glp-btn').click();
+  check('feed: opening the shelf hands the screen over instead of covering the panel',
+    await page.locator('#glp-enhanced-overlay').count() === 0);
+  check('feed: the shelf offers the way back to settings',
+    await page.locator('#glp-recovery .glp-diag-header button:text("Back to settings")').count() === 1);
+  await page.locator('#glp-recovery [data-glp-close]').click();
   await page.waitForTimeout(200);
   check('feed: the recovery shelf closes', await page.locator('#glp-recovery').count() === 0);
-  await page.locator('#glp-enhanced-close-btn').click();
-  await page.waitForTimeout(200);
 
   // ---------------- Thread route ----------------
   await page.goto(CAPTURES.thread.url, { waitUntil: 'domcontentloaded' });
@@ -214,10 +216,9 @@ try {
     await page.locator('#glp-diagnostics .glp-diag-group').count() >= 4);
   check('thread: the diagnostics panel reports no feature errors',
     (await page.locator('#glp-diagnostics .glp-diag-group').nth(2).innerText()).includes('None recorded'));
-  await page.locator('#glp-diagnostics .glp-diag-header .glp-btn:last-child').click();
+  await page.locator('#glp-diagnostics [data-glp-close]').click();
   await page.waitForTimeout(200);
   check('thread: the diagnostics panel closes', await page.locator('#glp-diagnostics').count() === 0);
-  await page.locator('#glp-enhanced-close-btn').click();
   await page.waitForTimeout(200);
 
   // Media adapters: the capture carries a real X/Twitter widget iframe.
@@ -470,8 +471,7 @@ try {
       await page.waitForTimeout(250);
     }
   }
-  await page.locator('#glp-recovery .glp-diag-header .glp-btn').click();
-  await page.locator('#glp-enhanced-close-btn').click();
+  await page.locator('#glp-recovery [data-glp-close]').click();
   await page.waitForTimeout(300);
   const cleaned = await sendMessage(worker, page, { type: 'glp:get-state' });
   check('packs: pack-added mutes can be removed again from the shelf',
@@ -528,7 +528,7 @@ try {
   await page.waitForTimeout(400);
   check('noise: unmuting from the shelf clears the hidden posts',
     await page.locator('.glp-muted-post').count() === 0);
-  await page.locator('#glp-recovery .glp-diag-header .glp-btn').click();
+  await page.locator('#glp-recovery [data-glp-close]').click();
   await page.waitForTimeout(200);
 
   // ---------------- Media actions ----------------

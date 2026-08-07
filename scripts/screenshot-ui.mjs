@@ -105,8 +105,11 @@ try {
     await page.locator('#glp-diagnostics-btn').click();
     await page.waitForTimeout(350);
     await shoot(`${theme}-03-diagnostics`);
-    await page.locator('#glp-diagnostics .glp-diag-header .glp-btn:last-child').click();
+    await page.locator('#glp-diagnostics [data-glp-close]').click();
 
+    // Opening an inspector hands the screen over, so come back for the next one.
+    await send(worker, { type: 'glp:open-settings' });
+    await page.waitForTimeout(350);
     await page.locator('#glp-recovery-btn').click();
     await page.waitForTimeout(350);
     await shoot(`${theme}-04-recovery`);

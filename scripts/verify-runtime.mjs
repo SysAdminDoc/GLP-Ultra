@@ -314,15 +314,10 @@ try {
       await page.locator(`#glp-thread-tools-bar [data-glp-thread-tool="${tool}"]`).count() === 1);
   }
 
-  const download = await Promise.all([
-    page.waitForEvent('download', { timeout: 10000 }),
-    page.locator('[data-glp-thread-tool="export-json"]').click()
-  ]).then(([dl]) => dl);
-  const stream = await download.createReadStream();
-  const chunks = [];
-  for await (const chunk of stream) chunks.push(chunk);
-  const payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  check('thread: JSON export downloads', /\.json$/.test(download.suggestedFilename()), download.suggestedFilename());
+  const download = await captureDownload(page, () => page.locator('[data-glp-thread-tool="export-json"]').click());
+  check('thread: JSON export downloads', /\.json$/.test(download?.suggestedFilename() ?? ''),
+    download ? download.suggestedFilename() : 'no download event');
+  const payload = download ? JSON.parse(await readDownload(download)) : { posts: [], media: null, source: null };
   check('thread: JSON export has posts', Array.isArray(payload.posts) && payload.posts.length > 0, `${payload.postCount} posts`);
   check('thread: JSON export records source URL', payload.source === CAPTURES.thread.url, payload.source);
   check('thread: JSON export carries a media manifest', Array.isArray(payload.media), typeof payload.media);
@@ -332,15 +327,10 @@ try {
   check('thread: JSON export strips injected chrome',
     !JSON.stringify(payload.posts).includes('glp-post-number'));
 
-  const mdDownload = await Promise.all([
-    page.waitForEvent('download', { timeout: 10000 }),
-    page.locator('[data-glp-thread-tool="export-md"]').click()
-  ]).then(([dl]) => dl);
-  const mdStream = await mdDownload.createReadStream();
-  const mdChunks = [];
-  for await (const chunk of mdStream) mdChunks.push(chunk);
-  const markdown = Buffer.concat(mdChunks).toString('utf8');
-  check('thread: Markdown export downloads', /\.md$/.test(mdDownload.suggestedFilename()), mdDownload.suggestedFilename());
+  const mdDownload = await captureDownload(page, () => page.locator('[data-glp-thread-tool="export-md"]').click());
+  check('thread: Markdown export downloads', /\.md$/.test(mdDownload?.suggestedFilename() ?? ''),
+    mdDownload ? mdDownload.suggestedFilename() : 'no download event');
+  const markdown = mdDownload ? await readDownload(mdDownload) : '';
   check('thread: Markdown export has a heading and posts', markdown.startsWith('# ') && markdown.includes('## #1 '));
   check('thread: Markdown export quotes nested material', markdown.includes('\n> '));
   check('thread: Markdown export lists the media manifest', markdown.includes('## Media manifest'));
@@ -591,6 +581,50 @@ try {
     node.remove();
   }));
 
+  // ---------------- Semantic colour tokens ----------------
+  // The static gate rejects a token that references itself; this one proves the tokens survive
+  // all the way to a painted element. A dead token does not disappear - `border-left-color`
+  // falls back to `currentColor`, so a broken success toast is still bordered, just in the text
+  // colour. Comparing against the element's own colour is what makes that visible.
+  const semantic = await page.evaluate(() => {
+    const read = variant => {
+      const probe = document.createElement('div');
+      probe.className = `glp-toast glp-toast-${variant}`;
+      document.body.appendChild(probe);
+      const style = getComputedStyle(probe);
+      const parse = value => (value.match(/\d+/g) || []).slice(0, 3).map(Number);
+      const out = { border: parse(style.borderLeftColor), text: parse(style.color) };
+      probe.remove();
+      return out;
+    };
+    const root = getComputedStyle(document.documentElement);
+    return {
+      tokens: ['success', 'warning', 'danger'].map(name => root.getPropertyValue(`--glpx-${name}`).trim()),
+      // The danger token is worn by the `error` variant; naming a class that does not exist
+      // reads the base toast's accent border and looks like a broken token.
+      success: read('success'),
+      warning: read('warning'),
+      danger: read('error')
+    };
+  });
+  check('theme: the semantic tokens resolve to real, distinct colours',
+    semantic.tokens.every(value => /^#[0-9a-f]{3,8}$/i.test(value)) && new Set(semantic.tokens).size === 3,
+    JSON.stringify(semantic.tokens));
+  const painted = (variant, dominant) => {
+    const { border, text } = semantic[variant];
+    if (border.length !== 3 || text.length !== 3) return false;
+    // Not merely inherited from the text colour, and the channel the name promises leads.
+    if (border.every((channel, index) => channel === text[index])) return false;
+    return border[dominant] > border[(dominant + 1) % 3] && border[dominant] > border[(dominant + 2) % 3];
+  };
+  check('theme: a success toast paints green, not the inherited text colour',
+    painted('success', 1), JSON.stringify(semantic.success));
+  check('theme: a danger toast paints red, not the inherited text colour',
+    painted('danger', 0), JSON.stringify(semantic.danger));
+  check('theme: a warning toast paints warm, not the inherited text colour',
+    painted('warning', 0) && semantic.warning.border[1] > semantic.warning.border[2],
+    JSON.stringify(semantic.warning));
+
   // ---------------- Accessibility overrides ----------------
   // Asserted as computed style on a real element: a rule that exists in the stylesheet but
   // loses to the theme is exactly the failure these settings are supposed to prevent.
@@ -646,12 +680,10 @@ try {
   await page.keyboard.press('Escape').catch(() => {});
   await page.locator('#glp-tag-picker').evaluate(node => node.remove()).catch(() => {});
 
-  const exported = await Promise.all([
-    page.waitForEvent('download', { timeout: 10000 }),
-    sendMessage(worker, page, { type: 'glp:context-action', action: 'export-thread' })
-  ]).then(([dl]) => dl);
-  check('context: the export action downloads the thread', /\.md$/.test(exported.suggestedFilename()),
-    exported.suggestedFilename());
+  const exported = await captureDownload(page,
+    () => sendMessage(worker, page, { type: 'glp:context-action', action: 'export-thread' }));
+  check('context: the export action downloads the thread', /\.md$/.test(exported?.suggestedFilename() ?? ''),
+    exported ? exported.suggestedFilename() : 'no download event');
 
   const noThread = await sendMessage(worker, page, { type: 'glp:context-action', action: 'preview-media' });
   check('context: an action with nothing under the cursor reports why', noThread?.result?.ok === false,
@@ -747,6 +779,29 @@ try {
 } finally {
   if (context) await context.close();
   await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
+}
+
+/**
+ * Runs `trigger` and returns the download it caused, or null if none arrived.
+ *
+ * A bare `page.waitForEvent('download')` throws on timeout, and an uncaught throw here does not
+ * fail one check - it aborts the process and takes every later check's evidence with it. Two
+ * runs died that way at different export buttons, reporting nothing about the ~40 checks that
+ * never ran. Returning null instead turns a slow export into one honest failure.
+ */
+async function captureDownload(page, trigger, timeout = 30000) {
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout }).catch(() => null),
+    Promise.resolve().then(trigger).catch(() => null)
+  ]);
+  return download;
+}
+
+async function readDownload(download) {
+  const stream = await download.createReadStream();
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 async function sendMessage(worker, page, message) {

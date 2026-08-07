@@ -64,6 +64,21 @@ for (const [pattern, message] of bannedChecks) {
   if (pattern.test(source)) fail(message);
 }
 
+// A custom property whose own value references itself is a cycle, and CSS resolves a cycle as
+// invalid-at-computed-value-time: every var() reading it silently falls back to inherit. It
+// costs nothing at build time and is invisible at runtime, which is how three dead semantic
+// colours shipped in 3.3.0. Catch the whole class here rather than one colour at a time.
+const selfReferentialToken = source
+  .split(/\r?\n/)
+  .map((line, index) => ({ line, index: index + 1 }))
+  .find(({ line }) => {
+    const match = /(--[\w-]+)\s*:\s*var\(\s*(--[\w-]+)\s*[),]/.exec(line);
+    return match && match[1] === match[2];
+  });
+if (selfReferentialToken) {
+  fail(`custom property references itself at line ${selfReferentialToken.index}: ${selfReferentialToken.line.trim()}`);
+}
+
 const innerHTMLLines = source
   .split(/\r?\n/)
   .map((line, index) => ({ line, index: index + 1 }))

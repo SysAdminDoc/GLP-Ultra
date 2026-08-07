@@ -716,10 +716,13 @@ body.glp-enhanced-active,
     --glpx-border-soft: rgba(147, 168, 211, 0.14);
     --glpx-border-strong: rgba(var(--glpx-accent-rgb), 0.46);
 
-    /* Semantic - deliberately not theme-tinted: green must stay green on the Blood theme. */
-    --glpx-success: var(--glpx-success);
-    --glpx-warning: var(--glpx-warning);
-    --glpx-danger: var(--glpx-danger);
+    /* Semantic - deliberately not theme-tinted: green must stay green on the Blood theme.
+       These must be literals. A custom property that references itself is a cycle, which CSS
+       resolves as invalid-at-computed-value-time, so every var(--glpx-success) in the product
+       silently falls back to inherit and all three states paint the same colour. */
+    --glpx-success: #43d38b;
+    --glpx-warning: #f5bd5f;
+    --glpx-danger: #ff6b6b;
 
     /* Radius scale. Nothing outside this set, and never a pill. */
     --glpx-r-xs: 4px;
@@ -2035,9 +2038,6 @@ body.glpx-enabled {
     --glpx-link: ${t.link};
     --glpx-link-hover: ${t.linkHover};
     --glpx-hover: ${t.hover};
-    --glpx-danger: var(--glpx-danger);
-    --glpx-warning: var(--glpx-warning);
-    --glpx-success: var(--glpx-success);
     --glpx-radius: 8px;
     --glpx-z-overlay: 999999;
     --glpx-z-toast: 1000002;

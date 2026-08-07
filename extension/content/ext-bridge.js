@@ -45,6 +45,14 @@
                     : { ok: false });
                 return false;
 
+            case 'glp:build-pack':
+                sendResponse(api ? { ok: true, pack: api.buildPack(message.kind) } : { ok: false });
+                return false;
+
+            case 'glp:apply-pack':
+                sendResponse(api ? { ok: true, result: api.applyPack(message.pack) } : { ok: false });
+                return false;
+
             case 'glp:patch-settings':
                 if (api) {
                     api.applyExternalSettings(message.patch || {});

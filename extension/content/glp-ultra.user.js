@@ -2923,6 +2923,9 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             applyReaderPreset();
             closeSettings();
         });
+        document.getElementById('glp-pack-export-theme')?.addEventListener('click', () => exportPack('theme'));
+        document.getElementById('glp-pack-export-filters')?.addEventListener('click', () => exportPack('filters'));
+        document.getElementById('glp-pack-import')?.addEventListener('click', importPack);
     }
 
     function createSettingsSection(title, items, specialId) {
@@ -2954,6 +2957,14 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
                 <div class="glp-setting-item full-width" data-search="presets lean reading preset declutter">
                     <label><span class="glp-setting-label">Lean reading preset</span><span class="glp-setting-help">Turns on every ad, chrome, and metadata cleanup at once. Applies immediately with an undo toast.</span></label>
                     <button type="button" class="glp-btn glp-btn-secondary" id="glp-preset-reader">Apply lean reading preset</button>
+                </div>
+                <div class="glp-setting-item full-width" data-search="packs share theme filters export import pack">
+                    <label><span class="glp-setting-label">Shareable packs</span><span class="glp-setting-help">A pack is one slice of this configuration, not the whole profile: a theme pack carries the look, a filter pack carries mutes, blocks, and keyword rules. Importing a filter pack adds to your lists instead of replacing them, so someone else's pack cannot wipe yours.</span></label>
+                    <div class="glp-footer-group">
+                        <button type="button" class="glp-btn glp-btn-secondary" id="glp-pack-export-theme">Export theme pack</button>
+                        <button type="button" class="glp-btn glp-btn-secondary" id="glp-pack-export-filters">Export filter pack</button>
+                        <button type="button" class="glp-btn glp-btn-secondary" id="glp-pack-import">Import pack</button>
+                    </div>
                 </div>
             `;
         } else {
@@ -3130,6 +3141,147 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             hiddenThreads,
             hiddenThreadTitles
         };
+    }
+
+    // ============================================
+    // SHAREABLE PACKS
+    // ============================================
+
+    // A pack is one slice of a profile, not a backup. Keeping the key lists explicit means a
+    // future setting is not silently swept into a file people hand to each other.
+    const PACK_KEYS = Object.freeze({
+        theme: ['colorTheme', 'shapeStyle', 'fontSize', 'lineHeight', 'maxContentWidth',
+            'darkModeEnhance', 'quoteBorderColor', 'customCSS'],
+        filters: ['keywordHide', 'keywordHighlight', 'hideMemeReplies', 'hideBoomerGifs',
+            'userMuteMatchMode']
+    });
+
+    function buildPack(kind) {
+        const keys = PACK_KEYS[kind] || [];
+        const pack = {
+            format: 'glp-ultra-pack',
+            kind,
+            version: SCRIPT_VERSION,
+            exportedAt: new Date().toISOString(),
+            settings: {}
+        };
+        keys.forEach(key => { pack.settings[key] = settings[key]; });
+
+        if (kind === 'filters') {
+            loadMutedUsers();
+            loadBlockedUsers();
+            pack.mutedUsers = [...mutedUsers];
+            pack.blockedUsers = blockedUsers.map(user => ({ ...user }));
+        }
+        return pack;
+    }
+
+    function exportPack(kind) {
+        const data = JSON.stringify(buildPack(kind), null, 2);
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `glp-ultra-${kind}-pack-${new Date().toISOString().slice(0, 10)}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        showNotification(`${kind === 'theme' ? 'Theme' : 'Filter'} pack exported.`, 'success');
+    }
+
+    function mergeCommaList(current, incoming) {
+        const seen = new Set();
+        return [...String(current || '').split(','), ...String(incoming || '').split(',')]
+            .map(part => part.trim())
+            .filter(part => {
+                if (!part) return false;
+                const key = part.toLowerCase();
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            })
+            .join(', ');
+    }
+
+    /**
+     * Applies a pack over the current configuration. A theme pack replaces the look, because a
+     * half-merged theme is nobody's theme. A filter pack *adds*: lists are unioned and keyword
+     * rules are merged, so importing someone else's pack can never delete your own mutes.
+     */
+    function applyPack(pack) {
+        const kind = pack && pack.kind;
+        const keys = PACK_KEYS[kind];
+        if (!keys) return { ok: false, reason: 'unknown pack kind' };
+
+        let changed = 0;
+        keys.forEach(key => {
+            if (!Object.prototype.hasOwnProperty.call(pack.settings || {}, key)) return;
+            const incoming = pack.settings[key];
+            if (kind === 'filters' && (key === 'keywordHide' || key === 'keywordHighlight')) {
+                const merged = mergeCommaList(settings[key], incoming);
+                if (merged !== settings[key]) { settings[key] = merged; changed++; }
+                return;
+            }
+            if (settings[key] !== incoming) { settings[key] = incoming; changed++; }
+        });
+
+        let addedUsers = 0;
+        if (kind === 'filters') {
+            loadMutedUsers();
+            loadBlockedUsers();
+            (pack.mutedUsers || []).forEach(name => {
+                const value = String(name || '').trim();
+                if (value && !mutedUsers.includes(value)) { mutedUsers.push(value); addedUsers++; }
+            });
+            (pack.blockedUsers || []).forEach(user => {
+                const id = String(user && user.id || '').trim();
+                if (id && !blockedUsers.some(existing => existing.id === id)) {
+                    blockedUsers.push({ id, name: String(user.name || id) });
+                    addedUsers++;
+                }
+            });
+            saveMutedUsers();
+            saveBlockedUsers();
+        }
+
+        saveSettings();
+        applyStyles();
+        runFeatureRegistry('apply');
+        return { ok: true, changed, addedUsers };
+    }
+
+    function importPack() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'application/json,.json';
+        input.addEventListener('change', () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                let pack;
+                try {
+                    pack = JSON.parse(String(reader.result));
+                } catch (error) {
+                    showNotification('That file is not valid JSON.', 'error');
+                    return;
+                }
+                if (!pack || pack.format !== 'glp-ultra-pack') {
+                    showNotification('That is not a GLP Ultra pack. Use Import under Export & Data for a full backup.', 'error');
+                    return;
+                }
+                const result = applyPack(pack);
+                if (!result.ok) {
+                    showNotification(`Pack not applied: ${result.reason}.`, 'error');
+                    return;
+                }
+                const parts = [`${result.changed} setting${result.changed === 1 ? '' : 's'}`];
+                if (result.addedUsers) parts.push(`${result.addedUsers} list entr${result.addedUsers === 1 ? 'y' : 'ies'}`);
+                showNotification(`${pack.kind === 'theme' ? 'Theme' : 'Filter'} pack applied: ${parts.join(', ')}.`, 'success');
+                closeSettings();
+            };
+            reader.readAsText(file);
+        });
+        input.click();
     }
 
     function exportSettings() {
@@ -7066,6 +7218,17 @@ ${manifest}
 
     function startFeatures() {
         if (runtimeState.featuresStarted || !settings.enabled) return;
+
+        // An external settings push can arrive before the document has been parsed: the shim's
+        // chrome.storage read lands at document_start, and if the mirrored copy differs from
+        // localStorage it applies the difference immediately. Starting here would mark the run
+        // done against a body with no posts in it, and the real page would never be touched -
+        // CSS injected, body flagged active, and not one feature applied.
+        if (document.readyState === 'loading' || !document.body) {
+            document.addEventListener('DOMContentLoaded', startFeatures, { once: true });
+            return;
+        }
+
         runtimeState.featuresStarted = true;
         document.body.classList.add('glp-enhanced-active', 'glpx-enabled');
 
@@ -7672,7 +7835,9 @@ ${manifest}
         runContextAction,
         describeContext: () => ({ ...(runtimeState.lastContext || {}) }),
         openRecovery: renderRecoveryShelf,
-        getRecoveryInventory: recoveryInventory
+        getRecoveryInventory: recoveryInventory,
+        buildPack,
+        applyPack
     };
 
     init();

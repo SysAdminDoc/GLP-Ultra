@@ -344,11 +344,103 @@ try {
   check('thread: Markdown export quotes nested material', markdown.includes('\n> '));
   check('thread: Markdown export lists the media manifest', markdown.includes('## Media manifest'));
 
+  // ---------------- Shareable packs ----------------
+  // The property that matters is that a pack someone else wrote cannot delete what you have.
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { keywordHide: 'mine', colorTheme: 'midnight' } });
+  await page.waitForTimeout(300);
+
+  const themePack = (await sendMessage(worker, page, { type: 'glp:build-pack', kind: 'theme' }))?.pack;
+  check('packs: a theme pack carries the look and nothing else',
+    themePack?.kind === 'theme' && 'colorTheme' in (themePack.settings || {}) && !('keywordHide' in (themePack.settings || {})),
+    JSON.stringify(Object.keys(themePack?.settings || {})));
+  check('packs: a theme pack carries no user lists',
+    !themePack?.mutedUsers && !themePack?.blockedUsers);
+
+  const applied = await sendMessage(worker, page, {
+    type: 'glp:apply-pack',
+    pack: { format: 'glp-ultra-pack', kind: 'theme', settings: { colorTheme: 'dracula' } }
+  });
+  check('packs: applying a theme pack changes the theme', applied?.result?.ok === true, JSON.stringify(applied));
+  const themedState = await sendMessage(worker, page, { type: 'glp:get-state' });
+  check('packs: the theme pack took effect', themedState?.settings?.colorTheme === 'dracula', themedState?.settings?.colorTheme);
+  check('packs: a theme pack leaves filters untouched', themedState?.settings?.keywordHide === 'mine', themedState?.settings?.keywordHide);
+
+  await sendMessage(worker, page, {
+    type: 'glp:apply-pack',
+    pack: {
+      format: 'glp-ultra-pack',
+      kind: 'filters',
+      settings: { keywordHide: 'theirs, mine' },
+      mutedUsers: ['PackedMuteOne', 'PackedMuteTwo']
+    }
+  });
+  await page.waitForTimeout(400);
+  const merged = await sendMessage(worker, page, { type: 'glp:get-state' });
+  check('packs: an imported filter pack merges keywords instead of replacing them',
+    /\bmine\b/.test(merged?.settings?.keywordHide || '') && /\btheirs\b/.test(merged?.settings?.keywordHide || ''),
+    merged?.settings?.keywordHide);
+  check('packs: keyword merge does not duplicate an entry both sides already had',
+    (merged?.settings?.keywordHide || '').split(',').filter(part => part.trim() === 'mine').length === 1,
+    merged?.settings?.keywordHide);
+  check('packs: an imported filter pack adds its muted users',
+    ['PackedMuteOne', 'PackedMuteTwo'].every(name => (merged?.lists?.mutedUsers || []).includes(name)),
+    JSON.stringify(merged?.lists?.mutedUsers));
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { keywordHide: '', colorTheme: 'midnight' } });
+
+  // Divergence between localStorage (the primary store) and its chrome.storage mirror is the
+  // state that fires the shim's sync at document_start. Two things must hold afterwards: the
+  // mirror wins, and the page still gets its features - an external settings push arriving
+  // before the document is parsed must not mark the run done against an empty DOM.
+  await page.evaluate(() => window.localStorage.removeItem('glpEnhanced.mv3.glpMutedUsers'));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1500);
+  const mirrored = await sendMessage(worker, page, { type: 'glp:get-state' });
+  check('packs: the chrome.storage mirror restores a store deleted from localStorage',
+    ['PackedMuteOne', 'PackedMuteTwo'].every(name => (mirrored?.lists?.mutedUsers || []).includes(name)),
+    JSON.stringify(mirrored?.lists?.mutedUsers));
+  check('shim: features still run when a settings push beats the document',
+    await page.locator('#glp-thread-tools-bar').count() === 1 && await page.locator('.glp-post-number').count() > 0,
+    JSON.stringify(await page.evaluate(() => ({
+      bars: document.querySelectorAll('#glp-thread-tools-bar').length,
+      numbers: document.querySelectorAll('.glp-post-number').length
+    }))));
+
+  // Put the lists back the way the rest of the run expects them.
+  await sendMessage(worker, page, { type: 'glp:open-settings' });
+  await page.waitForTimeout(300);
+  await page.locator('#glp-recovery-btn').click();
+  await page.waitForTimeout(300);
+  for (const name of ['PackedMuteOne', 'PackedMuteTwo']) {
+    const row = page.locator('.glp-recovery-row', { hasText: name });
+    if (await row.count()) {
+      await row.locator('button').first().click();
+      await page.waitForTimeout(250);
+    }
+  }
+  await page.locator('#glp-recovery .glp-diag-header .glp-btn').click();
+  await page.locator('#glp-enhanced-close-btn').click();
+  await page.waitForTimeout(300);
+  const cleaned = await sendMessage(worker, page, { type: 'glp:get-state' });
+  check('packs: pack-added mutes can be removed again from the shelf',
+    !['PackedMuteOne', 'PackedMuteTwo'].some(name => (cleaned?.lists?.mutedUsers || []).includes(name)),
+    JSON.stringify(cleaned?.lists?.mutedUsers));
+
   // ---------------- Noise budget ----------------
   // The whole point is that the number matches what is actually hidden, so mute someone and
   // watch it move rather than asserting a chip exists.
   check('noise: budget chip rendered in the thread tools bar',
-    await page.locator('#glp-noise-chip').count() === 1);
+    await page.locator('#glp-noise-chip').count() === 1,
+    JSON.stringify(await page.evaluate(() => ({
+      url: location.pathname,
+      active: document.body.classList.contains('glp-enhanced-active'),
+      chips: document.querySelectorAll('#glp-noise-chip').length,
+      bars: document.querySelectorAll('#glp-thread-tools-bar').length,
+      barAttached: !!document.getElementById('glp-thread-tools-bar')?.isConnected,
+      msgtitle: document.querySelectorAll('.msgtitle').length,
+      posts: document.querySelectorAll('.msg tr[id^="post_"]').length
+    })))
+    + ' errors=' + JSON.stringify((await workerDiagnostics(worker, page))?.errors || []));
   const noiseBefore = await page.locator('#glp-noise-chip').innerText();
 
   const noiseAuthor = await page.evaluate(() => {

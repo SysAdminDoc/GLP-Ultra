@@ -4,11 +4,13 @@
 
 ### Added
 
+- **Shareable packs.** A pack is one slice of a profile rather than a whole backup: a theme pack carries the look, a filter pack carries mutes, blocks, and keyword rules. Importing a filter pack *adds* — lists are unioned and keyword rules merged — so a pack someone else wrote can never delete your mutes. Under Presets.
 - **Noise budget.** A toolbar chip counts what GLP Ultra is keeping off the page — ads removed, posts from muted and blocked users, keyword hits, image-only replies, hidden and pinned threads, collapsed quotes — and opens a breakdown with a route straight to the recovery shelf. Every figure but the ad count is read off the live DOM, so it cannot drift from what is actually hidden.
 - **Save / Open / Copy link buttons on post images.** Saving fetches the blob so the file keeps its real name; a hotlinked third-party image cannot be fetched from a content script, so it falls back to opening the image and says why.
 
 ### Fixed
 
+- **An extension tab could come up with the theme applied and not one feature running.** The shim's `chrome.storage` read lands at `document_start`; when the mirrored copy differed from localStorage it pushed the difference straight into the engine, which started the feature run against a body that had no posts in it yet and marked the run done. The real page was then never touched — CSS injected, body flagged active, no post numbers, no toolbar, no error. Feature startup now waits for the document when a settings push beats it.
 - **Unmuting your last muted user left their posts hidden until a reload.** `applyMuteList()` returned early when the list was empty, skipping the pass that takes the class back off. Switching the mute feature off entirely had the same effect — its `destroy` removed the buttons but never unhid the posts. Found by the noise budget disagreeing with itself.
 - Images still loading were silently treated as chrome and skipped by the lightbox, the gallery, and the new media actions: `naturalWidth` is 0 until an image loads, and the shared predicate measured it during a document-idle pass. It now falls back to the declared `width`/`height`, and re-checks on load.
 

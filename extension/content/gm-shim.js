@@ -17,6 +17,7 @@
         'glpMutedUsers',
         'glpBlockedUsers',
         'glpHiddenThreads',
+        'glpHiddenThreadTitles',
         'glpUserTags',
         'glpWatchedThreads',
         'glpUserStats'

@@ -119,6 +119,40 @@ try {
     await page.locator('#glp-enhanced-settings [data-search*="Export"]').count() > 0);
   await page.locator('#glp-enhanced-close-btn').click();
 
+  // ---------------- Recovery shelf ----------------
+  const hiddenTitle = await page.evaluate(() => {
+    const row = document.querySelector('.glp-hide-col-btn')?.closest('tr');
+    const link = row?.querySelector('.sfr a[href*="/message"], a[href*="/message"]');
+    return link ? link.textContent.trim() : '';
+  });
+  check('feed: found a thread row to hide', !!hiddenTitle, hiddenTitle);
+
+  await page.locator('.glp-hide-col-btn').first().click();
+  await page.waitForTimeout(300);
+  check('feed: hiding a thread marks its row hidden', await page.locator('.threads tr.glp-thread-hidden').count() === 1);
+
+  await sendMessage(worker, page, { type: 'glp:open-settings' });
+  await page.waitForTimeout(300);
+  await page.locator('#glp-recovery-btn').click();
+  await page.waitForTimeout(300);
+  check('feed: the recovery shelf opens from the settings footer', await page.locator('#glp-recovery').count() === 1);
+  const shelfThreads = await page.locator('#glp-recovery .glp-diag-group').first().innerText();
+  check('feed: the shelf names the hidden thread rather than its id',
+    shelfThreads.includes(hiddenTitle.slice(0, 24)), shelfThreads);
+
+  await page.locator('#glp-recovery .glp-recovery-row button').first().click();
+  await page.waitForTimeout(300);
+  check('feed: restoring from the shelf unhides the row',
+    await page.locator('.threads tr.glp-thread-hidden').count() === 0);
+  check('feed: the shelf then reports nothing hidden',
+    (await page.locator('#glp-recovery .glp-diag-group').first().innerText()).includes('Nothing hidden'));
+
+  await page.locator('#glp-recovery .glp-diag-header .glp-btn').click();
+  await page.waitForTimeout(200);
+  check('feed: the recovery shelf closes', await page.locator('#glp-recovery').count() === 0);
+  await page.locator('#glp-enhanced-close-btn').click();
+  await page.waitForTimeout(200);
+
   // ---------------- Thread route ----------------
   await page.goto(CAPTURES.thread.url, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1200);

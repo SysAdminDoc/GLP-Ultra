@@ -1164,6 +1164,29 @@ body.glp-enhanced-active { color-scheme: dark; }
 .glp-diag-bad span:last-child { color: #ff8f8f; }
 .glp-diag-empty { color: #8592b0; padding: 3px 0; }
 
+#glp-recovery {
+    position: fixed; left: 18px; bottom: 18px; z-index: 2147483646;
+    width: min(460px, calc(100vw - 36px)); max-height: min(70vh, 640px);
+    display: flex; flex-direction: column;
+    background: var(--glp-panel-bg, #0d1220);
+    border: 1px solid var(--glp-panel-border, rgba(147, 168, 211, 0.22));
+    border-radius: 12px; box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+    color: var(--glp-panel-text, #e6ecf7);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px;
+}
+
+.glp-recovery-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 5px 0; border-bottom: 1px solid rgba(147, 168, 211, 0.10);
+}
+.glp-recovery-row:last-child { border-bottom: none; }
+.glp-recovery-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.glp-recovery-row button {
+    flex: none; background: rgba(255, 255, 255, 0.055); border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #dce7ff; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 11px;
+}
+.glp-recovery-row button:hover { background: rgba(74, 144, 217, 0.16); border-color: rgba(74, 144, 217, 0.38); }
+
 `;
 
         if (!settings.enabled) {
@@ -2623,6 +2646,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     <button class="glp-btn glp-btn-danger" id="glp-reset-btn">Reset to defaults</button>
                     <button class="glp-btn glp-btn-secondary" id="glp-export-btn">Export</button>
                     <button class="glp-btn glp-btn-secondary" id="glp-import-btn">Import</button>
+                    <button class="glp-btn glp-btn-secondary" id="glp-recovery-btn">Recovery</button>
                     <button class="glp-btn glp-btn-secondary" id="glp-diagnostics-btn">Diagnostics</button>
                 </div>
                 <div class="glp-footer-group">
@@ -2641,6 +2665,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         document.getElementById('glp-reset-btn').addEventListener('click', resetSettingsWithUndo);
         document.getElementById('glp-export-btn').addEventListener('click', exportSettings);
         document.getElementById('glp-import-btn').addEventListener('click', importSettings);
+        document.getElementById('glp-recovery-btn').addEventListener('click', toggleRecoveryShelf);
         document.getElementById('glp-diagnostics-btn').addEventListener('click', toggleDiagnosticsPanel);
 
         overlay.addEventListener('click', (e) => {
@@ -2908,7 +2933,8 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             blockedUsers,
             userTags,
             userStats,
-            hiddenThreads
+            hiddenThreads,
+            hiddenThreadTitles
         };
     }
 
@@ -2962,6 +2988,10 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     }
                     if (Array.isArray(data.hiddenThreads)) {
                         hiddenThreads = data.hiddenThreads;
+                        // Older backups predate the titles; the ids still restore, unnamed.
+                        hiddenThreadTitles = (data.hiddenThreadTitles && typeof data.hiddenThreadTitles === 'object')
+                            ? data.hiddenThreadTitles
+                            : {};
                         saveHiddenThreads();
                     }
                     applyStyles();
@@ -3075,6 +3105,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             '#glp-media-preview',
             '#glp-watch-digest',
             '#glp-diagnostics',
+            '#glp-recovery',
             '.glp-thread-preview',
             '.glp-op-nav',
             '.glp-copied-toast',
@@ -4351,16 +4382,30 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
     // ============================================
     let hiddenThreads = [];
 
+    // Titles live beside the id list rather than inside it: the id array is what older
+    // backups carry, and a recovery shelf that can only offer "6170474" is not a recovery shelf.
+    let hiddenThreadTitles = {};
+
     function loadHiddenThreads() {
         try {
             hiddenThreads = JSON.parse(GM_getValue('glpHiddenThreads', '[]'));
         } catch (e) {
             hiddenThreads = [];
         }
+        try {
+            hiddenThreadTitles = JSON.parse(GM_getValue('glpHiddenThreadTitles', '{}')) || {};
+        } catch (e) {
+            hiddenThreadTitles = {};
+        }
     }
 
     function saveHiddenThreads() {
         GM_setValue('glpHiddenThreads', JSON.stringify(hiddenThreads));
+        // Drop titles for threads that are no longer hidden so the store cannot grow forever.
+        Object.keys(hiddenThreadTitles).forEach(id => {
+            if (!hiddenThreads.includes(id)) delete hiddenThreadTitles[id];
+        });
+        GM_setValue('glpHiddenThreadTitles', JSON.stringify(hiddenThreadTitles));
     }
 
     function normalizeThreadRow(row) {
@@ -4389,17 +4434,22 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
     function hideThread(threadId, title = 'Thread') {
         if (!threadId || hiddenThreads.includes(threadId)) return;
         hiddenThreads.push(threadId);
+        hiddenThreadTitles[threadId] = String(title || 'Thread').slice(0, 160);
         saveHiddenThreads();
         applyHiddenThreads();
         showNotification(`${title.substring(0, 80)} hidden.`, 'info', {
             label: 'Undo',
-            onClick: () => {
-                hiddenThreads = hiddenThreads.filter(id => id !== threadId);
-                saveHiddenThreads();
-                applyHiddenThreads();
-                showNotification('Thread restored.', 'success');
-            }
+            onClick: () => unhideThread(threadId)
         });
+    }
+
+    function unhideThread(threadId, { silent = false } = {}) {
+        if (!hiddenThreads.includes(threadId)) return false;
+        hiddenThreads = hiddenThreads.filter(id => id !== threadId);
+        saveHiddenThreads();
+        applyHiddenThreads();
+        if (!silent) showNotification('Thread restored.', 'success');
+        return true;
     }
 
     function unhideAllThreads() {
@@ -6536,6 +6586,152 @@ ${manifest}
     }
 
     // ============================================
+    // RECOVERY SHELF
+    // ============================================
+
+    /**
+     * Everything this script is currently keeping out of sight, in one place, each item
+     * restorable on its own. The hidden-threads bar only ever offered "clear all" and only on
+     * the feed; mutes and blocks were buried in the settings panel; filters had no inventory.
+     */
+    function recoveryInventory() {
+        loadMutedUsers();
+        loadBlockedUsers();
+        loadHiddenThreads();
+
+        const filters = [];
+        if (settings.keywordHide && settings.keywordHide.trim()) {
+            filters.push({ key: 'keywordHide', label: `Keyword filter: ${settings.keywordHide.trim()}` });
+        }
+        if (settings.hideMemeReplies) filters.push({ key: 'hideMemeReplies', label: 'Hiding image-only replies' });
+        if (settings.hideBoomerGifs) filters.push({ key: 'hideBoomerGifs', label: 'Hiding reaction GIFs' });
+        if (settings.userMuteList === false) filters.push({ key: 'userMuteList', label: 'Mute list is switched off' });
+
+        return {
+            threads: hiddenThreads.map(id => ({ id, title: hiddenThreadTitles[id] || `Thread ${id}` })),
+            users: mutedUsers.map(name => ({ name })),
+            blocked: blockedUsers.map(user => ({ ...user })),
+            filters
+        };
+    }
+
+    function recoveryRow(parent, label, actionLabel, onClick) {
+        const row = document.createElement('div');
+        row.className = 'glp-recovery-row';
+        const text = document.createElement('span');
+        text.className = 'glp-recovery-label';
+        text.textContent = label;
+        text.title = label;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = actionLabel;
+        button.addEventListener('click', onClick);
+        row.append(text, button);
+        parent.appendChild(row);
+        return row;
+    }
+
+    function toggleRecoveryShelf() {
+        const existing = document.getElementById('glp-recovery');
+        if (existing) {
+            existing.remove();
+            return;
+        }
+        renderRecoveryShelf();
+    }
+
+    function renderRecoveryShelf() {
+        document.getElementById('glp-recovery')?.remove();
+        const inventory = recoveryInventory();
+        const total = inventory.threads.length + inventory.users.length + inventory.blocked.length + inventory.filters.length;
+
+        const panel = document.createElement('div');
+        panel.id = 'glp-recovery';
+        panel.setAttribute('role', 'region');
+        panel.setAttribute('aria-label', 'GLP Ultra recovery shelf');
+
+        const header = document.createElement('div');
+        header.className = 'glp-diag-header';
+        const title = document.createElement('span');
+        title.textContent = `Recovery shelf (${total})`;
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'glp-btn glp-btn-secondary';
+        close.textContent = 'Close';
+        close.addEventListener('click', () => panel.remove());
+        header.append(title, close);
+
+        const body = document.createElement('div');
+        body.className = 'glp-diag-body';
+
+        const threads = diagnosticsGroup(body, `Hidden threads (${inventory.threads.length})`);
+        if (!inventory.threads.length) {
+            const empty = document.createElement('div');
+            empty.className = 'glp-diag-empty';
+            empty.textContent = 'Nothing hidden.';
+            threads.appendChild(empty);
+        } else {
+            inventory.threads.forEach(entry => recoveryRow(threads, entry.title, 'Restore', () => {
+                unhideThread(entry.id);
+                renderRecoveryShelf();
+            }));
+            recoveryRow(threads, 'All hidden threads', 'Restore all', () => {
+                unhideAllThreads();
+                showNotification('All hidden threads restored.', 'success');
+                renderRecoveryShelf();
+            });
+        }
+
+        const users = diagnosticsGroup(body, `Muted users (${inventory.users.length})`);
+        if (!inventory.users.length) {
+            const empty = document.createElement('div');
+            empty.className = 'glp-diag-empty';
+            empty.textContent = 'Nobody muted.';
+            users.appendChild(empty);
+        } else {
+            inventory.users.forEach(entry => recoveryRow(users, entry.name, 'Unmute', () => {
+                unmuteUser(entry.name);
+                renderRecoveryShelf();
+            }));
+        }
+
+        const blocked = diagnosticsGroup(body, `Blocked users (${inventory.blocked.length})`);
+        if (!inventory.blocked.length) {
+            const empty = document.createElement('div');
+            empty.className = 'glp-diag-empty';
+            empty.textContent = 'Nobody blocked.';
+            blocked.appendChild(empty);
+        } else {
+            inventory.blocked.forEach(entry => recoveryRow(blocked, entry.name || `User ${entry.id}`, 'Unblock', () => {
+                unblockUser(entry.id);
+                renderRecoveryShelf();
+            }));
+        }
+
+        const filters = diagnosticsGroup(body, `Active filters (${inventory.filters.length})`);
+        if (!inventory.filters.length) {
+            const empty = document.createElement('div');
+            empty.className = 'glp-diag-empty';
+            empty.textContent = 'No filter is hiding anything.';
+            filters.appendChild(empty);
+        } else {
+            inventory.filters.forEach(entry => recoveryRow(filters, entry.label, 'Clear', () => {
+                settings[entry.key] = DEFAULT_SETTINGS[entry.key];
+                if (entry.key === 'keywordHide') settings.keywordHide = '';
+                saveSettings();
+                applyStyles();
+                runFeatureRegistry('apply');
+                showNotification('Filter cleared.', 'success');
+                renderRecoveryShelf();
+            }));
+        }
+
+        panel.append(header, body);
+        document.body.appendChild(panel);
+        return panel;
+    }
+
+    // ============================================
     // CONTEXT MENU ACTIONS (extension shell)
     // ============================================
 
@@ -6843,7 +7039,9 @@ ${manifest}
         getDiagnostics: buildDiagnostics,
         openDiagnostics: renderDiagnosticsPanel,
         runContextAction,
-        describeContext: () => ({ ...(runtimeState.lastContext || {}) })
+        describeContext: () => ({ ...(runtimeState.lastContext || {}) }),
+        openRecovery: renderRecoveryShelf,
+        getRecoveryInventory: recoveryInventory
     };
 
     init();

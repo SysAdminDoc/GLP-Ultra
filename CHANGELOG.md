@@ -5,7 +5,14 @@
 ### Added
 
 - **Thread export.** Thread pages get Export MD / Export HTML / Export JSON / Copy Link buttons in the tools bar. Markdown preserves quote nesting as `>` depth, HTML is a standalone dark document with the original post markup, and JSON is a structured record of every post (author, member/user id, OP flag, date, quote depth, links, media). Every export carries the source URL, thread id, page number, and an export timestamp, and an optional media manifest listing each image, embed, and outbound link.
+- **Media privacy mode** (on by default): third-party embeds inside posts are replaced by a labelled click-to-load placeholder, so YouTube and X never see the page until the reader asks. YouTube auto-embedding builds the placeholder directly rather than loading and then unloading a player.
+- **X / Twitter embed normalization**: widgets get a labelled frame and, where the page still carries the post id, a direct link to the post — a dead widget is now recognisable instead of an unexplained gap.
+- **Hover preview for images** (off by default): hovering a shrunken thumbnail or an image link shows the full-size image, capped to a configurable share of the viewport.
 - **Runtime verification harness** (`npm run verify:runtime`): loads the unpacked extension in Playwright's Chromium and replays the real GLP captures at their live URLs, then asserts the feed and thread surfaces, the messaging path, and the export outputs. Wired into `npm run verify`.
+
+### Fixed
+
+- The image lightbox added a document click listener on every `init` and never removed it, so disabling the feature left the handler live and re-enabling it stacked another copy. It now binds once and unbinds in `destroy`.
 
 ## 3.0.0 — 2026-08-06
 

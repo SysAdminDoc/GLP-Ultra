@@ -160,6 +160,12 @@
         keywordHide: '',
         customCSS: '',
 
+        // Media
+        mediaPrivacyMode: true,
+        mediaXEmbeds: true,
+        mediaHoverPreview: false,
+        mediaHoverPreviewSize: 70,
+
         // Export & Data
         exportThreadMarkdown: true,
         exportThreadHtml: true,
@@ -187,6 +193,7 @@
         'Post Enhancements': 'Add reader tools for posts, timestamps, OP replies, and links.',
         'UI Enhancements': 'Enable high-value helpers for scrolling, media, previews, and feedback.',
         'Filtering & Custom': 'Filter noisy topics, low-effort replies, and add carefully scoped custom CSS.',
+        'Media & Embeds': 'Decide how third-party media behaves before it can phone home.',
         'Export & Data': 'Save a thread as a clean local file. Nothing is uploaded anywhere.',
         'Muted Users': 'Review and restore users muted by the local script.',
         'Blocked Users': 'Review and restore users blocked by numeric user ID.',
@@ -248,7 +255,11 @@
         exportThreadHtml: 'Adds a standalone dark HTML export of the thread with the original post markup preserved.',
         exportThreadJson: 'Adds a structured JSON export: posts, authors, dates, quote depth, links, and media.',
         exportMediaManifest: 'Appends the list of every image, embed, and outbound link found in the thread to each export.',
-        exportCopyThreadLink: 'Adds a button that copies the canonical thread URL without page or tracking suffixes.'
+        exportCopyThreadLink: 'Adds a button that copies the canonical thread URL without page or tracking suffixes.',
+        mediaPrivacyMode: 'Third-party embeds load only when you click them, so YouTube and X never see the page unless you ask.',
+        mediaXEmbeds: 'Labels X/Twitter embeds and always shows a direct link, so the post is reachable when the widget fails.',
+        mediaHoverPreview: 'Hovering a thumbnail or an image link shows the full-size image in a floating panel.',
+        mediaHoverPreviewSize: 'Largest share of the viewport a hover preview may cover.'
     };
 
     function escapeHTML(value) {
@@ -374,7 +385,9 @@
         featureErrors: [],
         fetchQueue: [],
         fetchActive: false,
-        lastFetchAt: 0
+        lastFetchAt: 0,
+        mediaHoverBound: false,
+        lightboxBound: false
     };
 
     function wait(ms) {
@@ -2140,6 +2153,44 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
 }
 `;
 
+        // ---- Media adapters ----
+        css += `
+.glp-media-placeholder {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin: 10px 0; padding: 10px 12px;
+    border: 1px dashed ${t.border}; border-radius: 8px;
+    background: rgba(255,255,255,0.03); color: #c6d2ea; font-size: 12px;
+}
+.glp-media-provider { color: ${t.link}; font-weight: 700; letter-spacing: 0.02em; }
+.glp-media-note { color: #8592b0; }
+.glp-media-load {
+    background: rgba(255,255,255,0.06); border: 1px solid ${t.border};
+    color: #e7eeff; border-radius: 6px; padding: 4px 10px; cursor: pointer;
+    font-size: 12px; font-weight: 650; margin-left: auto;
+    transition: background 0.15s, border-color 0.15s;
+}
+.glp-media-load:hover { background: ${t.hover}; border-color: ${t.accent}; }
+.glp-media-fallback { color: ${t.link} !important; text-decoration: none !important; font-weight: 650; }
+.glp-media-fallback:hover { text-decoration: underline !important; }
+.glp-x-embed {
+    margin: 10px 0; border: 1px solid ${t.border}; border-radius: 10px; overflow: hidden;
+    background: rgba(255,255,255,0.02);
+}
+.glp-x-embed-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 10px; border-bottom: 1px solid ${t.border}; font-size: 12px;
+}
+.glp-x-embed-header .glp-media-fallback { margin-left: auto; }
+.glp-x-embed .glp-media-placeholder { margin: 10px; }
+#glp-media-preview {
+    position: fixed; z-index: 1000001; display: none;
+    padding: 6px; border: 1px solid ${t.border}; border-radius: 10px;
+    background: ${t.headerBg}; box-shadow: 0 18px 48px rgba(0,0,0,0.55);
+    pointer-events: none;
+}
+#glp-media-preview img { display: block; border-radius: 6px; }
+`;
+
         // Always clean up misc layout cruft
         css += `
 .rightpanel_inner { margin-left: 0 !important; }
@@ -2331,6 +2382,12 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     { key: 'keywordHighlight', label: 'Highlight Keywords (comma-sep)', type: 'text' },
                     { key: 'keywordHide', label: 'Hide Keywords (comma-sep)', type: 'text' },
                     { key: 'customCSS', label: 'Custom CSS', type: 'textarea' }
+                ])}
+                ${createSettingsSection('Media & Embeds', [
+                    { key: 'mediaPrivacyMode', label: 'Click-to-Load Third-Party Embeds' },
+                    { key: 'mediaXEmbeds', label: 'Normalize X / Twitter Embeds' },
+                    { key: 'mediaHoverPreview', label: 'Hover Preview for Images' },
+                    { key: 'mediaHoverPreviewSize', label: 'Hover Preview Size (% of viewport)', type: 'number', min: 30, max: 95 }
                 ])}
                 ${createSettingsSection('Export & Data', [
                     { key: 'exportThreadMarkdown', label: 'Export Thread as Markdown' },
@@ -2733,6 +2790,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             '#glp-thread-tools-bar',
             '#glp-quick-search',
             '#glp-forum-toolbar',
+            '#glp-media-preview',
             '.glp-thread-preview',
             '.glp-op-nav',
             '.glp-copied-toast',
@@ -2798,7 +2856,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             { id: 'nav.threadForumLink', routes: ['thread'], init: injectForumLink, apply: injectForumLink, destroy: () => document.querySelectorAll('.glp-forum-link, .glp-nav-gear').forEach(node => node.remove()) },
             { id: 'nav.forumToolbar', routes: ['feed', 'generic'], init: injectForumToolbar, apply: injectForumToolbar, destroy: () => document.getElementById('glp-forum-toolbar')?.remove() },
             { id: 'ui.backToTop', routes: ['all'], settingKey: 'backToTopButton', init: initBackToTop, apply: () => {}, destroy: () => document.getElementById('glp-back-to-top')?.remove() },
-            { id: 'media.lightbox', routes: ['thread'], settingKey: 'imageLightbox', init: initGalleryLightbox, apply: () => {}, destroy: () => document.getElementById('glp-lightbox')?.remove() },
+            { id: 'media.lightbox', routes: ['thread'], settingKey: 'imageLightbox', init: initGalleryLightbox, apply: initGalleryLightbox, destroy: destroyGalleryLightbox },
             { id: 'thread.collapsiblePosts', routes: ['thread'], settingKey: 'collapsiblePosts', init: initCollapsiblePosts, apply: initCollapsiblePosts, destroy: () => document.querySelectorAll('.glp-collapse-indicator').forEach(node => node.remove()) },
             { id: 'feed.infiniteScroll', routes: ['feed'], settingKey: 'infiniteScroll', init: initInfiniteScroll, apply: () => {}, destroy: () => document.getElementById('glp-infinite-loader')?.remove() },
             { id: 'thread.infiniteScroll', routes: ['thread'], settingKey: 'infiniteThreadScroll', init: initInfiniteThreadScroll, apply: () => {}, destroy: () => document.getElementById('glp-infinite-loader')?.remove() },
@@ -2826,7 +2884,12 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             { id: 'thread.opNav', routes: ['thread'], settingKey: 'opPostNav', init: initOPPostNav, apply: initOPPostNav, destroy: () => document.querySelectorAll('.glp-op-nav').forEach(node => node.remove()) },
             { id: 'thread.collapseAll', routes: ['thread'], settingKey: 'collapseExpandAll', init: initCollapseExpandAll, apply: initCollapseExpandAll, destroy: () => document.querySelectorAll('[data-glp-thread-tool="collapse-all"], [data-glp-thread-tool="search"]').forEach(node => node.remove()) },
             { id: 'thread.quickSearch', routes: ['thread'], settingKey: 'threadQuickSearch', init: initQuickSearch, apply: () => {}, destroy: () => document.getElementById('glp-quick-search')?.remove() },
-            { id: 'thread.export', routes: ['thread'], init: initThreadExport, apply: initThreadExport, destroy: destroyThreadExport }
+            { id: 'thread.export', routes: ['thread'], init: initThreadExport, apply: initThreadExport, destroy: destroyThreadExport },
+            // X normalization runs first: a rendered widget only carries its provenance
+            // until privacy mode swaps the iframe out for a placeholder.
+            { id: 'media.xEmbeds', routes: ['thread'], settingKey: 'mediaXEmbeds', init: normalizeXEmbeds, apply: normalizeXEmbeds, destroy: destroyXEmbeds },
+            { id: 'media.privacy', routes: ['thread'], settingKey: 'mediaPrivacyMode', init: applyMediaPrivacy, apply: applyMediaPrivacy, destroy: destroyMediaPrivacy },
+            { id: 'media.hoverPreview', routes: ['thread'], settingKey: 'mediaHoverPreview', init: initMediaHoverPreview, apply: initMediaHoverPreview, destroy: destroyMediaHoverPreview }
         ];
     }
 
@@ -4210,29 +4273,42 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
     let galleryImages = [];
     let galleryIndex = 0;
 
+    function onLightboxClick(e) {
+        const img = e.target.closest('.post_main img');
+        if (!img) return;
+        if (img.src.includes('/sm/') || img.src.includes('karma') ||
+            img.src.includes('div.png') || img.src.includes('flags/')) return;
+        if (img.naturalWidth < 50 || img.naturalHeight < 50) return;
+
+        e.preventDefault();
+
+        if (settings.imageGallery) {
+            galleryImages = Array.from(document.querySelectorAll('.post_main img'))
+                .filter(i => !i.src.includes('/sm/') && !i.src.includes('karma') &&
+                        !i.src.includes('div.png') && !i.src.includes('flags/') &&
+                        i.naturalWidth >= 50);
+            galleryIndex = galleryImages.indexOf(img);
+            if (galleryIndex === -1) galleryIndex = 0;
+        }
+
+        showLightbox(img.src);
+    }
+
     function initGalleryLightbox() {
         if (!settings.imageLightbox) return;
+        if (runtimeState.lightboxBound) return;
+        runtimeState.lightboxBound = true;
+        document.addEventListener('click', onLightboxClick);
+    }
 
-        document.addEventListener('click', (e) => {
-            const img = e.target.closest('.post_main img');
-            if (!img) return;
-            if (img.src.includes('/sm/') || img.src.includes('karma') ||
-                img.src.includes('div.png') || img.src.includes('flags/')) return;
-            if (img.naturalWidth < 50 || img.naturalHeight < 50) return;
-
-            e.preventDefault();
-
-            if (settings.imageGallery) {
-                galleryImages = Array.from(document.querySelectorAll('.post_main img'))
-                    .filter(i => !i.src.includes('/sm/') && !i.src.includes('karma') &&
-                            !i.src.includes('div.png') && !i.src.includes('flags/') &&
-                            i.naturalWidth >= 50);
-                galleryIndex = galleryImages.indexOf(img);
-                if (galleryIndex === -1) galleryIndex = 0;
-            }
-
-            showLightbox(img.src);
-        });
+    function destroyGalleryLightbox() {
+        if (runtimeState.lightboxBound) {
+            document.removeEventListener('click', onLightboxClick);
+            runtimeState.lightboxBound = false;
+        }
+        galleryImages = [];
+        galleryIndex = 0;
+        document.getElementById('glp-lightbox')?.remove();
     }
 
     function showLightbox(src) {
@@ -4585,11 +4661,19 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
 
             const wrapper = document.createElement('div');
             wrapper.className = 'glp-yt-embed';
-            const iframe = document.createElement('iframe');
-            iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}`;
-            iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
-            iframe.allowFullscreen = true;
-            wrapper.appendChild(iframe);
+            const embedSrc = `https://www.youtube-nocookie.com/embed/${videoId}`;
+            const allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+
+            // Privacy mode never lets the player fetch until the reader asks for it.
+            if (settings.mediaPrivacyMode) {
+                wrapper.appendChild(buildMediaPlaceholder(embedSrc, { allow }));
+            } else {
+                const iframe = document.createElement('iframe');
+                iframe.src = embedSrc;
+                iframe.allow = allow;
+                iframe.allowFullscreen = true;
+                wrapper.appendChild(iframe);
+            }
 
             link.parentNode.insertBefore(wrapper, link.nextSibling);
         });
@@ -4846,6 +4930,299 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         });
         searchMatches = [];
         searchCurrentIdx = -1;
+    }
+
+    // ============================================
+    // MEDIA ADAPTERS, PRIVACY MODE, HOVER PREVIEW
+    // ============================================
+    // Provider-specific handling lives in one table because embed markup rotates often;
+    // an unknown provider still gets the generic click-to-load treatment.
+    const MEDIA_PROVIDERS = Object.freeze([
+        {
+            id: 'youtube',
+            label: 'YouTube',
+            test: url => /(?:youtube(?:-nocookie)?\.com|youtu\.be)/i.test(url),
+            canonical: url => {
+                const id = (url.match(/(?:embed\/|v=|youtu\.be\/)([A-Za-z0-9_-]{6,})/) || [])[1];
+                return id ? `https://www.youtube.com/watch?v=${id}` : url;
+            }
+        },
+        {
+            id: 'x',
+            label: 'X / Twitter',
+            test: url => /(?:^|\/\/|\.)(?:twitter\.com|x\.com|platform\.twitter\.com)/i.test(url),
+            canonical: url => {
+                const id = (url.match(/(?:id=|status(?:es)?\/)(\d{6,})/) || [])[1];
+                return id ? `https://x.com/i/status/${id}` : url;
+            }
+        },
+        {
+            id: 'generic',
+            label: 'External embed',
+            test: () => true,
+            canonical: url => url
+        }
+    ]);
+
+    const IMAGE_URL_PATTERN = /\.(?:jpe?g|png|gif|webp|avif|bmp)(?:[?#].*)?$/i;
+
+    function mediaProviderFor(url) {
+        return MEDIA_PROVIDERS.find(provider => provider.test(url)) || MEDIA_PROVIDERS[MEDIA_PROVIDERS.length - 1];
+    }
+
+    function isThirdPartyMedia(url) {
+        try {
+            return new URL(url, window.location.href).origin !== window.location.origin;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function buildMediaPlaceholder(src, { width = '', height = '', allow = '', title = '', providerId = '' } = {}) {
+        const provider = MEDIA_PROVIDERS.find(entry => entry.id === providerId) || mediaProviderFor(src);
+        const placeholder = document.createElement('div');
+        placeholder.className = 'glp-media-placeholder';
+        placeholder.dataset.glpOwner = 'media.privacy';
+        placeholder.dataset.glpMediaSrc = src;
+        placeholder.dataset.glpMediaProvider = provider.id;
+        if (width) placeholder.dataset.glpMediaWidth = width;
+        if (height) placeholder.dataset.glpMediaHeight = height;
+        if (allow) placeholder.dataset.glpMediaAllow = allow;
+        if (title) placeholder.dataset.glpMediaTitle = title;
+
+        const label = document.createElement('span');
+        label.className = 'glp-media-provider';
+        label.textContent = provider.label;
+
+        const note = document.createElement('span');
+        note.className = 'glp-media-note';
+        note.textContent = 'Blocked until you load it';
+
+        const load = document.createElement('button');
+        load.type = 'button';
+        load.className = 'glp-media-load';
+        load.textContent = 'Load embed';
+        load.addEventListener('click', () => loadPlaceholderEmbed(placeholder));
+
+        placeholder.append(label, note, load);
+
+        // A `cid:` or otherwise unroutable source has no honest "open directly" target.
+        if (/^https?:/i.test(src)) {
+            const open = document.createElement('a');
+            open.className = 'glp-media-fallback';
+            open.href = provider.canonical(src);
+            open.target = '_blank';
+            open.rel = 'noopener noreferrer';
+            open.textContent = 'Open directly';
+            placeholder.appendChild(open);
+        }
+
+        return placeholder;
+    }
+
+    function loadPlaceholderEmbed(placeholder) {
+        const iframe = document.createElement('iframe');
+        iframe.src = placeholder.dataset.glpMediaSrc;
+        if (placeholder.dataset.glpMediaWidth) iframe.width = placeholder.dataset.glpMediaWidth;
+        if (placeholder.dataset.glpMediaHeight) iframe.height = placeholder.dataset.glpMediaHeight;
+        if (placeholder.dataset.glpMediaAllow) iframe.allow = placeholder.dataset.glpMediaAllow;
+        if (placeholder.dataset.glpMediaTitle) iframe.title = placeholder.dataset.glpMediaTitle;
+        iframe.allowFullscreen = true;
+        iframe.dataset.glpMediaLoaded = '1';
+        placeholder.replaceWith(iframe);
+    }
+
+    function applyMediaPrivacy(root = document) {
+        const scope = root && root.querySelectorAll ? root : document;
+        if (!settings.mediaPrivacyMode) return;
+
+        scope.querySelectorAll('.post_main iframe, .glp-yt-embed iframe, .glp-x-embed iframe').forEach(iframe => {
+            const src = iframe.getAttribute('src') || '';
+            if (!src || !isThirdPartyMedia(src)) return;
+            const absolute = /^https?:/i.test(src) ? new URL(src, window.location.href).href : src;
+            iframe.replaceWith(buildMediaPlaceholder(absolute, {
+                width: iframe.getAttribute('width') || '',
+                height: iframe.getAttribute('height') || '',
+                allow: iframe.getAttribute('allow') || '',
+                title: iframe.getAttribute('title') || '',
+                providerId: iframe.dataset.glpMediaProvider || ''
+            }));
+        });
+    }
+
+    function destroyMediaPrivacy() {
+        document.querySelectorAll('.glp-media-placeholder').forEach(placeholder => loadPlaceholderEmbed(placeholder));
+    }
+
+    // X/Twitter widgets fail often and silently, and a rendered widget keeps no trace of the
+    // post URL. Recover the id where the page still has it and label the block either way,
+    // so a dead widget is recognisable instead of being an unexplained gap in the thread.
+    const X_EMBED_SELECTORS = [
+        'iframe[title="X Post"]',
+        'iframe[id^="twitter-widget"]',
+        'iframe[data-tweet-id]',
+        'iframe[src*="twitter.com"]',
+        'iframe[src*="x.com"]',
+        '.twitter-tweet iframe'
+    ];
+
+    function recoverTweetId(node) {
+        const direct = node.getAttribute('data-tweet-id');
+        if (direct) return direct;
+        const src = node.getAttribute('src') || '';
+        const fromSrc = (src.match(/(?:id=|status(?:es)?\/)(\d{6,})/) || [])[1];
+        if (fromSrc) return fromSrc;
+        const container = node.closest('.twitter-tweet, blockquote, .post_main');
+        const link = container?.querySelector('a[href*="/status/"], a[href*="/statuses/"]');
+        return link ? (link.href.match(/status(?:es)?\/(\d{6,})/) || [])[1] || '' : '';
+    }
+
+    function normalizeXEmbeds(root = document) {
+        const scope = root && root.querySelectorAll ? root : document;
+        if (!settings.mediaXEmbeds) return;
+
+        const candidates = new Set();
+        X_EMBED_SELECTORS.forEach(selector => scope.querySelectorAll(selector).forEach(node => candidates.add(node)));
+
+        candidates.forEach(node => {
+            if (node.closest('.glp-x-embed')) return;
+            if (!node.closest('.post_main')) return;
+
+            const tweetId = recoverTweetId(node);
+            node.dataset.glpMediaProvider = 'x';
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'glp-x-embed';
+            wrapper.dataset.glpOwner = 'media.x';
+
+            const header = document.createElement('div');
+            header.className = 'glp-x-embed-header';
+            const label = document.createElement('span');
+            label.className = 'glp-media-provider';
+            label.textContent = 'X / Twitter';
+            header.appendChild(label);
+
+            if (tweetId) {
+                const link = document.createElement('a');
+                link.className = 'glp-media-fallback';
+                link.href = `https://x.com/i/status/${tweetId}`;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = `Open post ${tweetId}`;
+                header.appendChild(link);
+            } else {
+                const note = document.createElement('span');
+                note.className = 'glp-media-note glp-media-fallback-missing';
+                note.textContent = 'No direct link in the page';
+                header.appendChild(note);
+            }
+
+            node.parentNode.insertBefore(wrapper, node);
+            wrapper.append(header, node);
+        });
+    }
+
+    function destroyXEmbeds() {
+        document.querySelectorAll('.glp-x-embed').forEach(wrapper => {
+            const media = wrapper.querySelector('iframe, .glp-media-placeholder');
+            if (media) wrapper.replaceWith(media);
+            else wrapper.remove();
+        });
+    }
+
+    let mediaHoverTarget = null;
+
+    function mediaPreviewSource(target) {
+        if (target.tagName === 'IMG') {
+            const src = target.currentSrc || target.getAttribute('src') || '';
+            if (!src || src.includes('/sm/')) return '';
+            // Only worth previewing when the page is showing a shrunken copy.
+            const shrunk = target.naturalWidth > target.clientWidth + 24 || target.clientWidth < 320;
+            return shrunk ? src : '';
+        }
+        if (target.tagName === 'A') {
+            const href = target.getAttribute('href') || '';
+            return IMAGE_URL_PATTERN.test(href) ? target.href : '';
+        }
+        return '';
+    }
+
+    function showMediaPreview(src, anchorRect) {
+        let panel = document.getElementById('glp-media-preview');
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'glp-media-preview';
+            document.body.appendChild(panel);
+        }
+        panel.replaceChildren();
+
+        const cap = Math.min(95, Math.max(30, Number(settings.mediaHoverPreviewSize) || 70));
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = '';
+        img.style.maxWidth = `${cap}vw`;
+        img.style.maxHeight = `${cap}vh`;
+        panel.appendChild(img);
+
+        panel.style.visibility = 'hidden';
+        panel.style.display = 'block';
+        requestAnimationFrame(() => {
+            const rect = panel.getBoundingClientRect();
+            let left = anchorRect.right + 16;
+            if (left + rect.width > window.innerWidth - 12) left = Math.max(12, anchorRect.left - rect.width - 16);
+            let top = anchorRect.top;
+            if (top + rect.height > window.innerHeight - 12) top = Math.max(12, window.innerHeight - rect.height - 12);
+            panel.style.left = `${left}px`;
+            panel.style.top = `${top}px`;
+            panel.style.visibility = 'visible';
+        });
+    }
+
+    function hideMediaPreview() {
+        mediaHoverTarget = null;
+        const panel = document.getElementById('glp-media-preview');
+        if (panel) panel.remove();
+    }
+
+    function onMediaHoverOver(event) {
+        if (!settings.mediaHoverPreview) return;
+        const target = event.target.closest('.post_main img, .post_main a[href]');
+        if (!target || target === mediaHoverTarget) return;
+        const src = mediaPreviewSource(target);
+        if (!src) {
+            hideMediaPreview();
+            return;
+        }
+        mediaHoverTarget = target;
+        showMediaPreview(src, target.getBoundingClientRect());
+    }
+
+    function onMediaHoverOut(event) {
+        if (!mediaHoverTarget) return;
+        if (event.relatedTarget && mediaHoverTarget.contains(event.relatedTarget)) return;
+        hideMediaPreview();
+    }
+
+    function initMediaHoverPreview() {
+        if (!settings.mediaHoverPreview) {
+            destroyMediaHoverPreview();
+            return;
+        }
+        if (runtimeState.mediaHoverBound) return;
+        runtimeState.mediaHoverBound = true;
+        document.addEventListener('mouseover', onMediaHoverOver, true);
+        document.addEventListener('mouseout', onMediaHoverOut, true);
+        window.addEventListener('scroll', hideMediaPreview, { passive: true });
+    }
+
+    function destroyMediaHoverPreview() {
+        if (runtimeState.mediaHoverBound) {
+            document.removeEventListener('mouseover', onMediaHoverOver, true);
+            document.removeEventListener('mouseout', onMediaHoverOut, true);
+            window.removeEventListener('scroll', hideMediaPreview);
+            runtimeState.mediaHoverBound = false;
+        }
+        hideMediaPreview();
     }
 
     // ============================================

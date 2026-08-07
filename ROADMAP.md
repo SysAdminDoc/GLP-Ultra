@@ -987,22 +987,6 @@ Acceptance criteria:
 - Infinite thread scroll preserves page boundaries and anchors.
 - Quote collapse is reversible per quote and globally.
 
-### v0.5.0 - Media, Embeds, And Export
-
-Features:
-
-- Hover preview option.
-- YouTube link embedder with privacy mode.
-- X/Twitter embed normalization and fallback links.
-
-Dependencies:
-
-- Media adapter registry.
-
-Acceptance criteria:
-
-- Third-party embeds default to click-to-load in privacy mode.
-
 ### v0.6.0 - User Intelligence And Moderation
 
 Features:

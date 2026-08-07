@@ -118,6 +118,27 @@ try {
   check('thread: route classified as thread', threadDiag?.route === 'thread', JSON.stringify(threadDiag));
   check('thread: no feature errors', (threadDiag?.errors || []).length === 0, JSON.stringify(threadDiag?.errors));
 
+  // Media adapters: the capture carries a real X/Twitter widget iframe.
+  check('thread: third-party embeds replaced by click-to-load placeholders',
+    await page.locator('.glp-media-placeholder').count() > 0);
+  check('thread: no third-party iframe loaded under privacy mode',
+    await page.locator('.post_main iframe[src*="twitter"], .post_main iframe[src*="x.com"], .post_main iframe[src*="youtube"]').count() === 0);
+  check('thread: X embeds are wrapped and labelled',
+    await page.locator('.glp-x-embed .glp-media-provider').count() > 0);
+
+  await page.locator('.glp-media-placeholder .glp-media-load').first().click();
+  await page.waitForTimeout(300);
+  check('thread: clicking Load swaps the placeholder for the real embed',
+    await page.locator('iframe[data-glp-media-loaded="1"]').count() > 0);
+
+  // Turning privacy mode off through the extension shell must restore every embed.
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { mediaPrivacyMode: false } });
+  await page.waitForTimeout(400);
+  check('thread: disabling privacy mode restores the embeds',
+    await page.locator('.glp-media-placeholder').count() === 0);
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { mediaPrivacyMode: true } });
+  await page.waitForTimeout(400);
+
   // Export actions
   for (const tool of ['export-md', 'export-html', 'export-json', 'copy-thread-link']) {
     check(`thread: ${tool} button present`,

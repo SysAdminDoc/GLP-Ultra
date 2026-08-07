@@ -113,6 +113,10 @@ window.GLP_SCHEMA = {
     "keywordHighlight": "",
     "keywordHide": "",
     "customCSS": "",
+    "mediaPrivacyMode": true,
+    "mediaXEmbeds": true,
+    "mediaHoverPreview": false,
+    "mediaHoverPreviewSize": 70,
     "exportThreadMarkdown": true,
     "exportThreadHtml": true,
     "exportThreadJson": true,
@@ -176,7 +180,11 @@ window.GLP_SCHEMA = {
     "exportThreadHtml": "Adds a standalone dark HTML export of the thread with the original post markup preserved.",
     "exportThreadJson": "Adds a structured JSON export: posts, authors, dates, quote depth, links, and media.",
     "exportMediaManifest": "Appends the list of every image, embed, and outbound link found in the thread to each export.",
-    "exportCopyThreadLink": "Adds a button that copies the canonical thread URL without page or tracking suffixes."
+    "exportCopyThreadLink": "Adds a button that copies the canonical thread URL without page or tracking suffixes.",
+    "mediaPrivacyMode": "Third-party embeds load only when you click them, so YouTube and X never see the page unless you ask.",
+    "mediaXEmbeds": "Labels X/Twitter embeds and always shows a direct link, so the post is reachable when the widget fails.",
+    "mediaHoverPreview": "Hovering a thumbnail or an image link shows the full-size image in a floating panel.",
+    "mediaHoverPreviewSize": "Largest share of the viewport a hover preview may cover."
   },
   "sectionDescriptions": {
     "Core": "Master controls for GLP Ultra itself.",
@@ -192,6 +200,7 @@ window.GLP_SCHEMA = {
     "Post Enhancements": "Add reader tools for posts, timestamps, OP replies, and links.",
     "UI Enhancements": "Enable high-value helpers for scrolling, media, previews, and feedback.",
     "Filtering & Custom": "Filter noisy topics, low-effort replies, and add carefully scoped custom CSS.",
+    "Media & Embeds": "Decide how third-party media behaves before it can phone home.",
     "Export & Data": "Save a thread as a clean local file. Nothing is uploaded anywhere.",
     "Muted Users": "Review and restore users muted by the local script.",
     "Blocked Users": "Review and restore users blocked by numeric user ID.",
@@ -753,6 +762,31 @@ window.GLP_SCHEMA = {
           "key": "customCSS",
           "label": "Custom CSS",
           "type": "textarea"
+        }
+      ],
+      "specialId": null
+    },
+    {
+      "title": "Media & Embeds",
+      "items": [
+        {
+          "key": "mediaPrivacyMode",
+          "label": "Click-to-Load Third-Party Embeds"
+        },
+        {
+          "key": "mediaXEmbeds",
+          "label": "Normalize X / Twitter Embeds"
+        },
+        {
+          "key": "mediaHoverPreview",
+          "label": "Hover Preview for Images"
+        },
+        {
+          "key": "mediaHoverPreviewSize",
+          "label": "Hover Preview Size (% of viewport)",
+          "type": "number",
+          "min": 30,
+          "max": 95
         }
       ],
       "specialId": null

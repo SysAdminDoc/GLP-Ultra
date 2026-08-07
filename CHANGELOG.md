@@ -1,5 +1,47 @@
 # Changelog
 
+## 3.5.0 — 2026-08-07
+
+The roadmap's risk table has named five mitigations since Phase 3 with nothing behind them. This
+is the four that were still missing, and the defect found while implementing the fifth.
+
+### Fixed
+
+- **A failing site got hammered as fast as it could refuse.** The fetch queue stamped its
+  rate-limiter clock only after a *successful* response, so a run of failures made the elapsed
+  time grow, the computed delay go negative, and the one-second floor between requests stop
+  applying exactly when it mattered — a watcher with twenty threads on it emptying its queue into
+  a site already saying no. Both outcomes stamp the clock now, and a refusal also backs off: the
+  server's own `Retry-After` when it sent one, otherwise exponential from the caller's floor,
+  capped at a minute. Consecutive failures and the remaining backoff are reported in diagnostics.
+
+### Added
+
+- **Safe mode, so custom CSS cannot lock you out of the settings that undo it.** Pasting
+  `* { display: none !important }` hid the settings panel along with the page — measured at 0px
+  wide — and the setting is saved, so reloading brought the same page back. The recovery surfaces
+  are now re-asserted after the user's rules at a specificity their scoped selectors can reach,
+  and safe mode drops custom CSS entirely. It is reachable from two places page CSS cannot touch:
+  the userscript manager's menu, and the extension popup, which is a separate document.
+- **GLP Ultra takes precedence over Dark Reader.** Two dark themes over one page wash out the
+  accents each palette was measured against, and it reads as a theme bug rather than as two
+  extensions disagreeing. Uses `<meta name="darkreader-lock">`, Dark Reader's own documented
+  opt-out, honoured live; removed again the moment GLP Ultra stops theming. Dark Reader's
+  presence is reported in diagnostics either way.
+- **The settings payload an upgrade is about to prune is banked first.** Loading keeps only the
+  keys the current schema declares and the next save writes the pruned object back, so anything a
+  predecessor stored under an unknown name disappeared with the upgrade, silently. One copy of
+  the pre-upgrade payload is kept and offered back from the recovery shelf with an undo. Mirrored
+  to `chrome.storage`, because a recovery artifact that dies when site data is cleared is not
+  much of one.
+
+### Verification
+
+189 runtime checks, up from 173. Each of the above is asserted by doing the thing: pasting the
+blanket rule and measuring the panel, reloading with safe mode on because that is what a
+locked-out reader tries first, serving `429 Retry-After: 7` to the thread the watcher polls, and
+restoring a banked payload to see a pre-upgrade value come back.
+
 ## 3.4.0 — 2026-08-07
 
 Three drift items closed, and four defects the new gates turned up on their first run.

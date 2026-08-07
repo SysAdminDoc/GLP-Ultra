@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLP Ultra
 // @namespace    https://github.com/SysAdminDoc/GLP_Userscript
-// @version      3.4.0
+// @version      3.5.0
 // @description  Declutter, theming, filtering, blocking, and reading tools for Godlike Productions
 // @author       Matthew Parker
 // @match        *://www.godlikeproductions.com/*
@@ -17,7 +17,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '3.4.0';
+    const SCRIPT_VERSION = '3.5.0';
 
     // ============================================
     // DEFAULT SETTINGS
@@ -25,6 +25,8 @@
     const DEFAULT_SETTINGS = {
         // Core
         enabled: true,
+        safeMode: false,
+        overrideDarkReader: true,
 
         // Ad Removal
         removeAds: true,
@@ -230,6 +232,8 @@
 
     const SETTING_DESCRIPTIONS = {
         enabled: 'Turns every GLP Ultra page modification on or off without clearing saved settings.',
+        overrideDarkReader: 'Tells Dark Reader to leave this site alone while GLP Ultra is theming it. Two dark themes over one page wash out every colour the theme picked.',
+        safeMode: 'Ignores your custom CSS for this browser. The way back when a rule you pasted has hidden the controls you would need to remove it.',
         removeAds: 'Targets MGID and common ad containers.',
         removeWidgets: 'Removes empty widget placeholders after ads are hidden.',
         removeMsgAds: 'Hides ad rows injected into thread pages.',
@@ -442,6 +446,8 @@
         fetchQueue: [],
         fetchActive: false,
         lastFetchAt: 0,
+        fetchFailures: 0,
+        fetchBackoffUntil: 0,
         mediaHoverBound: false,
         lightboxBound: false
     };
@@ -457,6 +463,22 @@
         });
     }
 
+    // The floor between requests, and the ceiling on how far failure backs us off. A watcher
+    // with twenty threads on it is twenty requests per cycle, so the failure path is the one that
+    // decides whether a bad afternoon looks like a client or looks like a flood.
+    const FETCH_BACKOFF_CAP_MS = 60000;
+
+    function fetchRetryDelay(response) {
+        if (!response || (response.status !== 429 && response.status !== 503)) return 0;
+        const header = response.headers?.get?.('retry-after');
+        if (!header) return 0;
+        const seconds = Number(header);
+        if (Number.isFinite(seconds)) return Math.min(Math.max(seconds, 0) * 1000, FETCH_BACKOFF_CAP_MS);
+        const date = Date.parse(header);
+        if (!Number.isFinite(date)) return 0;
+        return Math.min(Math.max(date - Date.now(), 0), FETCH_BACKOFF_CAP_MS);
+    }
+
     async function processFetchQueue() {
         if (runtimeState.fetchActive) return;
         runtimeState.fetchActive = true;
@@ -468,17 +490,33 @@
             }
 
             const next = runtimeState.fetchQueue.shift();
-            const elapsed = Date.now() - runtimeState.lastFetchAt;
             const minDelay = next.options.minDelay ?? 1000;
+            // Failures used to leave lastFetchAt untouched, so a run of them made `elapsed` large
+            // and the limiter waited for nothing: the queue then drained as fast as the network
+            // could refuse it. Both outcomes stamp the clock now, and a refusal also backs off.
+            const backoffWait = runtimeState.fetchBackoffUntil - Date.now();
+            if (backoffWait > 0) await wait(Math.min(backoffWait, FETCH_BACKOFF_CAP_MS));
+            const elapsed = Date.now() - runtimeState.lastFetchAt;
             if (elapsed < minDelay) await wait(minDelay - elapsed);
 
+            let response = null;
             try {
-                const response = await fetch(next.url, next.options.fetchOptions || {});
-                runtimeState.lastFetchAt = Date.now();
+                response = await fetch(next.url, next.options.fetchOptions || {});
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                next.resolve(await response.text());
+                const text = await response.text();
+                runtimeState.fetchFailures = 0;
+                runtimeState.fetchBackoffUntil = 0;
+                next.resolve(text);
             } catch (error) {
+                runtimeState.fetchFailures += 1;
+                // The server's own number when it gave one, otherwise back off exponentially from
+                // the caller's floor. Capped, so a long outage does not park the queue for hours.
+                const stated = fetchRetryDelay(response);
+                const backoff = stated || Math.min(minDelay * (2 ** runtimeState.fetchFailures), FETCH_BACKOFF_CAP_MS);
+                runtimeState.fetchBackoffUntil = Date.now() + backoff;
                 next.reject(error);
+            } finally {
+                runtimeState.lastFetchAt = Date.now();
             }
         }
 
@@ -588,9 +626,46 @@
     // ============================================
     let settings = {};
 
+    const SETTINGS_BACKUP_KEY = 'glpEnhancedSettings_backup';
+
+    /**
+     * Keeps one copy of the settings payload as it was before the most recent upgrade.
+     *
+     * Loading keeps only keys the current schema declares, and the first save after that writes
+     * the pruned object back - so anything a predecessor stored under a name this build does not
+     * know is gone, silently, with the upgrade. That is fine as long as the pre-upgrade payload
+     * is recoverable, which is what this is for. An empty previous version counts as an upgrade:
+     * it means the payload predates version stamping, which is exactly the legacy case.
+     */
+    function backupSettingsBeforeUpgrade(saved, previous) {
+        if (!saved || previous === SCRIPT_VERSION) return;
+        try {
+            GM_setValue(SETTINGS_BACKUP_KEY, JSON.stringify({
+                version: previous || 'unstamped',
+                upgradedTo: SCRIPT_VERSION,
+                savedAt: new Date().toISOString(),
+                payload: saved
+            }));
+        } catch (e) {
+            /* A backup that cannot be written must not stop the upgrade. */
+        }
+    }
+
+    function readSettingsBackup() {
+        try {
+            const raw = GM_getValue(SETTINGS_BACKUP_KEY, null);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return parsed && parsed.payload ? parsed : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
     function loadSettings() {
         const saved = GM_getValue('glpEnhancedSettings', null);
         runtimeState.previousVersion = String(GM_getValue('glpSettingsVersion', '') || '');
+        backupSettingsBeforeUpgrade(saved, runtimeState.previousVersion);
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
@@ -865,6 +940,16 @@ body.glp-enhanced-active { color-scheme: dark; }
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.glp-safe-mode-notice {
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    border: 1px solid var(--glpx-warning);
+    border-radius: var(--glpx-r-sm);
+    background: rgba(var(--glpx-warning-rgb), 0.12);
+    color: var(--glpx-text);
+    font-size: 12px;
 }
 
 .glp-settings-search-wrap {
@@ -3029,8 +3114,35 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
         }
 
         // Custom CSS injection
-        if (settings.customCSS && settings.customCSS.trim()) {
+        // Custom CSS is the one setting that can make the interface for changing settings
+        // unreachable, and it survives a reload, so "just refresh" is not a way out. Safe
+        // mode is reachable from surfaces page CSS cannot touch: the userscript manager's
+        // menu, and the extension popup.
+        if (settings.safeMode) {
+            css += `\n/* Safe mode: custom CSS is not applied. */\n`;
+        } else if (settings.customCSS && settings.customCSS.trim()) {
             css += `\n/* User Custom CSS - scoped */\n${scopeCustomCSS(settings.customCSS)}\n`;
+            // Emitted after the user's rules and at a specificity their scoped selectors can
+            // reach, so a blanket rule cannot take the recovery surfaces down with the page.
+            // Deliberately out-specifying this is still possible - safe mode answers that.
+            css += `
+body.glpx-enabled #glp-enhanced-overlay,
+body.glpx-enabled #glp-diagnostics,
+body.glpx-enabled #glp-recovery,
+body.glpx-enabled .glp-toast-stack,
+body.glpx-enabled #glp-enhanced-overlay *,
+body.glpx-enabled #glp-diagnostics *,
+body.glpx-enabled #glp-recovery *,
+body.glpx-enabled .glp-toast-stack * {
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+body.glpx-enabled #glp-enhanced-overlay { display: flex !important; }
+body.glpx-enabled #glp-diagnostics,
+body.glpx-enabled #glp-recovery { display: block !important; }
+body.glpx-enabled .glp-toast-stack { display: grid !important; }
+`;
         }
 
         return css;
@@ -3064,6 +3176,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
                     <div class="glp-settings-kicker">Premium control center</div>
                     <h2 id="glp-settings-title">GLP Ultra <span class="version">v${SCRIPT_VERSION}</span></h2>
                     <p class="glp-settings-subtitle">Tune the forum into a cleaner, quieter, faster reading surface. Changes are saved locally and can be exported at any time.</p>
+                    ${settings.safeMode ? '<p class="glp-safe-mode-notice" id="glp-safe-mode-notice">Safe mode is on - your custom CSS is not being applied. Switch it off under Core once the page looks right.</p>' : ''}
                 </div>
                 <div class="glp-settings-header-actions">
                     <button id="glp-enhanced-close-btn" aria-label="Close settings">&times;</button>
@@ -3088,7 +3201,9 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
                     <button type="button" class="glp-btn glp-btn-secondary" id="glp-settings-empty-reset">Clear filters</button>
                 </div>
                 ${createSettingsSection('Core', [
-                    { key: 'enabled', label: 'Enable GLP Ultra' }
+                    { key: 'enabled', label: 'Enable GLP Ultra' },
+                    { key: 'safeMode', label: 'Safe Mode (ignore custom CSS)' },
+                    { key: 'overrideDarkReader', label: 'Take Precedence Over Dark Reader' }
                 ])}
                 ${createSettingsSection('Ad Removal', [
                     { key: 'removeAds', label: 'Remove Advertisements (mgid)' },
@@ -4035,6 +4150,37 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
     // ============================================
     // APPLY STYLES
     // ============================================
+    /**
+     * Dark Reader inverts pages it does not recognise, and GLP Ultra is already a dark theme, so
+     * the two stack: the palette's accents wash out and contrast drops below what the theme was
+     * measured at. `<meta name="darkreader-lock">` is Dark Reader's own documented way for a page
+     * to say it handles its own dark mode, and it is honoured live, not only at load.
+     *
+     * Removed again the moment GLP Ultra stops theming, so switching this off hands the page back
+     * rather than leaving it light.
+     */
+    const DARK_READER_LOCK_ID = 'glp-darkreader-lock';
+
+    function darkReaderPresent() {
+        return document.documentElement.hasAttribute('data-darkreader-scheme')
+            || document.documentElement.hasAttribute('data-darkreader-mode')
+            || !!document.querySelector('style.darkreader, style[class*="darkreader"]');
+    }
+
+    function syncDarkReaderLock() {
+        const wanted = settings.enabled && settings.overrideDarkReader;
+        const existing = document.getElementById(DARK_READER_LOCK_ID);
+        if (!wanted) {
+            existing?.remove();
+            return;
+        }
+        if (existing) return;
+        const meta = document.createElement('meta');
+        meta.id = DARK_READER_LOCK_ID;
+        meta.name = 'darkreader-lock';
+        (document.head || document.documentElement).appendChild(meta);
+    }
+
     function applyStyles() {
         let styleEl = document.getElementById('glp-enhanced-styles');
         if (!styleEl) {
@@ -4043,10 +4189,12 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             document.head.appendChild(styleEl);
         }
         styleEl.textContent = generateCSS();
+        syncDarkReaderLock();
     }
 
     function destroyEnhancedUI({ keepSettingsPanel = false, keepStyles = false } = {}) {
         runtimeState.featuresStarted = false;
+        if (!keepStyles) document.getElementById(DARK_READER_LOCK_ID)?.remove();
         destroyRegisteredFeatures();
 
         if (runtimeState.observer) {
@@ -7875,11 +8023,24 @@ ${manifest}
         }
     }
 
+    function toggleSafeMode() {
+        settings.safeMode = !settings.safeMode;
+        saveSettings();
+        applyStyles();
+        showNotification(settings.safeMode
+            ? 'Safe mode on - custom CSS is not being applied.'
+            : 'Safe mode off - custom CSS is applied again.', settings.safeMode ? 'warning' : 'success');
+        return settings.safeMode;
+    }
+
     function onDOMReady() {
         runtimeState.route = classifyRoute();
 
         if (typeof GM_registerMenuCommand !== 'undefined' && !runtimeState.menuRegistered) {
             GM_registerMenuCommand('GLP Ultra Settings', createSettingsPanel);
+            // Registered whatever state the page is in: this is what someone reaches for after
+            // pasting custom CSS that hid the settings button along with everything else.
+            GM_registerMenuCommand('GLP Ultra: toggle safe mode (ignore custom CSS)', toggleSafeMode);
             runtimeState.menuRegistered = true;
         }
 
@@ -8069,6 +8230,37 @@ ${manifest}
      * restorable on its own. The hidden-threads bar only ever offered "clear all" and only on
      * the feed; mutes and blocks were buried in the settings panel; filters had no inventory.
      */
+    function restoreSettingsBackup() {
+        const backup = readSettingsBackup();
+        if (!backup) return false;
+        const current = GM_getValue('glpEnhancedSettings', null);
+        let parsed;
+        try {
+            parsed = JSON.parse(backup.payload);
+        } catch (e) {
+            showNotification('That settings backup could not be read.', 'error');
+            return false;
+        }
+        settings = { ...DEFAULT_SETTINGS };
+        Object.keys(DEFAULT_SETTINGS).forEach(key => {
+            if (Object.prototype.hasOwnProperty.call(parsed, key)) settings[key] = parsed[key];
+        });
+        saveSettings();
+        applyStyles();
+        runFeatureRegistry('apply');
+        showNotification(`Settings restored from before the ${backup.version} to ${backup.upgradedTo} upgrade.`, 'success', {
+            label: 'Undo',
+            onClick: () => {
+                if (current) GM_setValue('glpEnhancedSettings', current);
+                loadSettings();
+                applyStyles();
+                runFeatureRegistry('apply');
+                showNotification('Back to the current settings.', 'info');
+            }
+        });
+        return true;
+    }
+
     function recoveryInventory() {
         loadMutedUsers();
         loadBlockedUsers();
@@ -8161,6 +8353,22 @@ ${manifest}
                 showNotification('All hidden threads restored.', 'success');
                 renderRecoveryShelf();
             });
+        }
+
+        const backup = readSettingsBackup();
+        const backupGroup = diagnosticsGroup(body, 'Settings backup');
+        if (!backup) {
+            const empty = document.createElement('div');
+            empty.className = 'glp-diag-empty';
+            empty.textContent = 'No upgrade has replaced a saved payload yet.';
+            backupGroup.appendChild(empty);
+        } else {
+            recoveryRow(backupGroup,
+                `From before the ${backup.version} to ${backup.upgradedTo} upgrade (${String(backup.savedAt).slice(0, 10)})`,
+                'Restore',
+                () => {
+                    if (restoreSettingsBackup()) renderRecoveryShelf();
+                });
         }
 
         const users = diagnosticsGroup(body, `Muted users (${inventory.users.length})`);
@@ -8346,6 +8554,14 @@ ${manifest}
             settingsVersionSeen: runtimeState.previousVersion || SCRIPT_VERSION,
             route: runtimeState.route,
             url: window.location.href,
+            settingsBackup: (() => {
+                const backup = readSettingsBackup();
+                return backup ? { from: backup.version, to: backup.upgradedTo, savedAt: backup.savedAt } : null;
+            })(),
+            darkReader: {
+                detected: darkReaderPresent(),
+                locked: !!document.getElementById(DARK_READER_LOCK_ID)
+            },
             featuresStarted: runtimeState.featuresStarted,
             enabledFeatures: getFeatureRegistry()
                 .filter(feature => routeAllowsFeature(feature) && settingAllowsFeature(feature))
@@ -8368,6 +8584,8 @@ ${manifest}
                 .map(entry => ({ ...entry, worstMs: Number(entry.worstMs.toFixed(2)), lastMs: Number(entry.lastMs.toFixed(2)) })),
             fetchQueue: {
                 pending: runtimeState.fetchQueue.length,
+                consecutiveFailures: runtimeState.fetchFailures,
+                backoffMs: Math.max(0, runtimeState.fetchBackoffUntil - Date.now()),
                 active: runtimeState.fetchActive,
                 lastFetchAge: runtimeState.lastFetchAt ? relativeAge(runtimeState.lastFetchAt) : 'never'
             }
@@ -8519,6 +8737,9 @@ ${manifest}
         diagnosticsRow(queue, 'Pending', String(report.fetchQueue.pending));
         diagnosticsRow(queue, 'Active', report.fetchQueue.active ? 'yes' : 'no');
         diagnosticsRow(queue, 'Last fetch', report.fetchQueue.lastFetchAge);
+        diagnosticsRow(queue, 'Consecutive failures', String(report.fetchQueue.consecutiveFailures));
+        diagnosticsRow(queue, 'Backing off', report.fetchQueue.backoffMs
+            ? `${Math.ceil(report.fetchQueue.backoffMs / 1000)}s` : 'no');
 
         panel.append(header, body);
         document.body.appendChild(panel);

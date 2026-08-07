@@ -139,6 +139,18 @@ try {
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { mediaPrivacyMode: true } });
   await page.waitForTimeout(400);
 
+  // User intelligence: the trust overlay is off by default and must appear on demand.
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { userReputationOverlay: true } });
+  await page.waitForTimeout(400);
+  check('thread: trust overlay renders seen-post counts',
+    await page.locator('.glp-user-rep').count() > 0);
+  const repText = await page.locator('.glp-user-rep').first().innerText().catch(() => '');
+  check('thread: trust overlay counts real posts', /\d+ seen/.test(repText), repText);
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { userReputationOverlay: false } });
+  await page.waitForTimeout(400);
+  check('thread: disabling the trust overlay removes every badge',
+    await page.locator('.glp-user-rep').count() === 0);
+
   // Export actions
   for (const tool of ['export-md', 'export-html', 'export-json', 'copy-thread-link']) {
     check(`thread: ${tool} button present`,

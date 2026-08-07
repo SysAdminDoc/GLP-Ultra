@@ -160,6 +160,12 @@
         keywordHide: '',
         customCSS: '',
 
+        // User Intelligence
+        userMuteMatchMode: 'exact',
+        userNotes: true,
+        userReputationOverlay: false,
+        userHistoryCap: 400,
+
         // Media
         mediaPrivacyMode: true,
         mediaXEmbeds: true,
@@ -193,6 +199,8 @@
         'Post Enhancements': 'Add reader tools for posts, timestamps, OP replies, and links.',
         'UI Enhancements': 'Enable high-value helpers for scrolling, media, previews, and feedback.',
         'Filtering & Custom': 'Filter noisy topics, low-effort replies, and add carefully scoped custom CSS.',
+        'User Intelligence': 'Local-only knowledge about the people you read. None of it leaves this browser.',
+        'User Data': 'Back up or clear everything GLP Ultra has learned about users.',
         'Media & Embeds': 'Decide how third-party media behaves before it can phone home.',
         'Export & Data': 'Save a thread as a clean local file. Nothing is uploaded anywhere.',
         'Muted Users': 'Review and restore users muted by the local script.',
@@ -259,7 +267,11 @@
         mediaPrivacyMode: 'Third-party embeds load only when you click them, so YouTube and X never see the page unless you ask.',
         mediaXEmbeds: 'Labels X/Twitter embeds and always shows a direct link, so the post is reachable when the widget fails.',
         mediaHoverPreview: 'Hovering a thumbnail or an image link shows the full-size image in a floating panel.',
-        mediaHoverPreviewSize: 'Largest share of the viewport a hover preview may cover.'
+        mediaHoverPreviewSize: 'Largest share of the viewport a hover preview may cover.',
+        userMuteMatchMode: 'How a muted name is matched: exactly, anywhere in the name, or as a regular expression.',
+        userNotes: 'Adds a private note field to the tag editor. Notes are stored with the tag and never sent anywhere.',
+        userReputationOverlay: 'Counts how often you have seen each poster locally and shows it beside their name. No public scoring, no network calls.',
+        userHistoryCap: 'How many posters the local history keeps before the least recently seen are dropped.'
     };
 
     function escapeHTML(value) {
@@ -2153,6 +2165,29 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
 }
 `;
 
+        // ---- User intelligence ----
+        css += `
+.glp-user-rep {
+    display: inline-flex; align-items: center; margin-left: 6px;
+    padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.02em; color: ${t.link}; background: ${t.accent}1f;
+    border: 1px solid ${t.border}; cursor: help; white-space: nowrap;
+}
+.glp-user-tag-noted { box-shadow: inset 0 -2px 0 rgba(255,255,255,0.45); }
+.glp-tag-note {
+    width: 100%; box-sizing: border-box; margin-top: 6px; resize: vertical;
+    background: #1b2336; border: 1px solid ${t.border}; color: #e7eeff;
+    border-radius: 6px; padding: 6px 8px; font-size: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.glp-tag-save {
+    margin-top: 6px; width: 100%; cursor: pointer; font-size: 12px; font-weight: 650;
+    background: ${t.accent}; border: 1px solid ${t.border}; color: #04101f;
+    border-radius: 6px; padding: 5px 8px;
+}
+.glp-tag-save:hover { filter: brightness(1.08); }
+`;
+
         // ---- Media adapters ----
         css += `
 .glp-media-placeholder {
@@ -2219,6 +2254,8 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         if (existing) existing.remove();
         loadMutedUsers();
         loadBlockedUsers();
+        loadUserTags();
+        loadUserStats();
 
         const overlay = document.createElement('div');
         overlay.id = 'glp-enhanced-overlay';
@@ -2383,6 +2420,13 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                     { key: 'keywordHide', label: 'Hide Keywords (comma-sep)', type: 'text' },
                     { key: 'customCSS', label: 'Custom CSS', type: 'textarea' }
                 ])}
+                ${createSettingsSection('User Intelligence', [
+                    { key: 'userMuteMatchMode', label: 'Mute Match Mode', type: 'select', options: {exact:'Exact name',contains:'Name contains',regex:'Regular expression'} },
+                    { key: 'userNotes', label: 'Private Notes on Tagged Users' },
+                    { key: 'userReputationOverlay', label: 'Local Trust Overlay (posts seen)' },
+                    { key: 'userHistoryCap', label: 'Posters Kept in Local History', type: 'number', min: 50, max: 5000 }
+                ])}
+                ${createSettingsSection('User Data', [], 'user-data')}
                 ${createSettingsSection('Media & Embeds', [
                     { key: 'mediaPrivacyMode', label: 'Click-to-Load Third-Party Embeds' },
                     { key: 'mediaXEmbeds', label: 'Normalize X / Twitter Embeds' },
@@ -2469,6 +2513,22 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             });
         }
 
+        document.getElementById('glp-clear-user-history')?.addEventListener('click', () => {
+            const previousStats = { ...userStats };
+            const previousPages = [...userStatsPages];
+            clearUserHistory();
+            showNotification('Local poster history cleared.', 'warning', {
+                label: 'Undo',
+                onClick: () => {
+                    userStats = previousStats;
+                    userStatsPages = previousPages;
+                    saveUserStats();
+                    applyReputationOverlay();
+                    showNotification('Poster history restored.', 'success');
+                }
+            });
+        });
+
         document.getElementById('glp-preset-reader')?.addEventListener('click', () => {
             applyReaderPreset();
             closeSettings();
@@ -2482,7 +2542,8 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         const SPECIAL_META = {
             'mute-list': `${mutedUsers.length} muted`,
             'block-list': `${blockedUsers.length} blocked`,
-            'presets': '1 preset'
+            'presets': '1 preset',
+            'user-data': `${Object.keys(userStats).length} posters tracked`
         };
         const metaText = SPECIAL_META[specialId]
             || `${items.length} control${items.length !== 1 ? 's' : ''}${changedCount ? ` - ${changedCount} changed` : ''}`;
@@ -2491,6 +2552,13 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             contentHTML = `<div class="glp-mute-manage-list" id="glp-mute-manage">${getMuteListHTML()}</div>`;
         } else if (specialId === 'block-list') {
             contentHTML = `<div class="glp-mute-manage-list" id="glp-block-manage">${getBlockListHTML()}</div>`;
+        } else if (specialId === 'user-data') {
+            contentHTML = `
+                <div class="glp-setting-item full-width" data-search="user data export import backup mutes tags notes history">
+                    <label><span class="glp-setting-label">Local user data</span><span class="glp-setting-help">Mutes, blocks, tags, private notes, hidden threads, and the local poster history are all included in the Export button below. Clearing the history removes only the seen-post counters.</span></label>
+                    <button type="button" class="glp-btn glp-btn-danger" id="glp-clear-user-history">Clear local poster history</button>
+                </div>
+            `;
         } else if (specialId === 'presets') {
             contentHTML = `
                 <div class="glp-setting-item full-width" data-search="presets lean reading preset declutter">
@@ -2651,16 +2719,38 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         });
     }
 
+    // The backup carries every local store, not just the toggles: a settings file that
+    // loses your mutes, tags, notes, and hidden threads is not a backup.
+    function buildBackupPayload() {
+        loadMutedUsers();
+        loadBlockedUsers();
+        loadUserTags();
+        loadHiddenThreads();
+        loadUserStats();
+        return {
+            format: 'glp-ultra-backup',
+            formatVersion: 2,
+            version: SCRIPT_VERSION,
+            exportedAt: new Date().toISOString(),
+            settings,
+            mutedUsers,
+            blockedUsers,
+            userTags,
+            userStats,
+            hiddenThreads
+        };
+    }
+
     function exportSettings() {
-        const data = JSON.stringify({ settings, mutedUsers }, null, 2);
+        const data = JSON.stringify(buildBackupPayload(), null, 2);
         const blob = new Blob([data], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'glp-enhanced-settings.json';
+        a.download = `glp-ultra-backup-${new Date().toISOString().slice(0, 10)}.json`;
         a.click();
         URL.revokeObjectURL(url);
-        showNotification('Settings exported.', 'success');
+        showNotification('Settings and user data exported.', 'success');
     }
 
     function importSettings() {
@@ -2683,13 +2773,29 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
                         });
                         saveSettings();
                     }
-                    if (data.mutedUsers && Array.isArray(data.mutedUsers)) {
+                    if (Array.isArray(data.mutedUsers)) {
                         mutedUsers = data.mutedUsers;
                         saveMutedUsers();
                     }
+                    if (Array.isArray(data.blockedUsers)) {
+                        blockedUsers = data.blockedUsers;
+                        saveBlockedUsers();
+                    }
+                    if (data.userTags && typeof data.userTags === 'object') {
+                        userTags = data.userTags;
+                        saveUserTags();
+                    }
+                    if (data.userStats && typeof data.userStats === 'object') {
+                        userStats = data.userStats;
+                        saveUserStats();
+                    }
+                    if (Array.isArray(data.hiddenThreads)) {
+                        hiddenThreads = data.hiddenThreads;
+                        saveHiddenThreads();
+                    }
                     applyStyles();
                     closeSettings();
-                    showNotification('Settings imported. Reload if a feature needs a fresh page.', 'success');
+                    showNotification('Settings and user data imported. Reload if a feature needs a fresh page.', 'success');
                 } catch (err) {
                     showNotification('Import failed. Choose a valid GLP Ultra JSON file.', 'error');
                 }
@@ -2802,6 +2908,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             '.glp-tag-btn',
             '.glp-user-tag',
             '.glp-post-number',
+            '.glp-user-rep',
             '.glp-collapse-indicator',
             '.glp-yt-embed',
             '.glp-reader-byline',
@@ -2884,6 +2991,7 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             { id: 'thread.opNav', routes: ['thread'], settingKey: 'opPostNav', init: initOPPostNav, apply: initOPPostNav, destroy: () => document.querySelectorAll('.glp-op-nav').forEach(node => node.remove()) },
             { id: 'thread.collapseAll', routes: ['thread'], settingKey: 'collapseExpandAll', init: initCollapseExpandAll, apply: initCollapseExpandAll, destroy: () => document.querySelectorAll('[data-glp-thread-tool="collapse-all"], [data-glp-thread-tool="search"]').forEach(node => node.remove()) },
             { id: 'thread.quickSearch', routes: ['thread'], settingKey: 'threadQuickSearch', init: initQuickSearch, apply: () => {}, destroy: () => document.getElementById('glp-quick-search')?.remove() },
+            { id: 'users.reputation', routes: ['thread'], settingKey: 'userReputationOverlay', init: applyReputationOverlay, apply: applyReputationOverlay, destroy: destroyReputationOverlay },
             { id: 'thread.export', routes: ['thread'], init: initThreadExport, apply: initThreadExport, destroy: destroyThreadExport },
             // X normalization runs first: a rendered widget only carries its provenance
             // until privacy mode swaps the iframe out for a placeholder.
@@ -3349,24 +3457,154 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         showNotification(`Unmuted ${username}.`, 'success');
     }
 
+    // A muted entry can be an exact name, a fragment, or a pattern. Compiling once per
+    // pass keeps regex mode from paying for a rebuild on every row.
+    function buildMuteMatcher() {
+        const mode = settings.userMuteMatchMode || 'exact';
+        const entries = mutedUsers.map(name => String(name || '').trim()).filter(Boolean);
+
+        if (mode === 'contains') {
+            const needles = entries.map(entry => entry.toLowerCase());
+            return name => {
+                const haystack = name.toLowerCase();
+                return needles.some(needle => haystack.includes(needle));
+            };
+        }
+
+        if (mode === 'regex') {
+            const patterns = [];
+            entries.forEach(entry => {
+                // A broken pattern must not silently mute nobody *and* not throw the feature away.
+                try { patterns.push(new RegExp(entry, 'i')); } catch (error) { /* skipped */ }
+            });
+            return name => patterns.some(pattern => pattern.test(name));
+        }
+
+        const exact = new Set(entries);
+        return name => exact.has(name);
+    }
+
     function applyMuteList() {
         if (!settings.userMuteList || mutedUsers.length === 0) return;
+        const isMuted = buildMuteMatcher();
 
         // Thread list: hide rows by muted poster
         document.querySelectorAll('.threads .hfr').forEach(td => {
             const name = td.textContent.trim();
             const row = td.closest('tr');
-            if (row) row.classList.toggle('glp-muted-post', mutedUsers.includes(name));
+            if (row) row.classList.toggle('glp-muted-post', !!name && isMuted(name));
         });
 
         // Thread page: hide posts by muted user
         document.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
-            const authorLink = tr.querySelector('.author_header b a');
-            const authorText = tr.querySelector('.author_header');
-            const name = authorLink ? authorLink.textContent.trim()
-                       : (authorText ? authorText.textContent.replace(/\(OP\)/g, '').trim() : '');
-            if (name) tr.classList.toggle('glp-muted-post', mutedUsers.includes(name));
+            const name = postAuthorName(tr);
+            if (name) tr.classList.toggle('glp-muted-post', isMuted(name));
         });
+    }
+
+    function postAuthorName(tr) {
+        const authorLink = tr.querySelector('.author_header b a');
+        if (authorLink) return authorLink.textContent.trim();
+        const authorText = tr.querySelector('.author_header');
+        return authorText ? authorText.textContent.replace(/\(OP\)/g, '').trim() : '';
+    }
+
+    // ============================================
+    // LOCAL USER HISTORY AND TRUST OVERLAY
+    // ============================================
+    // Everything here is derived from pages this browser has already rendered. There is no
+    // scoring service, no upload, and no attempt to identify anyone beyond the display name.
+    let userStats = {};
+    let userStatsPages = [];
+
+    function loadUserStats() {
+        try { userStats = JSON.parse(GM_getValue('glpUserStats', '{}')) || {}; } catch (e) { userStats = {}; }
+        try { userStatsPages = JSON.parse(GM_getValue('glpUserStatsPages', '[]')) || []; } catch (e) { userStatsPages = []; }
+    }
+
+    function saveUserStats() {
+        const cap = Math.max(50, Number(settings.userHistoryCap) || 400);
+        const names = Object.keys(userStats);
+        if (names.length > cap) {
+            // Drop the least recently seen posters first; the overlay is about people you keep meeting.
+            names
+                .sort((a, b) => (userStats[a].last || 0) - (userStats[b].last || 0))
+                .slice(0, names.length - cap)
+                .forEach(name => delete userStats[name]);
+        }
+        GM_setValue('glpUserStats', JSON.stringify(userStats));
+        GM_setValue('glpUserStatsPages', JSON.stringify(userStatsPages.slice(-200)));
+    }
+
+    function clearUserHistory() {
+        userStats = {};
+        userStatsPages = [];
+        GM_setValue('glpUserStats', '{}');
+        GM_setValue('glpUserStatsPages', '[]');
+        document.querySelectorAll('.glp-user-rep').forEach(node => node.remove());
+    }
+
+    function recordUserHistory() {
+        const pageKey = window.location.pathname;
+        if (userStatsPages.includes(pageKey)) return;
+
+        const threadId = (pageKey.match(/message(\d+)/) || [])[1] || pageKey;
+        const now = Date.now();
+        let touched = false;
+
+        document.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
+            const name = postAuthorName(tr);
+            if (!name || name === 'Anonymous Coward') return;
+            const entry = userStats[name] || { posts: 0, threads: [], first: now, last: now };
+            entry.posts += 1;
+            entry.last = now;
+            if (!entry.threads.includes(threadId)) entry.threads.push(threadId);
+            if (entry.threads.length > 50) entry.threads = entry.threads.slice(-50);
+            userStats[name] = entry;
+            touched = true;
+        });
+
+        if (!touched) return;
+        userStatsPages.push(pageKey);
+        saveUserStats();
+    }
+
+    function reputationLabel(entry) {
+        if (entry.posts >= 50) return 'familiar';
+        if (entry.posts >= 12) return 'recurring';
+        if (entry.posts >= 3) return 'seen before';
+        return 'new to you';
+    }
+
+    function applyReputationOverlay() {
+        if (!settings.userReputationOverlay) return;
+        loadUserStats();
+        recordUserHistory();
+
+        document.querySelectorAll('.msg tr[id^="post_"] .author_header').forEach(header => {
+            const name = postAuthorName(header.closest('tr'));
+            const entry = name ? userStats[name] : null;
+            const existing = header.querySelector('.glp-user-rep');
+            if (!entry) {
+                existing?.remove();
+                return;
+            }
+
+            const badge = existing || document.createElement('span');
+            badge.className = 'glp-user-rep';
+            badge.dataset.glpOwner = 'users.reputation';
+            badge.textContent = `${entry.posts} seen`;
+            badge.title = [
+                `${reputationLabel(entry)} - ${entry.posts} posts seen locally`,
+                `${entry.threads.length} thread${entry.threads.length === 1 ? '' : 's'}`,
+                `first seen ${new Date(entry.first).toLocaleDateString()}`
+            ].join('\n');
+            if (!existing) header.appendChild(badge);
+        });
+    }
+
+    function destroyReputationOverlay() {
+        document.querySelectorAll('.glp-user-rep').forEach(node => node.remove());
     }
 
     function initMuteButtons() {
@@ -4452,7 +4690,10 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         tag.style.background = tagData.bg;
         tag.style.color = tagData.fg;
         tag.textContent = tagData.label;
-        tag.title = `Tag: ${tagData.label} (click to remove)`;
+        tag.title = tagData.note
+            ? `Tag: ${tagData.label}\nNote: ${tagData.note}\n(click to remove)`
+            : `Tag: ${tagData.label} (click to remove)`;
+        if (tagData.note) tag.classList.add('glp-user-tag-noted');
         tag.addEventListener('click', (e) => {
             e.stopPropagation();
             delete userTags[username];
@@ -4473,10 +4714,38 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
         picker = document.createElement('div');
         picker.id = 'glp-tag-picker';
 
+        const existing = userTags[username] || null;
+
         const labelInput = document.createElement('input');
         labelInput.type = 'text';
         labelInput.placeholder = 'Label this user';
+        labelInput.value = existing?.label || '';
         picker.appendChild(labelInput);
+
+        let noteInput = null;
+        if (settings.userNotes) {
+            noteInput = document.createElement('textarea');
+            noteInput.className = 'glp-tag-note';
+            noteInput.rows = 3;
+            noteInput.placeholder = 'Private note (local only)';
+            noteInput.value = existing?.note || '';
+            picker.appendChild(noteInput);
+        }
+
+        const commit = (color) => {
+            const label = labelInput.value.trim() || color.name;
+            userTags[username] = {
+                bg: color.bg,
+                fg: color.fg,
+                label,
+                note: noteInput ? noteInput.value.trim() : (existing?.note || '')
+            };
+            saveUserTags();
+            picker.remove();
+            // Remove old tags, add new
+            header.querySelectorAll('.glp-user-tag').forEach(t => t.remove());
+            header.insertBefore(createTagElement(username, userTags[username]), header.querySelector('.glp-tag-btn'));
+        };
 
         const colorRow = document.createElement('div');
         colorRow.className = 'glp-tag-colors';
@@ -4487,18 +4756,22 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
             swatch.style.background = c.bg;
             swatch.title = c.name;
             swatch.setAttribute('aria-label', `Use ${c.name} tag color`);
-            swatch.addEventListener('click', () => {
-                const label = labelInput.value.trim() || c.name;
-                userTags[username] = { bg: c.bg, fg: c.fg, label };
-                saveUserTags();
-                picker.remove();
-                // Remove old tags, add new
-                header.querySelectorAll('.glp-user-tag').forEach(t => t.remove());
-                header.insertBefore(createTagElement(username, userTags[username]), header.querySelector('.glp-tag-btn'));
-            });
+            swatch.addEventListener('click', () => commit(c));
             colorRow.appendChild(swatch);
         });
         picker.appendChild(colorRow);
+
+        if (noteInput) {
+            const save = document.createElement('button');
+            save.type = 'button';
+            save.className = 'glp-tag-save';
+            save.textContent = existing ? 'Save note' : 'Save';
+            save.addEventListener('click', () => {
+                const current = tagColors.find(c => c.bg === existing?.bg) || tagColors[0];
+                commit(current);
+            });
+            picker.appendChild(save);
+        }
 
         document.addEventListener('click', function dismiss(e) {
             if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('click', dismiss); }

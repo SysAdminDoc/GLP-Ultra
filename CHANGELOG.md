@@ -5,6 +5,10 @@
 ### Added
 
 - **Thread export.** Thread pages get Export MD / Export HTML / Export JSON / Copy Link buttons in the tools bar. Markdown preserves quote nesting as `>` depth, HTML is a standalone dark document with the original post markup, and JSON is a structured record of every post (author, member/user id, OP flag, date, quote depth, links, media). Every export carries the source URL, thread id, page number, and an export timestamp, and an optional media manifest listing each image, embed, and outbound link.
+- **Mute match modes**: a muted entry can now match the exact name, any name containing it, or a regular expression. An invalid pattern is skipped rather than taking the whole mute list down.
+- **Private notes on tagged users**: the tag editor gained a note field, kept beside the label and colour and shown on hover. Editing a tag now pre-fills what is already there instead of starting blank.
+- **Local trust overlay** (off by default): counts how many posts you have actually seen from each poster and shows it beside their name, with thread count and first-seen date on hover. Derived only from pages this browser rendered — no scoring service, no network calls, and the history is capped and prunable.
+- **Full backup, not just settings**: export now bundles mutes, blocks, tags, notes, hidden threads, and the poster history alongside the settings, and import restores all of them. A new panel section clears the poster history with an undo toast.
 - **Media privacy mode** (on by default): third-party embeds inside posts are replaced by a labelled click-to-load placeholder, so YouTube and X never see the page until the reader asks. YouTube auto-embedding builds the placeholder directly rather than loading and then unloading a player.
 - **X / Twitter embed normalization**: widgets get a labelled frame and, where the page still carries the post id, a direct link to the post — a dead widget is now recognisable instead of an unexplained gap.
 - **Hover preview for images** (off by default): hovering a shrunken thumbnail or an image link shows the full-size image, capped to a configurable share of the viewport.

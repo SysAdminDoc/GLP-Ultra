@@ -215,6 +215,14 @@ function render() {
                 'No blocked users yet. Use the Block button on any post author.',
                 async id => persistList('blocked', lists.blocked.filter(entry => String(typeof entry === 'object' && entry ? entry.id : entry) !== String(id)))
             ));
+        } else if (sectionDef.specialId === 'user-data') {
+            const body = document.createElement('div');
+            body.className = 'section-body';
+            const note = document.createElement('div');
+            note.className = 'empty';
+            note.textContent = 'Export below includes mutes, blocks, tags, private notes, hidden threads, and the local poster history. Clearing the history is available in the in-page panel, where an undo toast is offered.';
+            body.appendChild(note);
+            section.appendChild(body);
         } else if (sectionDef.specialId === 'presets') {
             const body = document.createElement('div');
             body.className = 'section-body';

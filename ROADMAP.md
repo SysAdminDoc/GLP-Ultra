@@ -987,29 +987,6 @@ Acceptance criteria:
 - Infinite thread scroll preserves page boundaries and anchors.
 - Quote collapse is reversible per quote and globally.
 
-### v0.6.0 - User Intelligence And Moderation
-
-Features:
-
-- User mute list with match modes.
-- User tags with colors and notes.
-- Local-only reputation/trust overlay.
-- Anonymous poster dimming.
-- Compact flags.
-- Per-user history from locally seen posts.
-- Import/export of user data.
-
-Dependencies:
-
-- Profile/member key extractor.
-
-Acceptance criteria:
-
-- User mutes work on feed and thread views.
-- Tags are visible, editable, exportable, and removable.
-- All user data stays local unless user exports it.
-- No public scoring or network submission exists.
-
 ### v0.7.0 - Watcher, Automation, And Recovery
 
 Features:

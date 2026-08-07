@@ -113,6 +113,10 @@ window.GLP_SCHEMA = {
     "keywordHighlight": "",
     "keywordHide": "",
     "customCSS": "",
+    "userMuteMatchMode": "exact",
+    "userNotes": true,
+    "userReputationOverlay": false,
+    "userHistoryCap": 400,
     "mediaPrivacyMode": true,
     "mediaXEmbeds": true,
     "mediaHoverPreview": false,
@@ -184,7 +188,11 @@ window.GLP_SCHEMA = {
     "mediaPrivacyMode": "Third-party embeds load only when you click them, so YouTube and X never see the page unless you ask.",
     "mediaXEmbeds": "Labels X/Twitter embeds and always shows a direct link, so the post is reachable when the widget fails.",
     "mediaHoverPreview": "Hovering a thumbnail or an image link shows the full-size image in a floating panel.",
-    "mediaHoverPreviewSize": "Largest share of the viewport a hover preview may cover."
+    "mediaHoverPreviewSize": "Largest share of the viewport a hover preview may cover.",
+    "userMuteMatchMode": "How a muted name is matched: exactly, anywhere in the name, or as a regular expression.",
+    "userNotes": "Adds a private note field to the tag editor. Notes are stored with the tag and never sent anywhere.",
+    "userReputationOverlay": "Counts how often you have seen each poster locally and shows it beside their name. No public scoring, no network calls.",
+    "userHistoryCap": "How many posters the local history keeps before the least recently seen are dropped."
   },
   "sectionDescriptions": {
     "Core": "Master controls for GLP Ultra itself.",
@@ -200,6 +208,8 @@ window.GLP_SCHEMA = {
     "Post Enhancements": "Add reader tools for posts, timestamps, OP replies, and links.",
     "UI Enhancements": "Enable high-value helpers for scrolling, media, previews, and feedback.",
     "Filtering & Custom": "Filter noisy topics, low-effort replies, and add carefully scoped custom CSS.",
+    "User Intelligence": "Local-only knowledge about the people you read. None of it leaves this browser.",
+    "User Data": "Back up or clear everything GLP Ultra has learned about users.",
     "Media & Embeds": "Decide how third-party media behaves before it can phone home.",
     "Export & Data": "Save a thread as a clean local file. Nothing is uploaded anywhere.",
     "Muted Users": "Review and restore users muted by the local script.",
@@ -765,6 +775,42 @@ window.GLP_SCHEMA = {
         }
       ],
       "specialId": null
+    },
+    {
+      "title": "User Intelligence",
+      "items": [
+        {
+          "key": "userMuteMatchMode",
+          "label": "Mute Match Mode",
+          "type": "select",
+          "options": {
+            "exact": "Exact name",
+            "contains": "Name contains",
+            "regex": "Regular expression"
+          }
+        },
+        {
+          "key": "userNotes",
+          "label": "Private Notes on Tagged Users"
+        },
+        {
+          "key": "userReputationOverlay",
+          "label": "Local Trust Overlay (posts seen)"
+        },
+        {
+          "key": "userHistoryCap",
+          "label": "Posters Kept in Local History",
+          "type": "number",
+          "min": 50,
+          "max": 5000
+        }
+      ],
+      "specialId": null
+    },
+    {
+      "title": "User Data",
+      "items": [],
+      "specialId": "user-data"
     },
     {
       "title": "Media & Embeds",

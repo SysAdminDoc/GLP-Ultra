@@ -71,7 +71,7 @@ window.GLP_SCHEMA = {
     "quoteDepthBadges": true,
     "collapseNestedQuotes": true,
     "collapseQuotesByDefault": false,
-    "quoteBorderColor": "#4a90d9",
+    "quoteBorderColor": "var(--glpx-accent)",
     "quoteBacklinks": true,
     "colorTheme": "midnight",
     "shapeStyle": "default",

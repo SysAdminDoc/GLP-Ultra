@@ -107,7 +107,7 @@
         quoteDepthBadges: true,
         collapseNestedQuotes: true,
         collapseQuotesByDefault: false,
-        quoteBorderColor: '#4a90d9',
+        quoteBorderColor: 'var(--glpx-accent)',
         quoteBacklinks: true,
 
         // Visual Enhancements
@@ -651,36 +651,126 @@
         (document.head || document.documentElement).appendChild(style);
     }
 
+    // One palette, resolved once. Everything the script paints - the site, the settings panel,
+    // the diagnostics and recovery surfaces, the toasts - reads the tokens derived from this, so
+    // choosing Alien Green does not leave a blue control panel sitting on a green page.
+    const THEME_PALETTES = Object.freeze({
+            midnight: { bg: '#0d0d1a', accent: '#4a90d9', link: '#6ab0f3', linkHover: '#8ac4f7', hover: 'rgba(74,144,217,0.08)', headerBg: 'rgba(30,30,60,0.8)', titleBg: 'rgba(30,30,60,0.5)', border: '#333' },
+            catppuccin: { bg: '#1e1e2e', accent: '#cba6f7', link: '#89b4fa', linkHover: '#b4d0fb', hover: 'rgba(203,166,247,0.08)', headerBg: 'rgba(49,50,68,0.9)', titleBg: 'rgba(49,50,68,0.6)', border: '#45475a' },
+            dracula: { bg: '#282a36', accent: '#bd93f9', link: '#8be9fd', linkHover: '#a8f0ff', hover: 'rgba(189,147,249,0.08)', headerBg: 'rgba(68,71,90,0.9)', titleBg: 'rgba(68,71,90,0.6)', border: '#44475a' },
+            nord: { bg: '#2e3440', accent: '#88c0d0', link: '#81a1c1', linkHover: '#8fbcbb', hover: 'rgba(136,192,208,0.08)', headerBg: 'rgba(59,66,82,0.9)', titleBg: 'rgba(59,66,82,0.6)', border: '#4c566a' },
+            gruvbox: { bg: '#1d2021', accent: '#fe8019', link: '#83a598', linkHover: '#8ec07c', hover: 'rgba(254,128,25,0.08)', headerBg: 'rgba(50,48,47,0.9)', titleBg: 'rgba(50,48,47,0.6)', border: '#504945' },
+            amoled: { bg: '#000000', accent: '#4a90d9', link: '#6ab0f3', linkHover: '#8ac4f7', hover: 'rgba(74,144,217,0.06)', headerBg: 'rgba(15,15,15,0.95)', titleBg: 'rgba(15,15,15,0.8)', border: '#1a1a1a' },
+            solarized: { bg: '#002b36', accent: '#268bd2', link: '#2aa198', linkHover: '#35bdb4', hover: 'rgba(38,139,210,0.08)', headerBg: 'rgba(7,54,66,0.9)', titleBg: 'rgba(7,54,66,0.6)', border: '#073642' },
+            blood: { bg: '#0a0a0a', accent: '#c0392b', link: '#e74c3c', linkHover: '#ff6b5b', hover: 'rgba(192,57,43,0.08)', headerBg: 'rgba(30,10,10,0.9)', titleBg: 'rgba(30,10,10,0.6)', border: '#2c1010' },
+            alien: { bg: '#020502', accent: '#18ff6d', link: '#5cff9d', linkHover: '#a4ffc7', hover: 'rgba(24,255,109,0.08)', headerBg: 'rgba(4,22,9,0.94)', titleBg: 'rgba(4,22,9,0.72)', border: '#153d20' },
+            highcontrast: { bg: '#000000', accent: '#78b7ff', link: '#9fd0ff', linkHover: '#ffffff', hover: 'rgba(120,183,255,0.16)', headerBg: 'rgba(12,12,16,0.98)', titleBg: 'rgba(12,12,16,0.88)', border: '#6f7f9f' }
+    });
+
+    function hexToRgbChannel(hex) {
+        const value = String(hex || '').replace('#', '');
+        const full = value.length === 3 ? value.split('').map(c => c + c).join('') : value;
+        const int = parseInt(full, 16);
+        if (!Number.isFinite(int) || full.length !== 6) return '106,168,255';
+        return `${(int >> 16) & 255},${(int >> 8) & 255},${int & 255}`;
+    }
+
+    /**
+     * The design tokens. Emitted unconditionally and first, so every later rule can lean on them
+     * and a theme switch repaints the whole product rather than only the page behind it.
+     */
+    function buildThemeTokens(t) {
+        const accentRgb = hexToRgbChannel(t.accent);
+        const linkRgb = hexToRgbChannel(t.link);
+        return `
+:root,
+body.glp-enhanced-active,
+#glp-enhanced-overlay,
+#glp-diagnostics,
+#glp-recovery,
+#glp-noise-panel,
+#glp-watch-digest,
+.glp-toast-stack {
+    --glpx-accent-rgb: ${accentRgb};
+    --glpx-link-rgb: ${linkRgb};
+    --glpx-accent: ${t.accent};
+    --glpx-link: ${t.link};
+    --glpx-link-hover: ${t.linkHover};
+
+    /* Surfaces, back to front. */
+    --glpx-bg: ${t.bg};
+    --glpx-surface: ${t.titleBg};
+    --glpx-surface-2: ${t.headerBg};
+    --glpx-elevated: color-mix(in srgb, ${t.bg} 86%, #ffffff 14%);
+    --glpx-scrim: rgba(2, 5, 13, 0.84);
+
+    /* Text. */
+    --glpx-text: #eef3ff;
+    --glpx-muted: #9aa8c7;
+    --glpx-subtle: #71809f;
+    --glpx-on-accent: #05070f;
+
+    /* Lines. */
+    --glpx-border: rgba(var(--glpx-accent-rgb), 0.20);
+    --glpx-border-soft: rgba(147, 168, 211, 0.14);
+    --glpx-border-strong: rgba(var(--glpx-accent-rgb), 0.46);
+
+    /* Semantic - deliberately not theme-tinted: green must stay green on the Blood theme. */
+    --glpx-success: var(--glpx-success);
+    --glpx-warning: var(--glpx-warning);
+    --glpx-danger: var(--glpx-danger);
+
+    /* Radius scale. Nothing outside this set, and never a pill. */
+    --glpx-r-xs: 4px;
+    --glpx-r-sm: 6px;
+    --glpx-r-md: 8px;
+    --glpx-r-lg: 10px;
+    --glpx-r-xl: 12px;
+
+    /* Elevation. */
+    --glpx-shadow-1: 0 2px 8px rgba(0, 0, 0, 0.28);
+    --glpx-shadow-2: 0 14px 36px rgba(0, 0, 0, 0.46);
+    --glpx-shadow-3: 0 24px 80px rgba(0, 0, 0, 0.58);
+
+    --glpx-focus: 0 0 0 3px rgba(var(--glpx-accent-rgb), 0.38);
+    --glpx-ease: 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+`;
+    }
+
     function generateCSS() {
-        let css = `
+        const t = THEME_PALETTES[settings.colorTheme] || THEME_PALETTES.midnight;
+        let css = buildThemeTokens(t);
+        css += `
 /* GLP Ultra Base Styles */
 .glp-enhanced-hidden { display: none !important; }
 body.glp-enhanced-active { color-scheme: dark; }
 
 /* Settings Panel Styles */
 #glp-enhanced-overlay {
-    --glp-panel-bg: #0c1020;
-    --glp-panel-bg-2: #11182d;
-    --glp-panel-bg-3: #18213a;
-    --glp-panel-border: rgba(147, 168, 211, 0.22);
-    --glp-panel-border-strong: rgba(122, 162, 247, 0.42);
-    --glp-panel-text: #eef3ff;
-    --glp-panel-muted: #9aa8c7;
-    --glp-panel-subtle: #71809f;
-    --glp-panel-accent: #6aa8ff;
-    --glp-panel-accent-2: #87d7ff;
-    --glp-panel-danger: #ff6b6b;
-    --glp-panel-success: #43d38b;
-    --glp-panel-warning: #f5bd5f;
+    /* The panel is a view onto the same design system, not a separate blue product. */
+    --glp-panel-bg: var(--glpx-elevated);
+    --glp-panel-bg-2: var(--glpx-surface-2);
+    --glp-panel-bg-3: var(--glpx-surface);
+    --glp-panel-border: var(--glpx-border);
+    --glp-panel-border-strong: var(--glpx-border-strong);
+    --glp-panel-text: var(--glpx-text);
+    --glp-panel-muted: var(--glpx-muted);
+    --glp-panel-subtle: var(--glpx-subtle);
+    --glp-panel-accent: var(--glpx-accent);
+    --glp-panel-accent-2: var(--glpx-link-hover);
+    --glp-panel-danger: var(--glpx-danger);
+    --glp-panel-success: var(--glpx-success);
+    --glp-panel-warning: var(--glpx-warning);
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     background:
-        radial-gradient(circle at 18% 8%, rgba(106, 168, 255, 0.18), transparent 28%),
-        radial-gradient(circle at 82% 18%, rgba(135, 215, 255, 0.10), transparent 30%),
-        rgba(2, 5, 13, 0.84);
+        radial-gradient(circle at 18% 8%, rgba(var(--glpx-accent-rgb), 0.16), transparent 30%),
+        radial-gradient(circle at 82% 18%, rgba(var(--glpx-link-rgb), 0.10), transparent 32%),
+        var(--glpx-scrim);
     z-index: 999999;
     display: flex;
     align-items: center;
@@ -692,20 +782,20 @@ body.glp-enhanced-active { color-scheme: dark; }
 
 #glp-enhanced-settings {
     background:
-        linear-gradient(180deg, rgba(22, 31, 55, 0.98), rgba(10, 14, 28, 0.98)),
-        #0c1020;
+        linear-gradient(180deg, rgba(var(--glpx-accent-rgb), 0.07), transparent 220px),
+        var(--glp-panel-bg);
     border: 1px solid var(--glp-panel-border);
-    border-radius: 12px;
+    border-radius: var(--glpx-r-xl);
     width: min(1040px, 96vw);
     max-height: min(88vh, 980px);
     overflow: hidden;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.58), 0 0 0 1px rgba(255,255,255,0.03) inset;
+    box-shadow: var(--glpx-shadow-3), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     color: var(--glp-panel-text);
 }
 
 #glp-enhanced-settings-header {
-    background: linear-gradient(135deg, rgba(28, 39, 70, 0.95) 0%, rgba(12, 16, 32, 0.98) 100%);
+    background: linear-gradient(135deg, rgba(var(--glpx-accent-rgb), 0.10) 0%, transparent 70%), var(--glp-panel-bg-2);
     padding: 18px 22px 16px;
     border-bottom: 1px solid var(--glp-panel-border);
     display: flex;
@@ -785,7 +875,7 @@ body.glp-enhanced-active { color-scheme: dark; }
 
 #glp-settings-search:focus {
     border-color: var(--glp-panel-accent);
-    box-shadow: 0 0 0 3px rgba(106, 168, 255, 0.16);
+    box-shadow: 0 0 0 3px rgba(var(--glpx-accent-rgb), 0.16);
     background: rgba(10, 15, 31, 1);
 }
 
@@ -820,11 +910,168 @@ body.glp-enhanced-active { color-scheme: dark; }
     transform: translateY(-1px);
 }
 
+/* Two panes: a rail that maps the 23 sections, and the sections themselves. */
+#glp-enhanced-settings-main {
+    display: grid;
+    grid-template-columns: 208px minmax(0, 1fr);
+    align-items: stretch;
+    min-height: 0;
+}
+
+#glp-settings-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 10px 8px 14px;
+    max-height: calc(min(88vh, 980px) - 184px);
+    overflow-y: auto;
+    border-right: 1px solid var(--glp-panel-border);
+    background: rgba(0, 0, 0, 0.16);
+}
+
+.glp-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid transparent;
+    border-radius: var(--glpx-r-sm);
+    background: transparent;
+    color: var(--glp-panel-muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    line-height: 1.3;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background var(--glpx-ease), color var(--glpx-ease), border-color var(--glpx-ease);
+}
+
+.glp-nav-item:hover {
+    background: rgba(var(--glpx-accent-rgb), 0.10);
+    color: var(--glp-panel-text);
+}
+
+.glp-nav-item.glp-nav-active {
+    background: rgba(var(--glpx-accent-rgb), 0.16);
+    border-color: rgba(var(--glpx-accent-rgb), 0.34);
+    color: var(--glp-panel-text);
+}
+
+.glp-nav-item.glp-filtered { display: none; }
+
+/* A dot, not colour alone: the rail has to say "changed here" without relying on hue. */
+.glp-nav-dot {
+    width: 6px; height: 6px; flex: none;
+    border-radius: var(--glpx-r-xs);
+    background: transparent;
+    border: 1px solid transparent;
+}
+
+.glp-nav-item.glp-nav-changed .glp-nav-dot {
+    background: var(--glpx-accent);
+    border-color: var(--glpx-accent);
+}
+
+.glp-search-field { position: relative; display: flex; align-items: center; }
+
+.glp-search-clear {
+    position: absolute; right: 8px;
+    width: 22px; height: 22px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--glp-panel-border);
+    border-radius: var(--glpx-r-xs);
+    color: var(--glp-panel-muted);
+    font-size: 11px; cursor: pointer; line-height: 1;
+}
+
+.glp-search-clear:hover { color: var(--glp-panel-text); background: rgba(var(--glpx-accent-rgb), 0.18); }
+
+.glp-search-tools { display: flex; align-items: center; gap: 12px; }
+
+.glp-chip-toggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 11px;
+    border-radius: var(--glpx-r-sm);
+    border: 1px solid var(--glp-panel-border);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--glp-panel-muted);
+    font-size: 12px; font-weight: 650; cursor: pointer; white-space: nowrap;
+    font-family: inherit;
+    transition: background var(--glpx-ease), color var(--glpx-ease), border-color var(--glpx-ease);
+}
+
+.glp-chip-toggle:hover { color: var(--glp-panel-text); border-color: var(--glp-panel-border-strong); }
+
+.glp-chip-toggle.glp-toggle-on {
+    background: rgba(var(--glpx-accent-rgb), 0.20);
+    border-color: rgba(var(--glpx-accent-rgb), 0.46);
+    color: var(--glp-panel-text);
+}
+
+/* Changed-from-default marker. Present on the row, echoed in the header and the rail. */
+.glp-setting-item.glp-setting-changed {
+    border-color: rgba(var(--glpx-accent-rgb), 0.32);
+    background: rgba(var(--glpx-accent-rgb), 0.06);
+}
+
+.glp-setting-item.glp-setting-changed::after {
+    content: "";
+    position: absolute; top: 8px; right: 8px;
+    width: 6px; height: 6px;
+    border-radius: var(--glpx-r-xs);
+    background: var(--glpx-accent);
+}
+
+.glp-section-changed-count {
+    color: var(--glpx-accent);
+    font-weight: 700;
+}
+
+.glp-section-reset {
+    padding: 3px 8px;
+    border-radius: var(--glpx-r-xs);
+    border: 1px solid var(--glp-panel-border);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--glp-panel-muted);
+    font-size: 11px; font-weight: 650; cursor: pointer;
+    font-family: inherit;
+}
+
+.glp-section-reset:hover {
+    color: var(--glp-panel-text);
+    border-color: var(--glp-panel-border-strong);
+    background: rgba(var(--glpx-accent-rgb), 0.16);
+}
+
+.glp-settings-empty {
+    padding: 44px 24px;
+    text-align: center;
+    display: grid;
+    gap: 10px;
+    justify-items: center;
+}
+
+.glp-empty-title { color: var(--glp-panel-text); font-size: 15px; font-weight: 700; }
+.glp-empty-body { color: var(--glp-panel-muted); font-size: 13px; max-width: 46ch; line-height: 1.5; }
+
+@media (max-width: 900px) {
+    #glp-enhanced-settings-main { grid-template-columns: minmax(0, 1fr); }
+    #glp-settings-nav {
+        flex-direction: row; flex-wrap: wrap; gap: 6px;
+        max-height: 132px; border-right: none;
+        border-bottom: 1px solid var(--glp-panel-border);
+    }
+    .glp-nav-item { width: auto; }
+}
+
 #glp-enhanced-settings-body {
     padding: 0;
     max-height: calc(min(88vh, 980px) - 184px);
     overflow-y: auto;
-    scrollbar-color: rgba(106, 168, 255, 0.42) rgba(255,255,255,0.04);
+    scrollbar-color: rgba(var(--glpx-accent-rgb), 0.42) rgba(255,255,255,0.04);
 }
 
 #glp-enhanced-settings-body::-webkit-scrollbar {
@@ -836,7 +1083,7 @@ body.glp-enhanced-active { color-scheme: dark; }
 }
 
 #glp-enhanced-settings-body::-webkit-scrollbar-thumb {
-    background: rgba(106, 168, 255, 0.38);
+    background: rgba(var(--glpx-accent-rgb), 0.38);
     border-radius: 8px;
     border: 2px solid transparent;
     background-clip: padding-box;
@@ -863,7 +1110,7 @@ body.glp-enhanced-active { color-scheme: dark; }
 }
 
 .glp-settings-section-header:hover {
-    background: rgba(106, 168, 255, 0.07);
+    background: rgba(var(--glpx-accent-rgb), 0.07);
 }
 
 .glp-section-heading {
@@ -920,6 +1167,7 @@ body.glp-enhanced-active { color-scheme: dark; }
 }
 
 .glp-setting-item {
+    position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: 10px;
@@ -934,8 +1182,8 @@ body.glp-enhanced-active { color-scheme: dark; }
 }
 
 .glp-setting-item:hover {
-    background: rgba(106, 168, 255, 0.055);
-    border-color: rgba(106, 168, 255, 0.22);
+    background: rgba(var(--glpx-accent-rgb), 0.055);
+    border-color: rgba(var(--glpx-accent-rgb), 0.22);
     transform: translateY(-1px);
 }
 
@@ -1009,7 +1257,7 @@ body.glp-enhanced-active { color-scheme: dark; }
 .glp-op-nav button:focus-visible,
 #glp-back-to-top:focus-visible {
     border-color: var(--glp-panel-accent) !important;
-    box-shadow: 0 0 0 3px rgba(106, 168, 255, 0.18) !important;
+    box-shadow: 0 0 0 3px rgba(var(--glpx-accent-rgb), 0.18) !important;
     outline: none;
 }
 
@@ -1065,7 +1313,7 @@ body.glp-enhanced-active { color-scheme: dark; }
 }
 
 .glp-btn-secondary:hover {
-    background: rgba(106, 168, 255, 0.12);
+    background: rgba(var(--glpx-accent-rgb), 0.12);
     border-color: var(--glp-panel-border-strong);
     transform: translateY(-1px);
 }
@@ -1098,7 +1346,7 @@ body.glp-enhanced-active { color-scheme: dark; }
     background: linear-gradient(180deg, rgba(18, 26, 48, 0.98), rgba(10, 14, 28, 0.98));
     color: var(--glp-panel-text, #eef3ff);
     border: 1px solid rgba(147, 168, 211, 0.20);
-    border-left: 3px solid var(--glp-panel-accent, #6aa8ff);
+    border-left: 3px solid var(--glp-panel-accent, var(--glpx-accent));
     border-radius: 8px;
     padding: 11px 12px;
     box-shadow: 0 18px 44px rgba(0,0,0,0.42);
@@ -1112,13 +1360,13 @@ body.glp-enhanced-active { color-scheme: dark; }
     animation: glp-toast-in 0.18s ease-out;
 }
 
-.glp-toast-success { border-left-color: #43d38b; }
-.glp-toast-warning { border-left-color: #f5bd5f; }
-.glp-toast-error { border-left-color: #ff6b6b; }
+.glp-toast-success { border-left-color: var(--glpx-success); }
+.glp-toast-warning { border-left-color: var(--glpx-warning); }
+.glp-toast-error { border-left-color: var(--glpx-danger); }
 
 .glp-toast button {
-    background: rgba(106, 168, 255, 0.13);
-    border: 1px solid rgba(106, 168, 255, 0.28);
+    background: rgba(var(--glpx-accent-rgb), 0.13);
+    border: 1px solid rgba(var(--glpx-accent-rgb), 0.28);
     color: #cfe2ff;
     border-radius: 6px;
     padding: 5px 8px;
@@ -1217,7 +1465,7 @@ body.glp-enhanced-active { color-scheme: dark; }
     flex: none; background: rgba(255, 255, 255, 0.055); border: 1px solid rgba(255, 255, 255, 0.12);
     color: #dce7ff; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 11px;
 }
-.glp-recovery-row button:hover { background: rgba(74, 144, 217, 0.16); border-color: rgba(74, 144, 217, 0.38); }
+.glp-recovery-row button:hover { background: rgba(var(--glpx-accent-rgb), 0.16); border-color: rgba(var(--glpx-accent-rgb), 0.38); }
 
 `;
 
@@ -1450,7 +1698,7 @@ br.hdr_clear_both { display: none !important; }
             css += `
 tr:has(.ifr span[title="Pinned Thread"]),
 tr:has(.ifr span[title="Karma Pin"]) {
-    border-left: 3px solid #4a90d9 !important;
+    border-left: 3px solid var(--glpx-accent) !important;
 }
 `;
         }
@@ -1458,7 +1706,7 @@ tr:has(.ifr span[title="Karma Pin"]) {
         if (settings.highlightSuperPins) {
             css += `
 tr:has(.ifr img[src*="superpin"]) {
-    border-left: 3px solid #e6a820 !important;
+    border-left: 3px solid var(--glpx-warning) !important;
     background: linear-gradient(90deg, rgba(230, 168, 32, 0.08) 0%, transparent 40%) !important;
 }
 `;
@@ -1589,7 +1837,7 @@ body.glpx-reader-active .glp-reader-byline {
 
         if (settings.highlightOP) {
             css += `
-.glp-op-badge { color: #e6a820 !important; font-weight: bold !important; }
+.glp-op-badge { color: var(--glpx-warning) !important; font-weight: bold !important; }
 `;
         }
 
@@ -1656,8 +1904,8 @@ body.glpx-reader-active .glp-reader-byline {
             css += `
 .glp-quote-depth {
     display: inline-block; font-size: 9px; font-weight: 700;
-    background: rgba(106,168,255,0.15); color: #6aa8ff;
-    padding: 0 4px; border-radius: 3px; margin-right: 4px;
+    background: rgba(var(--glpx-accent-rgb),0.15); color: var(--glpx-accent);
+    padding: 0 4px; border-radius: 4px; margin-right: 4px;
     vertical-align: middle; line-height: 1.6;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
@@ -1673,13 +1921,13 @@ body.glpx-reader-active .glp-reader-byline {
 .glp-media-action {
     cursor: pointer; font-size: 11px; line-height: 1.5;
     color: #dce7ff; background: rgba(255,255,255,0.055);
-    border: 1px solid rgba(147,168,211,0.22); border-radius: 5px; padding: 2px 8px;
+    border: 1px solid rgba(147,168,211,0.22); border-radius: 6px; padding: 2px 8px;
     transition: background 0.15s, border-color 0.15s, transform 0.15s;
     font-family: inherit;
 }
 .glp-media-action:hover,
 .glp-media-action:focus-visible {
-    background: rgba(106,168,255,0.18); border-color: rgba(106,168,255,0.44);
+    background: rgba(var(--glpx-accent-rgb),0.18); border-color: rgba(var(--glpx-accent-rgb),0.44);
     transform: translateY(-1px);
 }
 `;
@@ -1698,9 +1946,9 @@ body.glpx-reader-active .glp-reader-byline {
 .glp-backlink,
 .glp-quote-jump {
     cursor: pointer; font-size: 11px; line-height: 1.5;
-    color: #dce7ff; background: rgba(106,168,255,0.10);
-    border: 1px solid rgba(106,168,255,0.24);
-    border-radius: 5px; padding: 2px 7px;
+    color: #dce7ff; background: rgba(var(--glpx-accent-rgb),0.10);
+    border: 1px solid rgba(var(--glpx-accent-rgb),0.24);
+    border-radius: 6px; padding: 2px 7px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
@@ -1708,14 +1956,14 @@ body.glpx-reader-active .glp-reader-byline {
 .glp-quote-jump:hover,
 .glp-backlink:focus-visible,
 .glp-quote-jump:focus-visible {
-    background: rgba(106,168,255,0.20); border-color: rgba(106,168,255,0.46);
+    background: rgba(var(--glpx-accent-rgb),0.20); border-color: rgba(var(--glpx-accent-rgb),0.46);
     transform: translateY(-1px);
 }
 .glp-quote-jump { margin-left: 6px; vertical-align: middle; }
 .glp-post-flash { animation: glp-post-flash 1.6s ease-out; }
 @keyframes glp-post-flash {
-    0% { box-shadow: inset 0 0 0 9999px rgba(106,168,255,0.22); }
-    100% { box-shadow: inset 0 0 0 9999px rgba(106,168,255,0); }
+    0% { box-shadow: inset 0 0 0 9999px rgba(var(--glpx-accent-rgb),0.22); }
+    100% { box-shadow: inset 0 0 0 9999px rgba(var(--glpx-accent-rgb),0); }
 }
 #glp-backlink-card {
     position: absolute; z-index: 2147483645; pointer-events: none;
@@ -1745,13 +1993,13 @@ body.glpx-reader-active .glp-reader-byline {
 }
 .glp-nested-toggle {
     display: inline-block; cursor: pointer;
-    font-size: 11px; color: #6aa8ff; margin: 4px 0;
-    background: rgba(106,168,255,0.08); border: 1px solid rgba(106,168,255,0.18);
+    font-size: 11px; color: var(--glpx-accent); margin: 4px 0;
+    background: rgba(var(--glpx-accent-rgb),0.08); border: 1px solid rgba(var(--glpx-accent-rgb),0.18);
     border-radius: 4px; padding: 2px 8px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     transition: background 0.15s, border-color 0.15s;
 }
-.glp-nested-toggle:hover { background: rgba(106,168,255,0.16); border-color: rgba(106,168,255,0.34); }
+.glp-nested-toggle:hover { background: rgba(var(--glpx-accent-rgb),0.16); border-color: rgba(var(--glpx-accent-rgb),0.34); }
 `;
         }
 
@@ -1770,20 +2018,7 @@ body, .post_main, .sfr a, td { font-size: ${settings.fontSize}px !important; }
 `;
         }
 
-        // ---- Color Theme ----
-        const themes = {
-            midnight: { bg: '#0d0d1a', accent: '#4a90d9', link: '#6ab0f3', linkHover: '#8ac4f7', hover: 'rgba(74,144,217,0.08)', headerBg: 'rgba(30,30,60,0.8)', titleBg: 'rgba(30,30,60,0.5)', border: '#333' },
-            catppuccin: { bg: '#1e1e2e', accent: '#cba6f7', link: '#89b4fa', linkHover: '#b4d0fb', hover: 'rgba(203,166,247,0.08)', headerBg: 'rgba(49,50,68,0.9)', titleBg: 'rgba(49,50,68,0.6)', border: '#45475a' },
-            dracula: { bg: '#282a36', accent: '#bd93f9', link: '#8be9fd', linkHover: '#a8f0ff', hover: 'rgba(189,147,249,0.08)', headerBg: 'rgba(68,71,90,0.9)', titleBg: 'rgba(68,71,90,0.6)', border: '#44475a' },
-            nord: { bg: '#2e3440', accent: '#88c0d0', link: '#81a1c1', linkHover: '#8fbcbb', hover: 'rgba(136,192,208,0.08)', headerBg: 'rgba(59,66,82,0.9)', titleBg: 'rgba(59,66,82,0.6)', border: '#4c566a' },
-            gruvbox: { bg: '#1d2021', accent: '#fe8019', link: '#83a598', linkHover: '#8ec07c', hover: 'rgba(254,128,25,0.08)', headerBg: 'rgba(50,48,47,0.9)', titleBg: 'rgba(50,48,47,0.6)', border: '#504945' },
-            amoled: { bg: '#000000', accent: '#4a90d9', link: '#6ab0f3', linkHover: '#8ac4f7', hover: 'rgba(74,144,217,0.06)', headerBg: 'rgba(15,15,15,0.95)', titleBg: 'rgba(15,15,15,0.8)', border: '#1a1a1a' },
-            solarized: { bg: '#002b36', accent: '#268bd2', link: '#2aa198', linkHover: '#35bdb4', hover: 'rgba(38,139,210,0.08)', headerBg: 'rgba(7,54,66,0.9)', titleBg: 'rgba(7,54,66,0.6)', border: '#073642' },
-            blood: { bg: '#0a0a0a', accent: '#c0392b', link: '#e74c3c', linkHover: '#ff6b5b', hover: 'rgba(192,57,43,0.08)', headerBg: 'rgba(30,10,10,0.9)', titleBg: 'rgba(30,10,10,0.6)', border: '#2c1010' },
-            alien: { bg: '#020502', accent: '#18ff6d', link: '#5cff9d', linkHover: '#a4ffc7', hover: 'rgba(24,255,109,0.08)', headerBg: 'rgba(4,22,9,0.94)', titleBg: 'rgba(4,22,9,0.72)', border: '#153d20' },
-            highcontrast: { bg: '#000000', accent: '#78b7ff', link: '#9fd0ff', linkHover: '#ffffff', hover: 'rgba(120,183,255,0.16)', headerBg: 'rgba(12,12,16,0.98)', titleBg: 'rgba(12,12,16,0.88)', border: '#6f7f9f' }
-        };
-        const t = themes[settings.colorTheme] || themes.midnight;
+        // ---- Color Theme ---- (palette hoisted to THEME_PALETTES)
 
         if (settings.darkModeEnhance) {
             css += `
@@ -1799,9 +2034,9 @@ body.glpx-enabled {
     --glpx-link: ${t.link};
     --glpx-link-hover: ${t.linkHover};
     --glpx-hover: ${t.hover};
-    --glpx-danger: #ff6b6b;
-    --glpx-warning: #f5bd5f;
-    --glpx-success: #43d38b;
+    --glpx-danger: var(--glpx-danger);
+    --glpx-warning: var(--glpx-warning);
+    --glpx-success: var(--glpx-success);
     --glpx-radius: 8px;
     --glpx-z-overlay: 999999;
     --glpx-z-toast: 1000002;
@@ -1860,8 +2095,8 @@ td.nav { border-color: ${t.border} !important; }
 }
 .glp-settings-inline-btn:hover,
 .glp-nav-gear a:hover {
-    color: #fff !important; background: rgba(74,144,217,0.16);
-    border-color: rgba(74,144,217,0.38); transform: translateY(-1px);
+    color: #fff !important; background: rgba(var(--glpx-accent-rgb),0.16);
+    border-color: rgba(var(--glpx-accent-rgb),0.38); transform: translateY(-1px);
 }
 
 `;
@@ -1997,8 +2232,8 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
         if (settings.highlightOPPosts) {
             css += `
 .msg tr[class*="post_member_"]:not(.post_member_0) { }
-.glp-op-post > td.replycontent { border-left: 3px solid #e6a820 !important; }
-.glp-op-post .author_header b a { color: #e6a820 !important; }
+.glp-op-post > td.replycontent { border-left: 3px solid var(--glpx-warning) !important; }
+.glp-op-post .author_header b a { color: var(--glpx-warning) !important; }
 `;
         }
 
@@ -2006,11 +2241,11 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
             css += `
 .glp-post-number {
     display: inline-block;
-    background: rgba(74, 144, 217, 0.15);
-    color: #6ab0f3;
+    background: rgba(var(--glpx-accent-rgb), 0.15);
+    color: var(--glpx-link);
     font-size: 10px;
     padding: 1px 5px;
-    border-radius: 3px;
+    border-radius: 4px;
     margin-right: 6px;
     font-weight: 600;
     vertical-align: middle;
@@ -2027,7 +2262,7 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
     right: 20px;
     width: 42px;
     height: 42px;
-    background: rgba(74, 144, 217, 0.8);
+    background: rgba(var(--glpx-accent-rgb), 0.8);
     border: 1px solid rgba(255,255,255,0.18);
     border-radius: 10px;
     cursor: pointer;
@@ -2038,7 +2273,7 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
     transition: opacity 0.2s ease, transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
     box-shadow: 0 10px 26px rgba(0,0,0,0.34);
 }
-#glp-back-to-top:hover { transform: translateY(-2px); background: rgba(74, 144, 217, 1); box-shadow: 0 14px 34px rgba(0,0,0,0.42); }
+#glp-back-to-top:hover { transform: translateY(-2px); background: rgba(var(--glpx-accent-rgb), 1); box-shadow: 0 14px 34px rgba(0,0,0,0.42); }
 #glp-back-to-top { color: #fff; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
 #glp-back-to-top.visible { display: flex; }
 `;
@@ -2088,7 +2323,7 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
 }
 #glp-infinite-loader.loading::after {
     content: ''; display: inline-block; width: 16px; height: 16px;
-    border: 2px solid #4a90d9; border-top-color: transparent;
+    border: 2px solid var(--glpx-accent); border-top-color: transparent;
     border-radius: 6px; animation: glp-spin 0.8s linear infinite;
     margin-left: 8px; vertical-align: middle;
 }
@@ -2099,7 +2334,7 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
         if (settings.freshnessColors) {
             css += `
 .glp-fresh-now { color: #4ade80 !important; font-weight: bold !important; }
-.glp-fresh-recent { color: #6ab0f3 !important; }
+.glp-fresh-recent { color: var(--glpx-link) !important; }
 .glp-fresh-stale { color: #666 !important; }
 `;
         }
@@ -2142,7 +2377,7 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
     width: 50px; height: 80px; cursor: pointer; border-radius: 6px;
     transition: background 0.2s;
 }
-#glp-lightbox .glp-gallery-nav:hover { background: rgba(74,144,217,0.6); }
+#glp-lightbox .glp-gallery-nav:hover { background: rgba(var(--glpx-accent-rgb),0.6); }
 #glp-lightbox .glp-gallery-prev { left: 15px; }
 #glp-lightbox .glp-gallery-next { right: 15px; }
 #glp-lightbox .glp-gallery-counter {
@@ -2156,7 +2391,7 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
         if (settings.userTags) {
             css += `
 .glp-user-tag {
-    display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 3px;
+    display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 4px;
     margin-left: 4px; vertical-align: middle; font-weight: 600;
     cursor: pointer; line-height: 1.4;
 }
@@ -2170,7 +2405,7 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
     transition: opacity 0.15s, background 0.15s, border-color 0.15s, transform 0.15s;
 }
 .glp-tag-btn:hover,
-.glp-tag-btn:focus-visible { opacity: 1; background: rgba(74,144,217,0.14); border-color: rgba(74,144,217,0.34); transform: translateY(-1px); }
+.glp-tag-btn:focus-visible { opacity: 1; background: rgba(var(--glpx-accent-rgb),0.14); border-color: rgba(var(--glpx-accent-rgb),0.34); transform: translateY(-1px); }
 #glp-tag-picker {
     position: absolute; z-index: 100000; background: #11182d;
     border: 1px solid rgba(147,168,211,0.24); border-radius: 8px; padding: 10px;
@@ -2182,7 +2417,7 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
     color: #eef3ff; padding: 7px 8px; border-radius: 6px; font-size: 12px;
     width: 100%; box-sizing: border-box; margin-bottom: 8px; outline: none;
 }
-#glp-tag-picker input:focus { border-color: #6aa8ff; box-shadow: 0 0 0 3px rgba(106,168,255,0.15); }
+#glp-tag-picker input:focus { border-color: var(--glpx-accent); box-shadow: 0 0 0 3px rgba(var(--glpx-accent-rgb),0.15); }
 .glp-tag-colors { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .glp-tag-swatch {
     width: 28px; height: 24px; border-radius: 6px; cursor: pointer;
@@ -2199,7 +2434,7 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
             css += `
 #glp-scroll-progress {
     position: fixed; top: 0; left: 0; height: 3px; z-index: 999999;
-    background: linear-gradient(90deg, #4a90d9, #8ac4f7);
+    background: linear-gradient(90deg, var(--glpx-accent), #8ac4f7);
     transition: width 0.1s linear; pointer-events: none;
 }
 `;
@@ -2222,10 +2457,10 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
         if (settings.postPermalinks) {
             css += `
 .glp-post-number { cursor: pointer; }
-.glp-post-number:hover { background: rgba(74,144,217,0.3) !important; }
+.glp-post-number:hover { background: rgba(var(--glpx-accent-rgb),0.3) !important; }
 .glp-copied-toast {
     position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
-    background: #4a90d9; color: #fff; padding: 8px 18px; border-radius: 6px;
+    background: var(--glpx-accent); color: #fff; padding: 8px 18px; border-radius: 6px;
     font-size: 13px; z-index: 999999; pointer-events: none;
     animation: glp-fade 1.5s ease forwards;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -2246,19 +2481,26 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
 
         if (settings.opPostNav) {
             css += `
+/* Docked bottom-left, clear of the author column it used to sit on top of. */
 .glp-op-nav {
-    position: fixed; left: 10px; top: 50%; transform: translateY(-50%);
-    display: flex; flex-direction: column; gap: 6px; z-index: 99997;
+    position: fixed; left: 14px; bottom: 16px;
+    display: flex; flex-direction: row; gap: 6px; z-index: 99997;
+    padding: 6px; border-radius: var(--glpx-r-lg);
+    background: var(--glpx-surface-2);
+    border: 1px solid var(--glpx-border);
+    box-shadow: var(--glpx-shadow-2);
 }
 .glp-op-nav button {
-    background: rgba(230,168,32,0.8); border: none; color: #000;
-    min-width: 54px; height: 34px; border-radius: 10px; cursor: pointer;
-    font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    background: rgba(var(--glpx-accent-rgb), 0.14);
+    border: 1px solid rgba(var(--glpx-accent-rgb), 0.30);
+    color: var(--glpx-text);
+    min-width: 54px; height: 32px; border-radius: var(--glpx-r-sm); cursor: pointer;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     transition: background 0.2s, transform 0.2s;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
-.glp-op-nav button:hover { background: rgba(230,168,32,1); transform: translateY(-1px); }
+.glp-op-nav button:hover { background: rgba(var(--glpx-accent-rgb), 0.28); border-color: var(--glpx-border-strong); transform: translateY(-1px); }
 `;
         }
 
@@ -2278,7 +2520,7 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
     transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
 #glp-thread-tools-bar button:hover,
-#glp-collapse-all-bar button:hover { background: rgba(74,144,217,0.16); border-color: rgba(74,144,217,0.38); transform: translateY(-1px); }
+#glp-collapse-all-bar button:hover { background: rgba(var(--glpx-accent-rgb),0.16); border-color: rgba(var(--glpx-accent-rgb),0.38); transform: translateY(-1px); }
 `;
         }
 
@@ -2286,16 +2528,20 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
             css += `
 #glp-thread-tools-bar {
     display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
-    padding: 8px 10px; font-size: 12px;
+    width: 100%; box-sizing: border-box;
+    padding: 9px 12px; margin: 10px 0; font-size: 12px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: linear-gradient(180deg, rgba(var(--glpx-accent-rgb), 0.09), transparent), var(--glpx-surface);
+    border: 1px solid var(--glpx-border);
+    border-radius: var(--glpx-r-lg);
+    box-shadow: var(--glpx-shadow-1);
 }
 #glp-thread-tools-bar button {
     background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.12); color: #dce7ff;
     padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 650;
     transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
-#glp-thread-tools-bar button:hover { background: rgba(74,144,217,0.16); border-color: rgba(74,144,217,0.38); transform: translateY(-1px); }
+#glp-thread-tools-bar button:hover { background: rgba(var(--glpx-accent-rgb),0.16); border-color: rgba(var(--glpx-accent-rgb),0.38); transform: translateY(-1px); }
 #glp-quick-search {
     position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
     background: #1a1a2e; border: 1px solid #4a4a6a; border-radius: 10px;
@@ -2308,16 +2554,16 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
     flex: 1; background: #2d2d4a; border: 1px solid #4a4a6a; color: #fff;
     padding: 6px 10px; border-radius: 6px; font-size: 13px; outline: none;
 }
-#glp-quick-search input:focus { border-color: #4a90d9; }
+#glp-quick-search input:focus { border-color: var(--glpx-accent); }
 #glp-quick-search .count { color: #888; font-size: 12px; white-space: nowrap; }
 #glp-quick-search button {
     background: #2d2d4a; color: #dfe7ff; border: 1px solid #4a4a6a;
     border-radius: 6px; padding: 6px 9px; font-size: 12px; cursor: pointer;
 }
-#glp-quick-search button:hover { background: #3b4b68; border-color: #4a90d9; }
+#glp-quick-search button:hover { background: #3b4b68; border-color: var(--glpx-accent); }
 #glp-quick-search button:disabled { opacity: 0.45; cursor: default; }
-.glp-search-match { background: rgba(230,168,32,0.35) !important; border-radius: 2px; }
-.glp-search-current { background: rgba(230,168,32,0.7) !important; outline: 2px solid #e6a820; }
+.glp-search-match { background: rgba(230,168,32,0.35) !important; border-radius: 4px; }
+.glp-search-current { background: rgba(230,168,32,0.7) !important; outline: 2px solid var(--glpx-warning); }
 `;
         }
 
@@ -2330,7 +2576,7 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
 .glp-hide-col-btn {
     display: inline-block; width: 18px; height: 18px; line-height: 18px;
     text-align: center; font-size: 12px; color: #555; cursor: pointer;
-    border-radius: 3px; border: none; background: none; padding: 0;
+    border-radius: 4px; border: none; background: none; padding: 0;
     transition: color 0.15s, background 0.15s;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
@@ -2340,22 +2586,22 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     padding: 8px 10px; font-size: 12px; color: #aeb9d2;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    border: 1px solid rgba(106,144,217,0.18);
-    border-left: 3px solid rgba(106,144,217,0.72);
+    border: 1px solid rgba(var(--glpx-accent-rgb),0.18);
+    border-left: 3px solid rgba(var(--glpx-accent-rgb),0.72);
     border-radius: 8px;
     margin: 8px 0;
-    background: rgba(74,144,217,0.075);
+    background: rgba(var(--glpx-accent-rgb),0.075);
     user-select: none;
 }
-#glp-hidden-threads-bar .count { color: #6ab0f3; font-weight: 600; }
+#glp-hidden-threads-bar .count { color: var(--glpx-link); font-weight: 600; }
 #glp-hidden-threads-bar .glp-hidden-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 #glp-hidden-threads-bar button {
     background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.12);
     color: #dce7ff; border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 12px;
 }
-#glp-hidden-threads-bar button:hover { background: rgba(74,144,217,0.16); border-color: rgba(74,144,217,0.38); }
+#glp-hidden-threads-bar button:hover { background: rgba(var(--glpx-accent-rgb),0.16); border-color: rgba(var(--glpx-accent-rgb),0.38); }
 #glp-hidden-threads-bar button.glp-hidden-clear { color: #ffd1d1; border-color: rgba(217,74,74,0.35); }
-.glp-keyword-highlight { background: rgba(230, 168, 32, 0.3) !important; border-radius: 2px; padding: 0 2px; }
+.glp-keyword-highlight { background: rgba(230, 168, 32, 0.3) !important; border-radius: 4px; padding: 0 2px; }
 .glp-keyword-hidden { display: none !important; }
 #glp-filter-status {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -2375,7 +2621,7 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
     background: transparent; z-index: 999998; pointer-events: none;
 }
 #glp-auto-refresh-bar .bar {
-    height: 100%; width: 0%; background: #4a90d9;
+    height: 100%; width: 0%; background: var(--glpx-accent);
     transition: width 1s linear;
 }
 .glp-mute-manage-list { margin-top: 8px; }
@@ -2386,7 +2632,7 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
 }
 .glp-mute-manage-item button {
     background: #d94a4a; border: none; color: #fff; padding: 2px 8px;
-    border-radius: 3px; cursor: pointer; font-size: 11px;
+    border-radius: 4px; cursor: pointer; font-size: 11px;
 }
 .glp-empty-state {
     color: #8c98b3;
@@ -2521,6 +2767,136 @@ center:has([data-type="_mgwidget"]) { display: none !important; }
 #wrap, #wrap_in { padding-top: 0 !important; margin-top: 0 !important; }
 `;
 
+        // ---- Site surface polish ----
+        // The site's own markup is a 2003 table layout; these rules give it the rhythm, chip
+        // vocabulary, and type scale the rest of the product already has. Always on: this is the
+        // baseline the themes paint over, not an optional extra.
+        css += `
+/* One chip vocabulary. Mute, Block, Tag and the tag pills were three different sizes and
+   three different colour stories sitting inches apart in the same column. */
+.glp-mute-btn,
+.glp-block-btn,
+.glp-tag-btn {
+    display: inline-flex !important; align-items: center; justify-content: center;
+    vertical-align: middle;
+    height: 20px; padding: 0 8px !important; margin: 0 !important;
+    font-size: 10px !important; font-weight: 650 !important; line-height: 1 !important;
+    letter-spacing: 0.02em;
+    border-radius: var(--glpx-r-xs) !important;
+    background: rgba(var(--glpx-accent-rgb), 0.10) !important;
+    border: 1px solid rgba(var(--glpx-accent-rgb), 0.24) !important;
+    color: var(--glpx-text) !important;
+    opacity: 0.72;
+    transition: opacity var(--glpx-ease), background var(--glpx-ease), border-color var(--glpx-ease);
+}
+.glp-mute-btn:hover,
+.glp-tag-btn:hover { opacity: 1; background: rgba(var(--glpx-accent-rgb), 0.22) !important; }
+.glp-block-btn {
+    background: rgba(255, 107, 107, 0.10) !important;
+    border-color: rgba(255, 107, 107, 0.26) !important;
+    color: #ffd9d9 !important;
+}
+.glp-block-btn:hover { opacity: 1; background: rgba(255, 107, 107, 0.20) !important; }
+
+/* The author column: name first, actions next to it, metadata quiet underneath. */
+.msg td.messageauthor,
+.msg td.replyauthor {
+    padding: 12px 12px 12px 14px !important;
+    vertical-align: top !important;
+    line-height: 1.45 !important;
+}
+/* Deliberately block, not flex: the site writes the OP marker as literal "(" and ")" text
+   nodes around a badge, and flex makes every one of those its own line. Inline flow keeps
+   "Name (OP)" together and lets the action chips wrap like words. */
+.msg .author_header {
+    display: block !important;
+    margin-bottom: 5px; line-height: 1.9 !important;
+}
+.msg .author_header b a,
+.msg .author_header > a {
+    font-size: 13px !important; font-weight: 700 !important; line-height: 1.3 !important;
+    color: var(--glpx-link) !important;
+    overflow-wrap: anywhere;
+}
+.msg .glp-op-badge {
+    display: inline-flex; align-items: center; vertical-align: middle;
+    height: 18px; padding: 0 7px; margin: 0 1px !important;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+    border-radius: var(--glpx-r-xs);
+    background: rgba(var(--glpx-accent-rgb), 0.18);
+    border: 1px solid rgba(var(--glpx-accent-rgb), 0.32);
+    color: var(--glpx-link);
+}
+.msg td.messageauthor .author_date,
+.msg td.replyauthor .author_date,
+.msg td.messageauthor font[size="1"],
+.msg td.replyauthor font[size="1"] {
+    display: block;
+    font-size: 10px !important; color: var(--glpx-subtle) !important;
+    line-height: 1.35 !important; text-align: left !important;
+}
+/* The site centres some of this metadata and left-aligns the rest, inside a 120px column. */
+.msg td.messageauthor *,
+.msg td.replyauthor * { text-align: left !important; }
+.msg td.messageauthor,
+.msg td.replyauthor { font-size: 11px !important; }
+
+/* Post rows: a quiet separator and a hover cue, instead of edge-to-edge sameness. */
+.msg tr[id^="post_"] > td { transition: background var(--glpx-ease); }
+.msg tr[id^="post_"]:hover > td { background: rgba(var(--glpx-accent-rgb), 0.035) !important; }
+
+/* Thread title: it is the most important text on the page and read like body copy. */
+.msgtitle h1,
+.msgtitle {
+    font-size: 20px !important; line-height: 1.3 !important; font-weight: 700 !important;
+    letter-spacing: -0.01em;
+    padding: 4px 0 10px !important; margin: 0 0 4px !important;
+    border-bottom: 1px solid var(--glpx-border-soft);
+}
+
+/* Nav links rendered as a bare vertical list of underlined text. Make it a row. */
+.messagetopnavlinks,
+.messagebottomnavlinks,
+.mainpagenavlinks {
+    display: flex !important; flex-wrap: wrap; align-items: center; gap: 6px;
+    padding: 8px 0 !important;
+}
+.messagetopnavlinks a,
+.messagebottomnavlinks a,
+.mainpagenavlinks a {
+    display: inline-flex; align-items: center;
+    padding: 4px 9px; border-radius: var(--glpx-r-sm);
+    font-size: 12px; text-decoration: none !important;
+    color: var(--glpx-link) !important;
+    background: rgba(var(--glpx-accent-rgb), 0.07);
+    border: 1px solid rgba(var(--glpx-accent-rgb), 0.16);
+    transition: background var(--glpx-ease), border-color var(--glpx-ease), color var(--glpx-ease);
+}
+.messagetopnavlinks a:hover,
+.messagebottomnavlinks a:hover,
+.mainpagenavlinks a:hover {
+    background: rgba(var(--glpx-accent-rgb), 0.18);
+    border-color: var(--glpx-border-strong);
+    color: var(--glpx-link-hover) !important;
+}
+
+/* Rows left behind empty by ad removal were holding open a ~90px band under the title. */
+.msg tr:empty,
+.threads tr:empty,
+tr.glp-empty-row { display: none !important; }
+
+/* Post number chips lined up with the text they label. */
+.glp-post-number {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 26px; height: 18px; padding: 0 6px;
+    font-size: 10px; font-weight: 700;
+    border-radius: var(--glpx-r-xs);
+    background: rgba(var(--glpx-accent-rgb), 0.12);
+    border: 1px solid rgba(var(--glpx-accent-rgb), 0.22);
+    color: var(--glpx-link);
+}
+`;
+
         // ---- Accessibility ----
         // Last, and deliberately so: these are overrides. A theme that wins against the motion
         // or contrast setting is a bug, not a style choice.
@@ -2625,6 +3001,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
     function createSettingsPanel() {
         const existing = document.getElementById('glp-enhanced-overlay');
         if (existing) existing.remove();
+        SECTION_ORDER.length = 0;
         loadMutedUsers();
         loadBlockedUsers();
         loadUserTags();
@@ -2640,7 +3017,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
         panel.setAttribute('aria-modal', 'true');
         panel.setAttribute('aria-labelledby', 'glp-settings-title');
 
-        setTrustedHTML(panel, `
+        const panelHTML = `
             <div id="glp-enhanced-settings-header">
                 <div class="glp-settings-title-block">
                     <div class="glp-settings-kicker">Premium control center</div>
@@ -2652,10 +3029,23 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
                 </div>
             </div>
             <div class="glp-settings-search-wrap">
-                <input id="glp-settings-search" type="search" placeholder="Search settings, filters, theme, media..." autocomplete="off">
-                <div class="glp-settings-summary"><strong>${Object.keys(DEFAULT_SETTINGS).length}</strong> controls - local only</div>
+                <div class="glp-search-field">
+                    <input id="glp-settings-search" type="search" placeholder="Search settings by name, or by what they do..." autocomplete="off" aria-describedby="glp-settings-status">
+                    <button type="button" id="glp-settings-clear" class="glp-search-clear" title="Clear the search" aria-label="Clear the search" style="display:none">&#x2715;</button>
+                </div>
+                <div class="glp-search-tools">
+                    <button type="button" id="glp-only-changed" class="glp-chip-toggle" aria-pressed="false" title="Show only the settings you have changed">Only changed</button>
+                    <div class="glp-settings-summary" id="glp-settings-status" role="status" aria-live="polite">${Object.keys(DEFAULT_SETTINGS).length} controls - local only</div>
+                </div>
             </div>
+            <div id="glp-enhanced-settings-main">
+            <nav id="glp-settings-nav" aria-label="Settings sections">__SECTION_NAV__</nav>
             <div id="glp-enhanced-settings-body">
+                <div id="glp-settings-empty" class="glp-settings-empty" style="display:none">
+                    <div class="glp-empty-title">No settings match that search</div>
+                    <div class="glp-empty-body">Try a shorter word, or search by what a setting does - "hide", "quote", "export".</div>
+                    <button type="button" class="glp-btn glp-btn-secondary" id="glp-settings-empty-reset">Clear filters</button>
+                </div>
                 ${createSettingsSection('Core', [
                     { key: 'enabled', label: 'Enable GLP Ultra' }
                 ])}
@@ -2839,6 +3229,7 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
                     { key: 'syncSettings', label: 'Sync Settings Across Devices (Extension Only)' }
                 ])}
             </div>
+            </div>
             <div id="glp-enhanced-settings-footer">
                 <div class="glp-footer-group">
                     <button class="glp-btn glp-btn-danger" id="glp-reset-btn">Reset to defaults</button>
@@ -2852,7 +3243,14 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
                     <button class="glp-btn glp-btn-primary" id="glp-save-btn">Save changes</button>
                 </div>
             </div>
-        `);
+        `;
+
+        // The rail is rendered above the sections but can only be built after them: the section
+        // ids are collected as each one renders. Substitute once, into the finished string.
+        setTrustedHTML(panel, panelHTML.replace('__SECTION_NAV__', SECTION_ORDER.map(entry =>
+            `<button type="button" class="glp-nav-item" data-nav-section="${escapeAttribute(entry.id)}">` +
+            `<span class="glp-nav-dot" aria-hidden="true"></span>${escapeHTML(entry.title)}</button>`
+        ).join('')));
 
         overlay.appendChild(panel);
         document.body.appendChild(overlay);
@@ -2932,6 +3330,15 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
         document.getElementById('glp-pack-import')?.addEventListener('click', importPack);
     }
 
+    // Stable ids for the jump rail. Derived from the title so the rail and the sections cannot
+    // drift apart when a section is added.
+    const SECTION_ORDER = [];
+    function sectionSlug(title) {
+        const slug = String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        if (!SECTION_ORDER.some(entry => entry.id === slug)) SECTION_ORDER.push({ id: slug, title: title });
+        return slug;
+    }
+
     function createSettingsSection(title, items, specialId) {
         let contentHTML = '';
         const desc = SECTION_DESCRIPTIONS[title] || '';
@@ -3000,23 +3407,27 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
 
                 const fullWidth = (item.type === 'textarea') ? ' full-width' : '';
                 return `
-                    <div class="glp-setting-item${fullWidth}" data-search="${searchText}">
+                    <div class="glp-setting-item${fullWidth}" data-search="${searchText}" data-setting-key="${key}">
                         ${item.type === 'textarea' ? `<label for="setting-${key}"><span class="glp-setting-label">${label}</span>${help ? `<span class="glp-setting-help">${escapeHTML(help)}</span>` : ''}</label>${input}` : `${input}<label for="setting-${key}"><span class="glp-setting-label">${label}</span>${help ? `<span class="glp-setting-help">${escapeHTML(help)}</span>` : ''}</label>`}
                     </div>
                 `;
             }).join('');
         }
 
+        const sectionId = escapeAttribute(sectionSlug(title));
+
         return `
-            <div class="glp-settings-section${specialId === 'mute-list' || specialId === 'block-list' ? ' collapsed' : ''}" data-section-title="${escapeAttribute(title)}">
+            <div class="glp-settings-section${specialId === 'mute-list' || specialId === 'block-list' ? ' collapsed' : ''}" data-section-title="${escapeAttribute(title)}" data-section-id="${sectionId}">
                 <div class="glp-settings-section-header">
                     <div class="glp-section-heading">
                         <h3>${escapeHTML(title)}</h3>
                         ${desc ? `<div class="glp-section-desc">${escapeHTML(desc)}</div>` : ''}
                     </div>
                     <div class="glp-section-meta">
-                        <span>${escapeHTML(metaText)}</span>
-                        <span class="toggle-icon">&#x25BC;</span>
+                        <span class="glp-section-changed-count" style="display:none"></span>
+                        <button type="button" class="glp-section-reset" data-reset-section="${sectionId}" title="Put this section back to its defaults" style="display:none">Reset</button>
+                        <span class="glp-section-count">${escapeHTML(metaText)}</span>
+                        <span class="toggle-icon" aria-hidden="true">&#x25BC;</span>
                     </div>
                 </div>
                 <div class="glp-settings-section-content">
@@ -3026,31 +3437,193 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
         `;
     }
 
+    /**
+     * Marks every row whose value differs from the default. 140 settings across 23 sections is
+     * unnavigable without an answer to "what have I actually changed?" - the dot answers it in
+     * place, and the Only changed filter turns that into a view.
+     */
+    function markChangedSettings() {
+        let changed = 0;
+        document.querySelectorAll('.glp-setting-item[data-setting-key]').forEach(item => {
+            const key = item.dataset.settingKey;
+            const isChanged = Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key) &&
+                String(settings[key]) !== String(DEFAULT_SETTINGS[key]);
+            item.classList.toggle('glp-setting-changed', isChanged);
+            if (isChanged) changed++;
+        });
+
+        document.querySelectorAll('.glp-settings-section').forEach(section => {
+            const count = section.querySelectorAll('.glp-setting-changed').length;
+            section.classList.toggle('glp-section-has-changes', count > 0);
+            const badge = section.querySelector('.glp-section-changed-count');
+            if (badge) {
+                badge.textContent = count ? count + ' changed' : '';
+                badge.style.display = count ? '' : 'none';
+            }
+            const reset = section.querySelector('[data-reset-section]');
+            if (reset) reset.style.display = count ? '' : 'none';
+            const navItem = document.querySelector('[data-nav-section="' + section.dataset.sectionId + '"]');
+            if (navItem) navItem.classList.toggle('glp-nav-changed', count > 0);
+        });
+
+        return changed;
+    }
+
     function initSettingsSearch() {
         const search = document.getElementById('glp-settings-search');
         if (!search) return;
 
+        const status = document.getElementById('glp-settings-status');
+        const empty = document.getElementById('glp-settings-empty');
+        const onlyChanged = document.getElementById('glp-only-changed');
+
         const applyFilter = () => {
             const query = search.value.trim().toLowerCase();
+            const changedOnly = onlyChanged && onlyChanged.getAttribute('aria-pressed') === 'true';
+            let matches = 0;
+            let visibleSections = 0;
+
             document.querySelectorAll('.glp-settings-section').forEach(section => {
                 let visibleItems = 0;
                 const sectionTitle = (section.dataset.sectionTitle || '').toLowerCase();
                 const sectionMatches = !query || sectionTitle.includes(query);
                 section.querySelectorAll('.glp-setting-item').forEach(item => {
                     const haystack = (item.dataset.search || '').toLowerCase();
-                    const match = sectionMatches || haystack.includes(query);
+                    const textMatch = sectionMatches || haystack.includes(query);
+                    const changeMatch = !changedOnly || item.classList.contains('glp-setting-changed');
+                    const match = textMatch && changeMatch;
                     item.classList.toggle('glp-filtered', !match);
                     if (match) visibleItems++;
                 });
 
                 const isSpecial = section.querySelector('#glp-mute-manage, #glp-block-manage');
-                const showSection = isSpecial ? sectionMatches : visibleItems > 0 || sectionMatches;
+                const showSection = changedOnly
+                    ? visibleItems > 0
+                    : (isSpecial ? sectionMatches : visibleItems > 0 || sectionMatches);
                 section.classList.toggle('glp-filtered', !showSection);
-                if (query && showSection) section.classList.remove('collapsed');
+                if ((query || changedOnly) && showSection) section.classList.remove('collapsed');
+                matches += visibleItems;
+                if (showSection) visibleSections++;
+
+                const navItem = document.querySelector('[data-nav-section="' + section.dataset.sectionId + '"]');
+                if (navItem) navItem.classList.toggle('glp-filtered', !showSection);
             });
+
+            if (status) {
+                if (changedOnly) status.textContent = matches + ' changed from default';
+                else if (query) status.textContent = matches + ' match' + (matches === 1 ? '' : 'es') + ' in ' + visibleSections + ' section' + (visibleSections === 1 ? '' : 's');
+                else status.textContent = Object.keys(DEFAULT_SETTINGS).length + ' controls - local only';
+            }
+            if (empty) empty.style.display = visibleSections === 0 ? '' : 'none';
+            const clear = document.getElementById('glp-settings-clear');
+            if (clear) clear.style.display = query ? '' : 'none';
         };
 
         search.addEventListener('input', applyFilter);
+
+        const clearButton = document.getElementById('glp-settings-clear');
+        if (clearButton) {
+            clearButton.addEventListener('click', () => {
+                search.value = '';
+                applyFilter();
+                search.focus();
+            });
+        }
+
+        if (onlyChanged) {
+            onlyChanged.addEventListener('click', () => {
+                const next = onlyChanged.getAttribute('aria-pressed') !== 'true';
+                onlyChanged.setAttribute('aria-pressed', String(next));
+                onlyChanged.classList.toggle('glp-toggle-on', next);
+                applyFilter();
+            });
+        }
+
+        const emptyReset = document.getElementById('glp-settings-empty-reset');
+        if (emptyReset) {
+            emptyReset.addEventListener('click', () => {
+                search.value = '';
+                if (onlyChanged) {
+                    onlyChanged.setAttribute('aria-pressed', 'false');
+                    onlyChanged.classList.remove('glp-toggle-on');
+                }
+                applyFilter();
+                search.focus();
+            });
+        }
+
+        // Jump rail: 23 sections in one scroll needs a map, not a scrollbar.
+        const nav = document.getElementById('glp-settings-nav');
+        if (nav) {
+            nav.addEventListener('click', event => {
+                const link = event.target.closest('[data-nav-section]');
+                if (!link) return;
+                const section = document.querySelector('.glp-settings-section[data-section-id="' + link.dataset.navSection + '"]');
+                if (!section) return;
+                section.classList.remove('collapsed');
+                section.scrollIntoView({ behavior: settings.reduceMotion ? 'auto' : 'smooth', block: 'start' });
+                document.querySelectorAll('#glp-settings-nav .glp-nav-active').forEach(node => node.classList.remove('glp-nav-active'));
+                link.classList.add('glp-nav-active');
+            });
+        }
+
+        const body = document.getElementById('glp-enhanced-settings-body');
+
+        // Per-section reset. The global reset is all-or-nothing, which is not what anyone wants
+        // when a single section has drifted.
+        if (body) {
+            body.addEventListener('click', event => {
+                const button = event.target.closest('[data-reset-section]');
+                if (!button) return;
+                event.stopPropagation();
+                const section = button.closest('.glp-settings-section');
+                const restored = [];
+                section.querySelectorAll('.glp-setting-item[data-setting-key]').forEach(item => {
+                    const key = item.dataset.settingKey;
+                    const input = document.getElementById('setting-' + key);
+                    if (!input || !Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key)) return;
+                    if (String(settings[key]) === String(DEFAULT_SETTINGS[key])) return;
+                    restored.push({ key: key, previous: settings[key] });
+                    settings[key] = DEFAULT_SETTINGS[key];
+                    if (input.type === 'checkbox') input.checked = DEFAULT_SETTINGS[key];
+                    else input.value = DEFAULT_SETTINGS[key];
+                });
+                if (!restored.length) return;
+                saveSettings();
+                applyStyles();
+                runFeatureRegistry('apply');
+                markChangedSettings();
+                applyFilter();
+                showNotification(section.dataset.sectionTitle + ': ' + restored.length + ' setting' + (restored.length === 1 ? '' : 's') + ' back to default.', 'info', {
+                    label: 'Undo',
+                    onClick: () => {
+                        restored.forEach(entry => {
+                            settings[entry.key] = entry.previous;
+                            const input = document.getElementById('setting-' + entry.key);
+                            if (input) {
+                                if (input.type === 'checkbox') input.checked = entry.previous;
+                                else input.value = entry.previous;
+                            }
+                        });
+                        saveSettings();
+                        applyStyles();
+                        runFeatureRegistry('apply');
+                        markChangedSettings();
+                        applyFilter();
+                    }
+                });
+            });
+
+            // Any edit re-marks, so the dots and counts never lag behind the panel.
+            body.addEventListener('change', () => {
+                readSettingsFromPanel();
+                markChangedSettings();
+                applyFilter();
+            });
+        }
+
+        markChangedSettings();
+        applyFilter();
     }
 
     function readSettingsFromPanel() {
@@ -3642,6 +4215,17 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
                 div.innerHTML.includes('replies inline')));
         }
 
+        // Pulling an ad out leaves a row holding nothing but whitespace, which still reserves its
+        // height - that was the ~90px dead band under the thread title. `:empty` does not match a
+        // node containing whitespace, so this has to be done here rather than in CSS.
+        if (settings.removeAds || settings.removeWidgets) {
+            document.querySelectorAll('.msg tbody > tr, .threads tbody > tr').forEach(row => {
+                if (row.id || row.querySelector('img, iframe, input, button, a, .post_main')) return;
+                if (row.textContent.trim()) return;
+                row.classList.add('glp-empty-row');
+            });
+        }
+
         if (settings.autoExpandImages) {
             document.querySelectorAll('.post_main img').forEach(img => {
                 if (img.style.maxWidth) {
@@ -4047,9 +4631,9 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
             if (count >= 100) {
                 td.style.color = '#ff4444';
             } else if (count >= 50) {
-                td.style.color = '#e6a820';
+                td.style.color = 'var(--glpx-warning)';
             } else if (count >= 20) {
-                td.style.color = '#4a90d9';
+                td.style.color = 'var(--glpx-accent)';
             }
             td.dataset.glpBadged = '1';
         });
@@ -5556,9 +6140,9 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
     }
 
     const tagColors = [
-        { bg: '#4a90d9', fg: '#fff', name: 'Blue' },
+        { bg: 'var(--glpx-accent)', fg: '#fff', name: 'Blue' },
         { bg: '#27ae60', fg: '#fff', name: 'Green' },
-        { bg: '#e6a820', fg: '#000', name: 'Gold' },
+        { bg: 'var(--glpx-warning)', fg: '#000', name: 'Gold' },
         { bg: '#e74c3c', fg: '#fff', name: 'Red' },
         { bg: '#9b59b6', fg: '#fff', name: 'Purple' },
         { bg: '#1abc9c', fg: '#000', name: 'Teal' },
@@ -5951,11 +6535,18 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
 
         bar = document.createElement('div');
         bar.id = 'glp-thread-tools-bar';
-        const msgtitle = document.querySelector('.msgtitle');
-        if (msgtitle) msgtitle.after(bar);
-        else {
-            const nav = document.querySelector('.msg td.nav');
-            if (nav) nav.closest('tr')?.after(bar);
+
+        // `.msgtitle` is a div parented straight to a <tr>, so inserting after it made this bar a
+        // child of that <tr> too. A div is not table content: the browser keeps it in the DOM and
+        // lays it out as a stray box beside the row - the toolbar rendered as a 92px vertical
+        // stack of nine wrapped buttons pinned to the right edge. Anchor outside the table.
+        const table = document.querySelector('table.msg');
+        if (table && table.parentElement) {
+            table.parentElement.insertBefore(bar, table);
+        } else {
+            const title = document.querySelector('.msgtitle');
+            const host = title?.closest('table')?.parentElement || document.body;
+            host.insertBefore(bar, host.firstChild);
         }
         return bar;
     }
@@ -7081,16 +7672,16 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
   main { max-width: 960px; margin: 0 auto; }
   h1 { font-size: 24px; margin: 0 0 8px; }
   .meta { color: #93a1c0; font-size: 13px; margin-bottom: 24px; }
-  .meta a { color: #6ab0f3; }
+  .meta a { color: var(--glpx-link); }
   article { border: 1px solid #2a3350; border-radius: 10px; padding: 14px 16px; margin: 0 0 14px; background: #121826; }
   article header { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
                    border-bottom: 1px solid #232c46; padding-bottom: 8px; margin-bottom: 10px; }
-  .num { color: #6ab0f3; font-weight: 700; }
+  .num { color: var(--glpx-link); font-weight: 700; }
   .who { font-weight: 650; }
   .when { color: #8592b0; font-size: 12px; margin-left: auto; }
   .body img { max-width: 100%; height: auto; border-radius: 6px; }
-  .quoteo { border-left: 3px solid #4a90d9; padding-left: 12px; margin: 8px 0; color: #b8c4dd; }
-  a { color: #6ab0f3; }
+  .quoteo { border-left: 3px solid var(--glpx-accent); padding-left: 12px; margin: 8px 0; color: #b8c4dd; }
+  a { color: var(--glpx-link); }
   .manifest { margin-top: 28px; border-top: 1px solid #232c46; padding-top: 16px; font-size: 13px; }
   .manifest h2 { font-size: 15px; }
   code { background: #1b2336; padding: 1px 5px; border-radius: 4px; }

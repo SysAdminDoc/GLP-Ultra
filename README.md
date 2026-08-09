@@ -1,6 +1,6 @@
 # GLP Ultra
 
-[![version](https://img.shields.io/badge/version-3.5.0-4a90d9)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-3.6.0-4a90d9)](CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Firefox%20%7C%20userscript-1f6feb)](#install)
 [![manifest](https://img.shields.io/badge/manifest-v3-8957e5)](extension/manifest.json)
@@ -11,7 +11,7 @@ v3.0.0 merged the two previously separate projects (the *GLP Enhanced Declutter*
 
 ## What it does
 
-**140 settings across 23 sections**, all searchable from the in-page panel or the extension options page.
+**142 settings across 23 routed pages**, all searchable from the in-page control center or the extension options page.
 
 | Area | Highlights |
 | --- | --- |
@@ -58,13 +58,13 @@ and hit **Reload** on the extension card.
 
 ```bash
 npm run verify      # gates + build + structure checks
-npm run package     # dist/glp-ultra-v3.5.0.zip
+npm run package     # dist/glp-ultra-v3.6.0.zip
 ```
 
 ### Firefox
 
 ```bash
-npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.5.0.zip
+npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.6.0.zip
 ```
 
 Everything but the manifest is identical to the Chrome build. The Gecko variant swaps the
@@ -110,6 +110,7 @@ scripts/                     build, icons, package, verification gates
 | `npm run verify:runtime` | Loads the unpacked extension in Chromium and drives it against the real captures |
 | `npm run verify` | All of the above |
 | `npm run shots` | Screenshots every surface in every theme into `dist/ui-shots/` |
+| `npm run shots:pages` | Routes and screenshots all 23 control-center pages in Midnight into `dist/ui-pages/` |
 | `npm run icons` | Regenerates PNG icons from `assets/icon.svg` |
 | `npm run build:firefox` | Generates `dist/extension-firefox/` |
 | `npm run package` | Deterministic `dist/glp-ultra-v<version>.zip` |

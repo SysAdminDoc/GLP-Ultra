@@ -435,6 +435,22 @@ try {
   // state that fires the shim's sync at document_start. Two things must hold afterwards: the
   // mirror wins, and the page still gets its features - an external settings push arriving
   // before the document is parsed must not mark the run done against an empty DOM.
+  // Establish the precondition explicitly: GM_setValue is synchronous while chrome.storage.set
+  // is not, so deleting the primary store before the mirror has accepted the imported list tests
+  // a lost write rather than restoration and turns machine load into a false negative.
+  const storedMuteMirror = await waitFor(
+    () => worker.evaluate(async () => {
+      const stored = await chrome.storage.local.get('glpMutedUsers');
+      try {
+        return JSON.parse(stored.glpMutedUsers || '[]');
+      } catch (error) {
+        return [];
+      }
+    }),
+    muted => ['PackedMuteOne', 'PackedMuteTwo'].every(name => muted.includes(name)));
+  check('packs: the imported mute list reaches the chrome.storage mirror',
+    ['PackedMuteOne', 'PackedMuteTwo'].every(name => storedMuteMirror.includes(name)),
+    JSON.stringify(storedMuteMirror));
   await page.evaluate(() => window.localStorage.removeItem('glpEnhanced.mv3.glpMutedUsers'));
   await page.reload({ waitUntil: 'domcontentloaded' });
   // The shim's restore is an async chrome.storage read racing a page load, so a fixed sleep is a

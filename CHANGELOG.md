@@ -1,5 +1,30 @@
 # Changelog
 
+## 3.6.0 — 2026-08-08
+
+### Redesigned
+
+- **The 23 settings sections are now real routed pages.** Both the in-page panel and extension
+  options surface use the same full-height control-center shell: grouped navigation, search,
+  Only changed, live page metrics, compact switches, page-level reset affordances, local-save
+  status, and one focused destination instead of a 142-control accordion or card wall.
+- **Each destination has a purpose-built visual archetype.** Thread and post pages use dense
+  control matrices, theme and accessibility pages pair controls with live specimens, user lists
+  use management tables, and watcher, media, filtering, export, presets, and local-data pages
+  expose previews suited to their job. Core stays deliberately direct, matching the generated
+  design with its three foundational cards.
+- **The extension popup now belongs to the same product.** Quick controls, theme selection,
+  network blocking, and safe mode use the shared navy/OLED palette, restrained borders, compact
+  switch treatment, and persistent action bar.
+
+### Verified
+
+- Added `npm run shots:pages`, an invisible Chromium sweep that visits and captures all 23 options
+  routes into `dist/ui-pages/`, alongside the existing eight-surface, ten-theme sweep.
+- Runtime verification now asserts that every rail destination selects exactly one visible page.
+  The redesigned shell passes all 191 runtime checks, including changed-state filtering,
+  section resets, narrow-viewport footer containment, diagnostics, recovery, and live apply.
+
 ## 3.5.0 — 2026-08-07
 
 The roadmap's risk table has named five mitigations since Phase 3 with nothing behind them. This

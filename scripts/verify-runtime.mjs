@@ -806,6 +806,24 @@ try {
       === await page.locator('#glp-enhanced-settings .glp-settings-section').count(),
     `${await page.locator('#glp-settings-nav .glp-nav-item').count()} rail entries vs `
     + `${await page.locator('#glp-enhanced-settings .glp-settings-section').count()} sections`);
+  const routeAudit = await page.evaluate(() => {
+    const failures = [];
+    const links = [...document.querySelectorAll('#glp-settings-nav .glp-nav-item')];
+    links.forEach(link => {
+      link.click();
+      const activePages = [...document.querySelectorAll('#glp-enhanced-settings .glp-settings-section.glp-page-active')]
+        .filter(section => getComputedStyle(section).display !== 'none');
+      const activeLinks = [...document.querySelectorAll('#glp-settings-nav .glp-nav-item.glp-nav-active')];
+      if (activePages.length !== 1 || activeLinks.length !== 1
+          || activePages[0].dataset.sectionId !== link.dataset.navSection) {
+        failures.push(link.dataset.navSection);
+      }
+    });
+    return { routes: links.length, failures };
+  });
+  check('settings: every rail destination routes to exactly one visible page',
+    routeAudit.routes === 23 && routeAudit.failures.length === 0,
+    JSON.stringify(routeAudit));
 
   // Grouping: the only destructive action in the footer used to sit against Export in a row of
   // seven. Assert the daylight, not the markup - a divider that renders as nothing is not one.
@@ -849,6 +867,7 @@ try {
   // Changed-state tracking. Flip one setting and the dot, the rail and the section reset should
   // all agree with it; the only-changed filter should then show that setting and little else.
   const changedBefore = await page.locator('#glp-enhanced-settings .glp-setting-changed').count();
+  await page.locator('[data-nav-section="post-enhancements"]').click();
   await page.locator('#setting-inlinePostNumbers').click();
   await page.waitForTimeout(350);
   const changedAfter = await page.locator('#glp-enhanced-settings .glp-setting-changed').count();

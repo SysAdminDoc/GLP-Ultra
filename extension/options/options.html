@@ -2,27 +2,77 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>GLP Ultra options</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GLP Ultra control center</title>
     <link rel="stylesheet" href="options.css">
 </head>
 <body>
-    <header class="topbar">
-        <div class="brand">
-            <span class="mark">GLP</span>
-            <div>
-                <h1>GLP Ultra</h1>
-                <p id="subtitle">Every control, in one place.</p>
+    <div class="app-shell">
+        <aside class="sidebar" aria-label="Settings navigation">
+            <div class="brand">
+                <span class="mark" aria-hidden="true">G</span>
+                <div>
+                    <h1>GLP Ultra</h1>
+                    <p>Control center</p>
+                    <span id="brand-version" class="brand-version"></span>
+                </div>
             </div>
-        </div>
-        <div class="topbar-actions">
-            <input type="search" id="search" placeholder="Search settings, filters, theme, media..." autocomplete="off">
-            <button type="button" class="btn" id="export">Export</button>
-            <button type="button" class="btn" id="import">Import</button>
-            <button type="button" class="btn danger" id="reset">Reset</button>
-        </div>
-    </header>
 
-    <main id="sections" class="sections"></main>
+            <div class="sidebar-kicker">Settings</div>
+            <nav id="section-nav" class="section-nav" aria-label="Settings pages"></nav>
+
+            <div class="privacy-card">
+                <span class="privacy-icon" aria-hidden="true">&#9670;</span>
+                <div>
+                    <strong>Private by design</strong>
+                    <span>Preferences and user data stay in local extension storage.</span>
+                </div>
+            </div>
+        </aside>
+
+        <section class="workspace">
+            <header class="topbar">
+                <label class="search-box" for="search">
+                    <span aria-hidden="true">&#8981;</span>
+                    <input type="search" id="search" placeholder="Search settings, people, themes..." autocomplete="off">
+                    <kbd>Ctrl K</kbd>
+                </label>
+                <button type="button" class="filter-button" id="only-changed" aria-pressed="false">
+                    Only changed <span id="changed-total">0</span>
+                </button>
+                <span id="search-summary" class="search-summary" aria-live="polite"></span>
+                <div class="topbar-actions">
+                    <button type="button" class="btn" id="export">Export</button>
+                    <button type="button" class="btn" id="import">Import</button>
+                </div>
+            </header>
+
+            <main class="content">
+                <header class="page-hero">
+                    <div>
+                        <p id="page-eyebrow" class="eyebrow">Essentials</p>
+                        <h2 id="page-title">Core</h2>
+                        <p id="page-description" class="page-description">Foundational behavior and safeguards.</p>
+                    </div>
+                    <div class="hero-metrics" aria-label="Page status">
+                        <div><strong id="metric-controls">0</strong><span>Controls</span></div>
+                        <div><strong id="metric-enabled">0</strong><span>Enabled</span></div>
+                        <div><strong id="metric-custom">0</strong><span>Changed</span></div>
+                    </div>
+                </header>
+
+                <div id="sections" class="sections"></div>
+            </main>
+
+            <footer class="statusbar">
+                <div class="save-state">
+                    <span class="status-dot" aria-hidden="true"></span>
+                    <span id="subtitle">All changes are saved locally and applied live.</span>
+                </div>
+                <button type="button" class="btn danger" id="reset">Reset all to defaults</button>
+            </footer>
+        </section>
+    </div>
 
     <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
     <input type="file" id="import-file" accept="application/json" hidden>

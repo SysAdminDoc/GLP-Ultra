@@ -17,9 +17,13 @@ import { chromium } from 'playwright';
 const root = process.cwd();
 const extensionPath = path.join(root, 'extension');
 const outDir = path.join(root, 'dist', 'ui-shots');
+const pageOutDir = path.join(root, 'dist', 'ui-pages');
 
 const ALL_THEMES = ['midnight', 'catppuccin', 'dracula', 'nord', 'gruvbox', 'amoled', 'solarized', 'blood', 'alien', 'highcontrast'];
-const themes = process.argv.slice(2).length ? process.argv.slice(2) : ALL_THEMES;
+const args = process.argv.slice(2);
+const captureSettingsPages = args.includes('--settings-pages');
+const requestedThemes = args.filter(arg => !arg.startsWith('--'));
+const themes = requestedThemes.length ? requestedThemes : ALL_THEMES;
 
 const CAPTURES = {
   feed: { file: 'captures/forum-feed.mhtml', url: 'https://www.godlikeproductions.com/forum1/pg1' },
@@ -49,6 +53,7 @@ async function send(worker, message) {
 
 const userDataDir = await mkdtemp(path.join(tmpdir(), 'glp-shots-'));
 await mkdir(outDir, { recursive: true });
+if (captureSettingsPages) await mkdir(pageOutDir, { recursive: true });
 let context;
 let shots = 0;
 
@@ -132,6 +137,18 @@ try {
     await page.goto(`chrome-extension://${extensionId}/options/options.html`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(700);
     await shoot(`${theme}-07-options`);
+    if (captureSettingsPages) {
+      const pageCount = await page.locator('#section-nav .nav-item').count();
+      for (let index = 0; index < pageCount; index++) {
+        const button = page.locator('#section-nav .nav-item').nth(index);
+        const title = await button.getAttribute('data-section-title');
+        await button.click();
+        await page.waitForTimeout(100);
+        const slug = String(title || `page-${index + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        await page.screenshot({ path: path.join(pageOutDir, `${theme}-${String(index + 1).padStart(2, '0')}-${slug}.png`) });
+        shots++;
+      }
+    }
     await page.goto(`chrome-extension://${extensionId}/popup/popup.html`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(600);
     await shoot(`${theme}-08-popup`);
@@ -141,4 +158,4 @@ try {
   await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
 }
 
-console.log(`Wrote ${shots} screenshots to ${path.relative(root, outDir)} for: ${themes.join(', ')}`);
+console.log(`Wrote ${shots} screenshots to ${path.relative(root, outDir)}${captureSettingsPages ? ` and ${path.relative(root, pageOutDir)}` : ''} for: ${themes.join(', ')}`);

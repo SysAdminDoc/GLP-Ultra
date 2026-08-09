@@ -13,6 +13,7 @@
     "package": "node scripts/package-extension.mjs",
     "package:firefox": "npm run build:firefox && node scripts/package-extension.mjs --firefox",
     "shots": "node scripts/screenshot-ui.mjs",
+    "shots:pages": "node scripts/screenshot-ui.mjs --settings-pages midnight",
     "verify:captures": "node scripts/verify-captures.mjs",
     "verify:extension": "node scripts/verify-extension.mjs",
     "verify:runtime": "node scripts/verify-runtime.mjs",

@@ -3113,6 +3113,464 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
 `;
         }
 
+        /* The settings surface is a routed control center: one destination at a time, with the
+           same rail, toolbar, page hierarchy, card rhythm, and persistent save state as the
+           extension options page. This block intentionally comes after the legacy panel rules so
+           older feature styles remain stable while the shell can evolve as one coherent layer. */
+        css += `
+#glp-enhanced-overlay {
+    padding: 14px;
+    background: rgba(2, 5, 10, 0.86);
+}
+
+#glp-enhanced-settings {
+    position: relative;
+    display: grid;
+    grid-template-columns: 248px minmax(0, 1fr);
+    grid-template-rows: 62px minmax(0, 1fr) 54px;
+    width: min(1480px, 98vw);
+    height: min(94vh, 980px);
+    max-height: none;
+    border-radius: var(--glpx-r-lg);
+    background:
+        radial-gradient(860px 480px at 75% -12%, rgba(var(--glpx-accent-rgb), 0.12), transparent 62%),
+        #070a10;
+}
+
+#glp-enhanced-settings-header {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    padding: 12px 14px;
+    align-items: center;
+    border-right: 1px solid rgba(147, 168, 211, 0.13);
+    border-bottom-color: rgba(147, 168, 211, 0.13);
+    background: #090e16;
+}
+
+.glp-settings-title-block {
+    position: relative;
+    min-height: 36px;
+    padding: 0 0 0 46px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.glp-settings-title-block::before {
+    content: "G";
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid rgba(255, 255, 255, 0.20);
+    border-radius: var(--glpx-r-md);
+    background: linear-gradient(145deg, var(--glpx-link-hover), var(--glpx-accent) 58%, #235a98);
+    color: #03101e;
+    font-size: 14px;
+    font-weight: 900;
+    box-shadow: 0 8px 22px rgba(var(--glpx-accent-rgb), 0.22);
+}
+
+.glp-settings-kicker {
+    order: 2;
+    margin: 2px 0 0;
+    color: var(--glp-panel-subtle);
+    font-size: 9px;
+    letter-spacing: 0.13em;
+}
+
+#glp-enhanced-settings-header h2 {
+    order: 1;
+    font-size: 14px;
+    letter-spacing: 0.02em;
+}
+
+#glp-enhanced-settings-header .version {
+    padding: 2px 5px;
+    border: 1px solid var(--glp-panel-border);
+    border-radius: var(--glpx-r-xs);
+    font-size: 9px;
+}
+
+.glp-settings-subtitle,
+#glp-safe-mode-notice { display: none; }
+
+.glp-settings-header-actions {
+    position: absolute;
+    right: 14px;
+    top: 13px;
+    z-index: 3;
+}
+
+#glp-enhanced-close-btn {
+    width: 34px;
+    height: 34px;
+    border-color: rgba(147, 168, 211, 0.16);
+    border-radius: var(--glpx-r-md);
+    background: #0d141f;
+}
+
+.glp-settings-search-wrap {
+    grid-column: 2;
+    grid-row: 1;
+    grid-template-columns: minmax(250px, 470px) minmax(0, auto);
+    padding: 11px 292px 11px 22px;
+    border-bottom-color: rgba(147, 168, 211, 0.13);
+    background: rgba(7, 10, 16, 0.88);
+}
+
+#glp-settings-search {
+    height: 36px;
+    padding: 8px 34px 8px 12px;
+    border-color: rgba(147, 168, 211, 0.16);
+    border-radius: var(--glpx-r-md);
+    background: #0b111b;
+    font-size: 12px;
+}
+
+.glp-search-tools { min-width: 0; }
+.glp-settings-summary { overflow: hidden; text-overflow: ellipsis; }
+
+#glp-enhanced-settings-main {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: 248px minmax(0, 1fr);
+    min-height: 0;
+}
+
+#glp-settings-nav {
+    position: relative;
+    display: block;
+    max-height: none;
+    min-height: 0;
+    padding: 11px 12px 12px;
+    border-right-color: rgba(147, 168, 211, 0.13);
+    background: linear-gradient(180deg, #090e16, #070b11);
+    scrollbar-width: thin;
+}
+
+.glp-nav-group + .glp-nav-group { margin-top: 10px; }
+
+.glp-nav-group-title {
+    display: block;
+    padding: 0 8px 4px;
+    color: var(--glp-panel-subtle);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.glp-nav-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    gap: 7px;
+    min-height: 29px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 560;
+}
+
+.glp-nav-item.glp-nav-active::before {
+    content: "";
+    position: absolute;
+    left: -3px;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--glp-panel-accent);
+}
+
+.glp-nav-icon {
+    color: var(--glp-panel-subtle);
+    font-size: 9px;
+    font-weight: 800;
+}
+
+.glp-nav-item.glp-nav-active .glp-nav-icon { color: var(--glp-panel-accent); }
+.glp-nav-item .glp-nav-dot { justify-self: end; }
+.glp-nav-group.glp-filtered { display: none; }
+
+.glp-local-privacy {
+    position: static;
+    margin-top: 12px;
+    padding: 9px 10px;
+    border: 1px solid rgba(72, 213, 151, 0.20);
+    border-radius: var(--glpx-r-md);
+    background: rgba(72, 213, 151, 0.055);
+    color: var(--glp-panel-subtle);
+    font-size: 9px;
+    line-height: 1.4;
+}
+
+.glp-local-privacy strong {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--glp-panel-text);
+    font-size: 10px;
+}
+
+#glp-enhanced-settings-body {
+    padding: 0;
+    background: transparent;
+}
+
+.glp-settings-section {
+    display: none;
+    min-height: 100%;
+    padding: 30px clamp(24px, 3vw, 48px) 44px;
+    border: 0;
+    animation: glp-control-page-in 0.18s ease both;
+}
+
+.glp-settings-section.glp-page-active:not(.glp-filtered) { display: block; }
+.glp-settings-section.collapsed.glp-page-active .glp-settings-section-content { display: grid; }
+
+@keyframes glp-control-page-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+}
+
+.glp-settings-section-header {
+    padding: 0 0 22px;
+    align-items: end;
+    cursor: default;
+    background: transparent;
+}
+
+.glp-settings-section-header:hover { background: transparent; }
+
+.glp-section-heading::before {
+    content: attr(data-group-label);
+    display: block;
+    margin-bottom: 7px;
+    color: var(--glp-panel-accent);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+}
+
+.glp-settings-section-header h3 {
+    font-size: clamp(25px, 3vw, 36px);
+    line-height: 1.08;
+    letter-spacing: -0.035em;
+}
+
+.glp-section-desc {
+    max-width: 680px;
+    margin-top: 8px;
+    color: var(--glp-panel-muted);
+    font-size: 12px;
+}
+
+.glp-section-meta {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(78px, 1fr));
+    gap: 7px;
+    min-width: 270px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.glp-section-stat {
+    min-height: 50px;
+    padding: 8px 10px;
+    border: 1px solid rgba(147, 168, 211, 0.14);
+    border-radius: var(--glpx-r-md);
+    background: rgba(13, 19, 30, 0.78);
+}
+
+.glp-section-stat strong,
+.glp-section-stat small { display: block; }
+.glp-section-stat strong { color: var(--glp-panel-text); font-size: 13px; }
+.glp-section-stat small { margin-top: 2px; color: var(--glp-panel-subtle); font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; }
+.glp-section-count { color: var(--glp-panel-text); }
+.glp-section-changed-count { display: block; color: var(--glp-panel-accent) !important; }
+.glp-section-change-stat .glp-section-reset { margin-top: 5px; }
+.glp-settings-section-header .toggle-icon { display: none; }
+
+.glp-settings-section-content {
+    padding: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.glp-settings-section[data-section-id="thread-list-forum-page"] .glp-settings-section-content,
+.glp-settings-section[data-section-id="post-display-thread-page"] .glp-settings-section-content {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.glp-settings-section[data-section-id="navigation"] .glp-settings-section-content,
+.glp-settings-section[data-section-id="ui-enhancements"] .glp-settings-section-content {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.glp-settings-section[data-section-id="thread-list-forum-page"] .glp-setting-item,
+.glp-settings-section[data-section-id="post-display-thread-page"] .glp-setting-item,
+.glp-settings-section[data-section-id="navigation"] .glp-setting-item,
+.glp-settings-section[data-section-id="ui-enhancements"] .glp-setting-item {
+    min-height: 66px;
+    padding: 11px 12px;
+    gap: 10px;
+}
+
+.glp-setting-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 18px;
+    min-height: 78px;
+    padding: 14px 15px;
+    border-color: rgba(147, 168, 211, 0.13);
+    border-radius: var(--glpx-r-md);
+    background: linear-gradient(180deg, rgba(17, 26, 40, 0.92), rgba(13, 19, 30, 0.92));
+}
+
+.glp-setting-item > label { grid-column: 1; grid-row: 1; }
+.glp-setting-item > input,
+.glp-setting-item > select { grid-column: 2; grid-row: 1; }
+.glp-setting-item.full-width { min-height: 104px; }
+.glp-setting-item.full-width > label,
+.glp-setting-item.full-width > textarea { grid-column: 1; }
+
+.glp-setting-label { font-size: 12px; }
+.glp-setting-help { color: var(--glp-panel-muted); font-size: 10px; line-height: 1.45; }
+
+.glp-setting-item input[type="checkbox"] {
+    appearance: none;
+    position: relative;
+    width: 40px;
+    height: 22px;
+    margin: 1px 0 0;
+    border: 1px solid #31405a;
+    border-radius: 12px;
+    background: #161f2e;
+    accent-color: transparent;
+    transition: background var(--glpx-ease), border-color var(--glpx-ease);
+}
+
+.glp-setting-item input[type="checkbox"]::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: var(--glpx-r-xs);
+    background: #8592a7;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.42);
+    transition: transform var(--glpx-ease), background var(--glpx-ease);
+}
+
+.glp-setting-item input[type="checkbox"]:checked {
+    border-color: var(--glp-panel-accent);
+    background: var(--glp-panel-accent);
+}
+
+.glp-setting-item input[type="checkbox"]:checked::before {
+    transform: translateX(18px);
+    background: #fff;
+}
+
+.glp-setting-item input[type="number"],
+.glp-setting-item input[type="text"],
+.glp-setting-item input[type="color"],
+.glp-setting-item select,
+.glp-setting-item textarea {
+    border-color: rgba(147, 168, 211, 0.20);
+    border-radius: var(--glpx-r-sm);
+    background: #080d15;
+}
+
+#glp-enhanced-settings-footer {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    min-width: 0;
+    padding: 9px 18px 9px 360px;
+    border-top-color: rgba(147, 168, 211, 0.13);
+    background: #090d14;
+}
+
+.glp-footer-save-state {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: auto;
+    color: var(--glp-panel-muted);
+    font-size: 10px;
+}
+
+.glp-footer-save-state::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: var(--glp-panel-success);
+    box-shadow: 0 0 0 3px rgba(72, 213, 151, 0.10);
+}
+
+.glp-footer-cluster { position: absolute; left: 14px; bottom: 9px; }
+.glp-footer-cluster .glp-footer-group { padding: 0 8px; }
+.glp-footer-cluster .glp-footer-destructive { padding-left: 0; padding-right: 10px; }
+
+#glp-enhanced-settings-footer .glp-footer-cluster .glp-footer-group:nth-child(3) {
+    position: fixed;
+    top: calc(3vh + 13px);
+    right: calc(1vw + 56px);
+    z-index: 1000001;
+    padding: 0;
+    border-left: 0;
+}
+
+.glp-btn { min-height: 34px; padding: 7px 11px; font-size: 11px; border-radius: var(--glpx-r-md); }
+
+@media (max-width: 900px) {
+    #glp-enhanced-settings {
+        grid-template-columns: 208px minmax(0, 1fr);
+        height: min(94vh, 880px);
+    }
+    #glp-enhanced-settings-main { grid-template-columns: 208px minmax(0, 1fr); }
+    .glp-settings-search-wrap { grid-column: 2; padding-right: 218px; }
+    .glp-settings-summary { display: none; }
+    #glp-settings-nav { flex-direction: initial; flex-wrap: initial; max-height: none; border-bottom: 0; }
+    .glp-nav-item { width: 100%; }
+    .glp-settings-section-content { grid-template-columns: 1fr; }
+    .glp-settings-section[data-section-id="thread-list-forum-page"] .glp-settings-section-content,
+    .glp-settings-section[data-section-id="post-display-thread-page"] .glp-settings-section-content,
+    .glp-settings-section[data-section-id="navigation"] .glp-settings-section-content,
+    .glp-settings-section[data-section-id="ui-enhancements"] .glp-settings-section-content { grid-template-columns: 1fr; }
+    #glp-enhanced-settings-footer { padding-left: 220px; }
+    .glp-footer-save-state { display: none; }
+    #glp-enhanced-settings-footer .glp-footer-cluster .glp-footer-group:nth-child(3) { right: calc(1vw + 54px); }
+}
+
+@media (max-width: 700px) {
+    #glp-enhanced-settings { grid-template-columns: 1fr; grid-template-rows: 56px 92px minmax(0, 1fr) 58px; }
+    #glp-enhanced-settings-header { grid-column: 1; grid-row: 1; border-right: 0; }
+    .glp-settings-search-wrap { grid-column: 1; grid-row: 2; padding: 9px 54px 9px 12px; grid-template-columns: 1fr; }
+    .glp-search-tools { display: none; }
+    #glp-enhanced-settings-main { grid-column: 1; grid-row: 3; grid-template-columns: 1fr; }
+    #glp-settings-nav { display: flex; max-height: 92px; padding: 8px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--glp-panel-border); }
+    .glp-nav-group { display: contents; }
+    .glp-nav-group-title, .glp-local-privacy { display: none; }
+    .glp-nav-item { min-width: 138px; width: auto; }
+    .glp-settings-section-header { grid-template-columns: 1fr; align-items: start; }
+    .glp-section-meta { width: 100%; min-width: 0; }
+    #glp-enhanced-settings-footer { grid-column: 1; grid-row: 4; padding: 9px 12px; }
+    .glp-footer-cluster { display: none; }
+    #glp-enhanced-settings-footer .glp-footer-group:last-child { margin-left: auto; }
+    .glp-footer-save-state { display: none; }
+    #glp-enhanced-settings-footer .glp-footer-cluster .glp-footer-group:nth-child(3) { display: none; }
+}
+`;
+
         // Custom CSS injection
         // Custom CSS is the one setting that can make the interface for changing settings
         // unreachable, and it survives a reload, so "just refresh" is not a way out. Safe
@@ -3387,6 +3845,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             </div>
             </div>
             <div id="glp-enhanced-settings-footer">
+                <div class="glp-footer-save-state">All changes are saved locally</div>
                 <div class="glp-footer-cluster">
                     <div class="glp-footer-group glp-footer-destructive">
                         <button class="glp-btn glp-btn-danger" id="glp-reset-btn" title="Restore every setting to its default. Undoable from the toast.">Reset to defaults</button>
@@ -3409,10 +3868,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
         // The rail is rendered above the sections but can only be built after them: the section
         // ids are collected as each one renders. Substitute once, into the finished string.
-        setTrustedHTML(panel, panelHTML.replace('__SECTION_NAV__', SECTION_ORDER.map(entry =>
-            `<button type="button" class="glp-nav-item" data-nav-section="${escapeAttribute(entry.id)}">` +
-            `<span class="glp-nav-dot" aria-hidden="true"></span>${escapeHTML(entry.title)}</button>`
-        ).join('')));
+        setTrustedHTML(panel, panelHTML.replace('__SECTION_NAV__', buildSettingsNavHTML()));
 
         overlay.appendChild(panel);
         document.body.appendChild(overlay);
@@ -3428,12 +3884,6 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) closeSettings();
-        });
-
-        document.querySelectorAll('.glp-settings-section-header').forEach(header => {
-            header.addEventListener('click', () => {
-                header.parentElement.classList.toggle('collapsed');
-            });
         });
 
         initSettingsSearch();
@@ -3495,6 +3945,43 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     // Stable ids for the jump rail. Derived from the title so the rail and the sections cannot
     // drift apart when a section is added.
     const SECTION_ORDER = [];
+    const SECTION_NAV_GROUPS = [
+        { label: 'Essentials', titles: ['Core', 'Ad Removal', 'Registration & Login'] },
+        { label: 'Reading', titles: ['Header Options', 'Navigation', 'Thread List (Forum Page)', 'Post Display (Thread Page)', 'Quote Styling', 'Visual Enhancements', 'Thread List Enhancements', 'Post Enhancements', 'UI Enhancements'] },
+        { label: 'People & Data', titles: ['Filtering & Custom', 'Thread Watcher', 'User Intelligence', 'User Data', 'Media & Embeds', 'Export & Data', 'Muted Users', 'Blocked Users', 'Presets'] },
+        { label: 'System', titles: ['Accessibility', 'Miscellaneous'] }
+    ];
+
+    function sectionGroupTitle(title) {
+        const group = SECTION_NAV_GROUPS.find(entry => entry.titles.includes(title));
+        return group ? group.label : 'Settings';
+    }
+
+    function buildSettingsNavHTML() {
+        let sequence = 1;
+        const known = new Set();
+        const groups = SECTION_NAV_GROUPS.map(group => {
+            const entries = group.titles.map(title => SECTION_ORDER.find(entry => entry.title === title)).filter(Boolean);
+            entries.forEach(entry => known.add(entry.id));
+            if (!entries.length) return '';
+            const buttons = entries.map(entry =>
+                `<button type="button" class="glp-nav-item" data-nav-section="${escapeAttribute(entry.id)}">` +
+                `<span class="glp-nav-icon" aria-hidden="true">${String(sequence++).padStart(2, '0')}</span>` +
+                `<span>${escapeHTML(entry.title.replace(' (Forum Page)', '').replace(' (Thread Page)', ''))}</span>` +
+                `<span class="glp-nav-dot" aria-hidden="true"></span></button>`
+            ).join('');
+            return `<div class="glp-nav-group" data-nav-group="${escapeAttribute(group.label)}">` +
+                `<span class="glp-nav-group-title">${escapeHTML(group.label)}</span>${buttons}</div>`;
+        }).join('');
+        const extras = SECTION_ORDER.filter(entry => !known.has(entry.id)).map(entry =>
+            `<button type="button" class="glp-nav-item" data-nav-section="${escapeAttribute(entry.id)}">` +
+            `<span class="glp-nav-icon" aria-hidden="true">${String(sequence++).padStart(2, '0')}</span>` +
+            `<span>${escapeHTML(entry.title)}</span><span class="glp-nav-dot" aria-hidden="true"></span></button>`
+        ).join('');
+        return groups + (extras ? `<div class="glp-nav-group"><span class="glp-nav-group-title">More</span>${extras}</div>` : '') +
+            '<div class="glp-local-privacy"><strong>Private by design</strong>Settings and user data stay in this browser.</div>';
+    }
+
     function sectionSlug(title) {
         const slug = String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
         if (!SECTION_ORDER.some(entry => entry.id === slug)) SECTION_ORDER.push({ id: slug, title: title });
@@ -3505,14 +3992,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         let contentHTML = '';
         const desc = SECTION_DESCRIPTIONS[title] || '';
         const changedCount = items.filter(item => settings[item.key] !== DEFAULT_SETTINGS[item.key]).length;
-        const SPECIAL_META = {
-            'mute-list': `${mutedUsers.length} muted`,
-            'block-list': `${blockedUsers.length} blocked`,
-            'presets': '1 preset',
-            'user-data': `${Object.keys(userStats).length} posters tracked`
-        };
-        const metaText = SPECIAL_META[specialId]
-            || `${items.length} control${items.length !== 1 ? 's' : ''}${changedCount ? ` - ${changedCount} changed` : ''}`;
+        const enabledCount = items.filter(item => typeof settings[item.key] === 'boolean' && settings[item.key]).length;
 
         if (specialId === 'mute-list') {
             contentHTML = `<div class="glp-mute-manage-list" id="glp-mute-manage">${getMuteListHTML()}</div>`;
@@ -3586,16 +4066,16 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         const sectionId = escapeAttribute(sectionSlug(title));
 
         return `
-            <div class="glp-settings-section${specialId === 'mute-list' || specialId === 'block-list' ? ' collapsed' : ''}" data-section-title="${escapeAttribute(title)}" data-section-id="${sectionId}">
+            <div class="glp-settings-section" data-section-title="${escapeAttribute(title)}" data-section-id="${sectionId}" data-section-group="${escapeAttribute(sectionGroupTitle(title))}">
                 <div class="glp-settings-section-header">
-                    <div class="glp-section-heading">
+                    <div class="glp-section-heading" data-group-label="${escapeAttribute(sectionGroupTitle(title))}">
                         <h3>${escapeHTML(title)}</h3>
                         ${desc ? `<div class="glp-section-desc">${escapeHTML(desc)}</div>` : ''}
                     </div>
                     <div class="glp-section-meta">
-                        <span class="glp-section-changed-count" style="display:none"></span>
-                        <button type="button" class="glp-section-reset" data-reset-section="${sectionId}" title="Put this section back to its defaults" style="display:none">Reset</button>
-                        <span class="glp-section-count">${escapeHTML(metaText)}</span>
+                        <span class="glp-section-stat"><strong class="glp-section-count">${items.length || 'Manage'}</strong><small>Controls</small></span>
+                        <span class="glp-section-stat"><strong class="glp-section-enabled-count">${enabledCount}</strong><small>Enabled</small></span>
+                        <span class="glp-section-stat glp-section-change-stat"><strong class="glp-section-changed-count">${changedCount}</strong><small>Changed</small><button type="button" class="glp-section-reset" data-reset-section="${sectionId}" title="Put this section back to its defaults" style="display:none">Reset</button></span>
                         <span class="toggle-icon" aria-hidden="true">&#x25BC;</span>
                     </div>
                 </div>
@@ -3623,11 +4103,14 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
         document.querySelectorAll('.glp-settings-section').forEach(section => {
             const count = section.querySelectorAll('.glp-setting-changed').length;
+            const enabled = section.querySelectorAll('.glp-setting-item input[type="checkbox"]:checked').length;
             section.classList.toggle('glp-section-has-changes', count > 0);
+            const enabledBadge = section.querySelector('.glp-section-enabled-count');
+            if (enabledBadge) enabledBadge.textContent = String(enabled);
             const badge = section.querySelector('.glp-section-changed-count');
             if (badge) {
-                badge.textContent = count ? count + ' changed' : '';
-                badge.style.display = count ? '' : 'none';
+                badge.textContent = String(count);
+                badge.style.display = '';
             }
             const reset = section.querySelector('[data-reset-section]');
             if (reset) reset.style.display = count ? '' : 'none';
@@ -3645,12 +4128,31 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         const status = document.getElementById('glp-settings-status');
         const empty = document.getElementById('glp-settings-empty');
         const onlyChanged = document.getElementById('glp-only-changed');
+        const body = document.getElementById('glp-enhanced-settings-body');
+        let activeSectionId = SECTION_ORDER[0] ? SECTION_ORDER[0].id : '';
+
+        const activatePage = (sectionId, { scroll = false } = {}) => {
+            const section = document.querySelector('.glp-settings-section[data-section-id="' + sectionId + '"]');
+            if (!section || section.classList.contains('glp-filtered')) return false;
+            activeSectionId = sectionId;
+            document.querySelectorAll('.glp-settings-section').forEach(node => {
+                node.classList.toggle('glp-page-active', node === section);
+            });
+            document.querySelectorAll('#glp-settings-nav .glp-nav-item').forEach(node => {
+                const active = node.dataset.navSection === sectionId;
+                node.classList.toggle('glp-nav-active', active);
+                node.setAttribute('aria-current', active ? 'page' : 'false');
+            });
+            if (scroll && body) body.scrollTo({ top: 0, behavior: settings.reduceMotion ? 'auto' : 'smooth' });
+            return true;
+        };
 
         const applyFilter = () => {
             const query = search.value.trim().toLowerCase();
             const changedOnly = onlyChanged && onlyChanged.getAttribute('aria-pressed') === 'true';
             let matches = 0;
             let visibleSections = 0;
+            const candidates = [];
 
             document.querySelectorAll('.glp-settings-section').forEach(section => {
                 let visibleItems = 0;
@@ -3670,22 +4172,35 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                     ? visibleItems > 0
                     : (isSpecial ? sectionMatches : visibleItems > 0 || sectionMatches);
                 section.classList.toggle('glp-filtered', !showSection);
-                if ((query || changedOnly) && showSection) section.classList.remove('collapsed');
                 matches += visibleItems;
-                if (showSection) visibleSections++;
+                if (showSection) {
+                    visibleSections++;
+                    candidates.push(section.dataset.sectionId);
+                }
 
                 const navItem = document.querySelector('[data-nav-section="' + section.dataset.sectionId + '"]');
                 if (navItem) navItem.classList.toggle('glp-filtered', !showSection);
             });
 
+            document.querySelectorAll('#glp-settings-nav .glp-nav-group').forEach(group => {
+                group.classList.toggle('glp-filtered', !group.querySelector('.glp-nav-item:not(.glp-filtered)'));
+            });
+
             if (status) {
                 if (changedOnly) status.textContent = matches + ' changed from default';
-                else if (query) status.textContent = matches + ' match' + (matches === 1 ? '' : 'es') + ' in ' + visibleSections + ' section' + (visibleSections === 1 ? '' : 's');
-                else status.textContent = Object.keys(DEFAULT_SETTINGS).length + ' controls - local only';
+                else if (query) status.textContent = matches + ' match' + (matches === 1 ? '' : 'es') + ' in ' + visibleSections + ' page' + (visibleSections === 1 ? '' : 's');
+                else status.textContent = Object.keys(DEFAULT_SETTINGS).length + ' controls - ' + SECTION_ORDER.length + ' pages';
             }
             if (empty) empty.style.display = visibleSections === 0 ? '' : 'none';
             const clear = document.getElementById('glp-settings-clear');
             if (clear) clear.style.display = query ? '' : 'none';
+
+            if (candidates.length) {
+                activatePage(candidates.includes(activeSectionId) ? activeSectionId : candidates[0]);
+            } else {
+                document.querySelectorAll('.glp-settings-section').forEach(section => section.classList.remove('glp-page-active'));
+                document.querySelectorAll('#glp-settings-nav .glp-nav-active').forEach(node => node.classList.remove('glp-nav-active'));
+            }
         };
 
         search.addEventListener('input', applyFilter);
@@ -3721,22 +4236,15 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             });
         }
 
-        // Jump rail: 23 sections in one scroll needs a map, not a scrollbar.
+        // The rail is page routing, not a set of anchors into one very long accordion.
         const nav = document.getElementById('glp-settings-nav');
         if (nav) {
             nav.addEventListener('click', event => {
                 const link = event.target.closest('[data-nav-section]');
                 if (!link) return;
-                const section = document.querySelector('.glp-settings-section[data-section-id="' + link.dataset.navSection + '"]');
-                if (!section) return;
-                section.classList.remove('collapsed');
-                section.scrollIntoView({ behavior: settings.reduceMotion ? 'auto' : 'smooth', block: 'start' });
-                document.querySelectorAll('#glp-settings-nav .glp-nav-active').forEach(node => node.classList.remove('glp-nav-active'));
-                link.classList.add('glp-nav-active');
+                activatePage(link.dataset.navSection, { scroll: true });
             });
         }
-
-        const body = document.getElementById('glp-enhanced-settings-body');
 
         // Per-section reset. The global reset is all-or-nothing, which is not what anyone wants
         // when a single section has drifted.

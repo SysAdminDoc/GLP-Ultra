@@ -62,6 +62,16 @@
                 }
                 return false;
 
+            case 'glp:watch-check':
+                if (!api || typeof api.runWatcherCheck !== 'function') {
+                    sendResponse({ ok: false });
+                    return false;
+                }
+                Promise.resolve(api.runWatcherCheck())
+                    .then(result => sendResponse({ ok: true, result }))
+                    .catch(error => sendResponse({ ok: false, error: String(error) }));
+                return true;
+
             default:
                 return false;
         }

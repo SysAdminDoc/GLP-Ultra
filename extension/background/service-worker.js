@@ -5,6 +5,8 @@
 
 const RULESET_ID = 'glp-ad-network';
 const NETWORK_BLOCK_KEY = 'glpNetworkAdBlock';
+const WATCHER_ALARM = 'glp-ultra-watcher';
+const WATCHER_SETTINGS_KEY = 'glpEnhancedSettings';
 
 const GLP_PAGES = ['*://*.godlikeproductions.com/*'];
 
@@ -57,9 +59,39 @@ async function syncNetworkBlocking() {
     return enabled;
 }
 
+async function syncWatcherAlarm() {
+    const stored = await chrome.storage.local.get(WATCHER_SETTINGS_KEY);
+    let settings = {};
+    try {
+        settings = JSON.parse(stored[WATCHER_SETTINGS_KEY] || '{}');
+    } catch (error) {
+        settings = {};
+    }
+
+    await chrome.alarms.clear(WATCHER_ALARM);
+    if (settings.watcherEnabled !== true) return false;
+
+    const minutes = Math.max(5, Number(settings.watcherIntervalMinutes) || 15);
+    await chrome.alarms.create(WATCHER_ALARM, { periodInMinutes: minutes });
+    return true;
+}
+
+async function runWatcherAlarm() {
+    const tabs = await chrome.tabs.query({ url: GLP_PAGES });
+    await Promise.all(tabs
+        .filter(tab => tab.id != null)
+        .map(tab => new Promise(resolve => {
+            chrome.tabs.sendMessage(tab.id, { type: 'glp:watch-check' }, () => {
+                void chrome.runtime.lastError;
+                resolve();
+            });
+        })));
+}
+
 chrome.runtime.onInstalled.addListener(details => {
     createMenus();
     syncNetworkBlocking();
+    syncWatcherAlarm();
     if (details.reason === 'install') {
         chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
     }
@@ -68,6 +100,11 @@ chrome.runtime.onInstalled.addListener(details => {
 chrome.runtime.onStartup.addListener(() => {
     createMenus();
     syncNetworkBlocking();
+    syncWatcherAlarm();
+});
+
+chrome.alarms.onAlarm.addListener(alarm => {
+    if (alarm.name === WATCHER_ALARM) runWatcherAlarm().catch(() => {});
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -90,7 +127,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes[NETWORK_BLOCK_KEY]) syncNetworkBlocking();
+    if (area !== 'local') return;
+    if (changes[NETWORK_BLOCK_KEY]) syncNetworkBlocking();
+    if (changes[WATCHER_SETTINGS_KEY]) syncWatcherAlarm();
 });
 
 // Tabs that reported a watched-thread unread count keep it on the badge; the plain

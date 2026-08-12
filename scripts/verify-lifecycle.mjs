@@ -45,6 +45,17 @@ requiredHelpers.forEach(name => {
     if (!new RegExp(`function ${name}\\s*\\(`).test(source)) fail(`missing lifecycle helper ${name}`);
 });
 
+if (!/function readFeatureStore\s*\(/.test(source) || !/function writeFeatureStore\s*\(/.test(source)) {
+    fail('feature storage must go through the typed store adapter');
+}
+if (/GM_(?:get|set)Value\(\s*['"]glp(?:MutedUsers|BlockedUsers|HiddenThreads|HiddenThreadTitles|UserTags|WatchedThreads|UserStats|UserStatsPages)['"]/.test(source)) {
+    fail('feature code must not read or write its stores through GM_* directly');
+}
+if (!source.includes("runWatcherCheck: () => runWatcherPass()")
+    || !source.includes("const extensionManaged = typeof chrome !== 'undefined' && !!chrome.runtime?.id")) {
+    fail('the extension watcher must expose an alarm-driven check without removing userscript timers');
+}
+
 if (!/function runFeatureRegistry\(stage = 'init', root = document\)/.test(source)
     || !/runner\(scope, ctx\)/.test(source)) {
     fail('registry apply path must receive a scoped root');

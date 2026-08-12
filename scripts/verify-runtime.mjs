@@ -360,6 +360,13 @@ try {
   // Thread watcher: off by default, so drive it through the extension shell.
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { watcherEnabled: true } });
   await page.waitForTimeout(500);
+  const watcherAlarm = await waitFor(
+    () => worker.evaluate(() => chrome.alarms.get('glp-ultra-watcher')),
+    alarm => !!alarm,
+    8000);
+  check('thread: the extension schedules the watcher with chrome.alarms',
+    watcherAlarm?.name === 'glp-ultra-watcher' && watcherAlarm.periodInMinutes >= 5,
+    JSON.stringify(watcherAlarm));
   check('thread: watch button appears when the watcher is on',
     await page.locator('[data-glp-thread-tool="watch"]').count() === 1);
   check('thread: watched digest toggle appears',
@@ -389,6 +396,11 @@ try {
   check('thread: the digest row is not in an error state',
     await page.locator('#glp-watch-digest .glp-watch-error').count() === 0);
 
+  const alarmCheck = await sendMessage(worker, page, { type: 'glp:watch-check' });
+  check('thread: a service-worker alarm reaches the watcher bridge',
+    alarmCheck?.ok === true && alarmCheck?.result?.checked === 1,
+    JSON.stringify(alarmCheck));
+
   await page.locator('#glp-watch-digest [data-watch-action="unwatch"]').click();
   await page.waitForTimeout(300);
   check('thread: unwatching empties the digest',
@@ -396,6 +408,12 @@ try {
 
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { watcherEnabled: false } });
   await page.waitForTimeout(400);
+  const clearedWatcherAlarm = await waitFor(
+    () => worker.evaluate(() => chrome.alarms.get('glp-ultra-watcher')),
+    alarm => alarm == null,
+    8000);
+  check('thread: disabling the watcher clears its background alarm', clearedWatcherAlarm == null,
+    JSON.stringify(clearedWatcherAlarm));
   check('thread: disabling the watcher removes its controls',
     await page.locator('[data-glp-thread-tool="watch"], #glp-watch-toggle, #glp-watch-digest').count() === 0);
 

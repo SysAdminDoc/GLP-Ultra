@@ -6,7 +6,8 @@
   "permissions": [
     "storage",
     "contextMenus",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "alarms"
   ],
   "host_permissions": [
     "https://www.godlikeproductions.com/*",

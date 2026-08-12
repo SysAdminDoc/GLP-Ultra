@@ -902,6 +902,17 @@
         }
     }
 
+    // Feature code uses this narrow adapter instead of reaching into GM_* directly. Settings
+    // migration and persistence stay here in the engine layer; feature stores only exchange
+    // typed JSON values through these two helpers.
+    function readFeatureStore(key, fallback) {
+        return parseStoredJSON(readStoredValue(key, null), fallback);
+    }
+
+    function writeFeatureStore(key, value) {
+        GM_setValue(key, JSON.stringify(value));
+    }
+
     function normalizeThemeValue(value) {
         const normalized = String(value || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
         const aliases = {
@@ -5945,15 +5956,12 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     let mutedUsers = [];
 
     function loadMutedUsers() {
-        try {
-            mutedUsers = JSON.parse(GM_getValue('glpMutedUsers', '[]'));
-        } catch (e) {
-            mutedUsers = [];
-        }
+        const stored = readFeatureStore('glpMutedUsers', []);
+        mutedUsers = Array.isArray(stored) ? stored : [];
     }
 
     function saveMutedUsers() {
-        GM_setValue('glpMutedUsers', JSON.stringify(mutedUsers));
+        writeFeatureStore('glpMutedUsers', mutedUsers);
     }
 
     function muteUser(username) {
@@ -6037,8 +6045,10 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     let userStatsPages = [];
 
     function loadUserStats() {
-        try { userStats = JSON.parse(GM_getValue('glpUserStats', '{}')) || {}; } catch (e) { userStats = {}; }
-        try { userStatsPages = JSON.parse(GM_getValue('glpUserStatsPages', '[]')) || []; } catch (e) { userStatsPages = []; }
+        const storedStats = readFeatureStore('glpUserStats', {});
+        const storedPages = readFeatureStore('glpUserStatsPages', []);
+        userStats = storedStats && typeof storedStats === 'object' && !Array.isArray(storedStats) ? storedStats : {};
+        userStatsPages = Array.isArray(storedPages) ? storedPages : [];
     }
 
     function saveUserStats() {
@@ -6051,15 +6061,15 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                 .slice(0, names.length - cap)
                 .forEach(name => delete userStats[name]);
         }
-        GM_setValue('glpUserStats', JSON.stringify(userStats));
-        GM_setValue('glpUserStatsPages', JSON.stringify(userStatsPages.slice(-200)));
+        writeFeatureStore('glpUserStats', userStats);
+        writeFeatureStore('glpUserStatsPages', userStatsPages.slice(-200));
     }
 
     function clearUserHistory() {
         userStats = {};
         userStatsPages = [];
-        GM_setValue('glpUserStats', '{}');
-        GM_setValue('glpUserStatsPages', '[]');
+        writeFeatureStore('glpUserStats', {});
+        writeFeatureStore('glpUserStatsPages', []);
         document.querySelectorAll('.glp-user-rep').forEach(node => node.remove());
     }
 
@@ -6156,18 +6166,14 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     let blockedUsers = [];
 
     function loadBlockedUsers() {
-        try {
-            const parsed = JSON.parse(GM_getValue('glpBlockedUsers', '[]'));
-            blockedUsers = Array.isArray(parsed)
-                ? parsed.map(entry => (typeof entry === 'object' && entry ? entry : { id: String(entry), name: String(entry) }))
-                : [];
-        } catch (e) {
-            blockedUsers = [];
-        }
+        const parsed = readFeatureStore('glpBlockedUsers', []);
+        blockedUsers = Array.isArray(parsed)
+            ? parsed.map(entry => (typeof entry === 'object' && entry ? entry : { id: String(entry), name: String(entry) }))
+            : [];
     }
 
     function saveBlockedUsers() {
-        GM_setValue('glpBlockedUsers', JSON.stringify(blockedUsers));
+        writeFeatureStore('glpBlockedUsers', blockedUsers);
     }
 
     function isUserBlocked(userId) {
@@ -6683,25 +6689,20 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     let hiddenThreadTitles = {};
 
     function loadHiddenThreads() {
-        try {
-            hiddenThreads = JSON.parse(GM_getValue('glpHiddenThreads', '[]'));
-        } catch (e) {
-            hiddenThreads = [];
-        }
-        try {
-            hiddenThreadTitles = JSON.parse(GM_getValue('glpHiddenThreadTitles', '{}')) || {};
-        } catch (e) {
-            hiddenThreadTitles = {};
-        }
+        const storedThreads = readFeatureStore('glpHiddenThreads', []);
+        const storedTitles = readFeatureStore('glpHiddenThreadTitles', {});
+        hiddenThreads = Array.isArray(storedThreads) ? storedThreads : [];
+        hiddenThreadTitles = storedTitles && typeof storedTitles === 'object' && !Array.isArray(storedTitles)
+            ? storedTitles : {};
     }
 
     function saveHiddenThreads() {
-        GM_setValue('glpHiddenThreads', JSON.stringify(hiddenThreads));
+        writeFeatureStore('glpHiddenThreads', hiddenThreads);
         // Drop titles for threads that are no longer hidden so the store cannot grow forever.
         Object.keys(hiddenThreadTitles).forEach(id => {
             if (!hiddenThreads.includes(id)) delete hiddenThreadTitles[id];
         });
-        GM_setValue('glpHiddenThreadTitles', JSON.stringify(hiddenThreadTitles));
+        writeFeatureStore('glpHiddenThreadTitles', hiddenThreadTitles);
     }
 
     function normalizeThreadRow(row) {
@@ -7321,11 +7322,12 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     let userTags = {};
 
     function loadUserTags() {
-        try { userTags = JSON.parse(GM_getValue('glpUserTags', '{}')); } catch (e) { userTags = {}; }
+        const stored = readFeatureStore('glpUserTags', {});
+        userTags = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
     }
 
     function saveUserTags() {
-        GM_setValue('glpUserTags', JSON.stringify(userTags));
+        writeFeatureStore('glpUserTags', userTags);
     }
 
     const tagColors = [
@@ -7967,16 +7969,12 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     let watcherRunning = false;
 
     function loadWatchedThreads() {
-        try {
-            const parsed = JSON.parse(GM_getValue('glpWatchedThreads', '[]'));
-            watchedThreads = Array.isArray(parsed) ? parsed : [];
-        } catch (error) {
-            watchedThreads = [];
-        }
+        const parsed = readFeatureStore('glpWatchedThreads', []);
+        watchedThreads = Array.isArray(parsed) ? parsed : [];
     }
 
     function saveWatchedThreads() {
-        GM_setValue('glpWatchedThreads', JSON.stringify(watchedThreads.slice(0, WATCH_LIMIT)));
+        writeFeatureStore('glpWatchedThreads', watchedThreads.slice(0, WATCH_LIMIT));
     }
 
     function highestPostNumber(root = document) {
@@ -8104,19 +8102,21 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     async function runWatcherPass({ manual = false } = {}) {
-        if (watcherRunning) return;
-        if (!settings.watcherEnabled) return;
-        if (!manual && settings.watcherPauseHidden && document.hidden) return;
+        if (watcherRunning) return { skipped: true, reason: 'already-running' };
+        if (!settings.watcherEnabled) return { skipped: true, reason: 'disabled' };
+        if (!manual && settings.watcherPauseHidden && document.hidden) return { skipped: true, reason: 'hidden' };
 
         loadWatchedThreads();
-        if (!watchedThreads.length) return;
+        if (!watchedThreads.length) return { skipped: true, reason: 'empty' };
 
         watcherRunning = true;
+        let checked = 0;
         try {
             for (const entry of watchedThreads) {
                 if (!manual && settings.watcherPauseHidden && document.hidden) break;
                 try {
                     await checkWatchedThread(entry);
+                    checked++;
                 } catch (error) {
                     entry.error = error && error.message ? error.message : String(error);
                     entry.lastCheckedAt = Date.now();
@@ -8128,6 +8128,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         } finally {
             watcherRunning = false;
         }
+        return { checked, total: watchedThreads.length };
     }
 
     function relativeAge(timestamp) {
@@ -8311,8 +8312,12 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         renderWatchControls();
 
         if (watcherTimer) clearInterval(watcherTimer);
-        const minutes = Math.max(5, Number(settings.watcherIntervalMinutes) || 15);
-        watcherTimer = setInterval(() => runWatcherPass(), minutes * 60000);
+        watcherTimer = null;
+        const extensionManaged = typeof chrome !== 'undefined' && !!chrome.runtime?.id;
+        if (!extensionManaged) {
+            const minutes = Math.max(5, Number(settings.watcherIntervalMinutes) || 15);
+            watcherTimer = setInterval(() => runWatcherPass(), minutes * 60000);
+        }
     }
 
     function destroyWatcher() {
@@ -9827,7 +9832,8 @@ ${manifest}
         buildPack,
         applyPack,
         buildIssueBundle,
-        downloadIssueBundle
+        downloadIssueBundle,
+        runWatcherCheck: () => runWatcherPass()
     };
 
     init();

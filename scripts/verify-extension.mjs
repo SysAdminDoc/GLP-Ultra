@@ -27,11 +27,18 @@ async function exists(relative) {
 
 const manifest = JSON.parse(await readFile(path.join(extensionDir, 'manifest.json'), 'utf8'));
 const packageJson = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+const serviceWorker = await readFile(path.join(extensionDir, 'background', 'service-worker.js'), 'utf8');
 
 if (manifest.manifest_version !== 3) fail('manifest_version must be 3');
 if (manifest.version !== packageJson.version) fail(`manifest ${manifest.version} != package ${packageJson.version}`);
 if (/^\d+\.\d+\.\d+$/.test(manifest.version) === false) fail(`manifest version "${manifest.version}" is not a 3-part version`);
 if (manifest.commands) fail('command shortcuts are not allowed');
+if (!manifest.permissions?.includes('alarms')) fail('manifest is missing the alarms permission');
+if (!serviceWorker.includes("chrome.alarms.onAlarm")
+    || !serviceWorker.includes("chrome.alarms.create(WATCHER_ALARM")
+    || !serviceWorker.includes("type: 'glp:watch-check'")) {
+  fail('service worker is missing the background watcher alarm path');
+}
 
 function referencedFiles(m) {
   return [

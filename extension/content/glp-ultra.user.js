@@ -452,6 +452,17 @@
         fetchBackoffUntil: 0,
         mediaHoverBound: false,
         lightboxBound: false,
+        permalinksBound: false,
+        contextHandler: null,
+        activeFeatureId: null,
+        featureResources: new Map(),
+        featureListenerSequence: 0,
+        routePath: '',
+        routeEpoch: 0,
+        fetchSequence: 0,
+        fetchController: null,
+        fetchCache: new Map(),
+        routeHooksBound: false,
         migration: {
             schemaVersion: 0,
             source: 'defaults',
@@ -461,15 +472,119 @@
         }
     };
 
+    function featureResourceBucket(featureId = runtimeState.activeFeatureId) {
+        if (!featureId) return null;
+        let bucket = runtimeState.featureResources.get(featureId);
+        if (!bucket) {
+            bucket = new Map();
+            runtimeState.featureResources.set(featureId, bucket);
+        }
+        return bucket;
+    }
+
+    function registerFeatureCleanup(key, cleanup, featureId = runtimeState.activeFeatureId) {
+        if (!featureId || typeof cleanup !== 'function') return;
+        const bucket = featureResourceBucket(featureId);
+        const resourceKey = String(key || `resource-${++runtimeState.featureListenerSequence}`);
+        const previous = bucket.get(resourceKey);
+        if (previous) {
+            try { previous(); } catch (error) { recordFeatureError(featureId, 'destroy', error); }
+        }
+        bucket.set(resourceKey, cleanup);
+    }
+
+    function addFeatureEventListener(target, type, listener, options, key = type) {
+        if (!target?.addEventListener) return;
+        target.addEventListener(type, listener, options);
+        const owner = runtimeState.activeFeatureId;
+        if (!owner) return;
+        registerFeatureCleanup(`listener:${key}`, () => target.removeEventListener(type, listener, options), owner);
+    }
+
+    function clearFeatureResources(featureId) {
+        const bucket = runtimeState.featureResources.get(featureId);
+        if (!bucket) return;
+        [...bucket.values()].reverse().forEach(cleanup => {
+            try { cleanup(); } catch (error) { recordFeatureError(featureId, 'destroy', error); }
+        });
+        bucket.clear();
+        runtimeState.featureResources.delete(featureId);
+    }
+
+    function markFeatureOwned(node, featureId = runtimeState.activeFeatureId) {
+        if (node?.setAttribute && featureId) node.setAttribute('data-glpx-owner', featureId);
+        return node;
+    }
+
+    function featureScope(root = document) {
+        if (!root || typeof root.querySelectorAll !== 'function') return document;
+        // A scoped query does not consider the scope element itself when a selector starts with
+        // `.threads` or `.msg`. Lift known container roots one level so fragment processors can
+        // keep their stable selectors without falling back to document-wide scans.
+        if (root.nodeType === 1) {
+            const container = root.matches?.('#forum_l, table.msg, table.threads, #rightpanel_inner, #glpNotifyMenu')
+                ? root
+                : root.closest?.('#forum_l, table.msg, table.threads, #rightpanel_inner, #glpNotifyMenu');
+            if (container?.parentElement) return container.parentElement;
+        }
+        return root;
+    }
+
+    function mutationRoots(nodes) {
+        const knownRoot = '#forum_l, table.msg, table.threads, #rightpanel_inner, #glpNotifyMenu';
+        return [...new Set(nodes
+            .filter(node => node?.nodeType === 1)
+            .map(node => {
+                const container = node.closest?.(knownRoot);
+                return container?.parentElement || node.parentElement || node;
+            })
+            .filter(Boolean))];
+    }
+
+    function queryFeatureNodes(root, selector) {
+        const scope = featureScope(root);
+        const matches = [...scope.querySelectorAll(selector)];
+        if (matches.length) return matches;
+        if (scope.nodeType !== 1) return matches;
+        if (scope.matches?.('tbody')) return [...scope.children].filter(node => node.matches(selector.split(' ').pop()));
+        return scope.matches?.(selector) ? [scope] : matches;
+    }
+
     function wait(ms) {
         return new Promise(resolve => window.setTimeout(resolve, ms));
     }
 
-    function fetchTextQueued(url, options = {}) {
+    function hashFetchedText(text) {
+        let hash = 2166136261;
+        for (let index = 0; index < text.length; index++) {
+            hash ^= text.charCodeAt(index);
+            hash = Math.imul(hash, 16777619);
+        }
+        return (hash >>> 0).toString(16);
+    }
+
+    function fetchQueued(url, options = {}) {
         return new Promise((resolve, reject) => {
-            runtimeState.fetchQueue.push({ url, options, resolve, reject });
+            runtimeState.fetchQueue.push({
+                url,
+                options,
+                resolve,
+                reject,
+                routeEpoch: runtimeState.routeEpoch,
+                sequence: runtimeState.fetchSequence++,
+                priority: Number(options.priority) || 0
+            });
+            runtimeState.fetchQueue.sort((a, b) => b.priority - a.priority || a.sequence - b.sequence);
             processFetchQueue();
         });
+    }
+
+    function fetchTextQueued(url, options = {}) {
+        return fetchQueued(url, { ...options, responseType: 'text' });
+    }
+
+    function fetchResponseQueued(url, options = {}) {
+        return fetchQueued(url, { ...options, responseType: 'response' });
     }
 
     // The floor between requests, and the ceiling on how far failure backs us off. A watcher
@@ -499,6 +614,10 @@
             }
 
             const next = runtimeState.fetchQueue.shift();
+            if (next.routeEpoch !== runtimeState.routeEpoch) {
+                next.reject(new Error('background request cancelled after route change'));
+                continue;
+            }
             const minDelay = next.options.minDelay ?? 1000;
             // Failures used to leave lastFetchAt untouched, so a run of them made `elapsed` large
             // and the limiter waited for nothing: the queue then drained as fast as the network
@@ -510,9 +629,37 @@
 
             let response = null;
             try {
-                response = await fetch(next.url, next.options.fetchOptions || {});
+                const cached = next.options.cacheKey && runtimeState.fetchCache.get(next.options.cacheKey);
+                if (cached && cached.expiresAt > Date.now() && next.options.responseType !== 'response') {
+                    next.resolve(cached.text);
+                    continue;
+                }
+
+                const fetchOptions = { ...(next.options.fetchOptions || {}) };
+                if (!fetchOptions.signal) {
+                    runtimeState.fetchController = new AbortController();
+                    fetchOptions.signal = runtimeState.fetchController.signal;
+                }
+                response = await fetch(next.url, fetchOptions);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                if (next.routeEpoch !== runtimeState.routeEpoch) {
+                    next.reject(new Error('background request cancelled after route change'));
+                    continue;
+                }
+                if (next.options.responseType === 'response') {
+                    runtimeState.fetchFailures = 0;
+                    runtimeState.fetchBackoffUntil = 0;
+                    next.resolve(response);
+                    continue;
+                }
                 const text = await response.text();
+                if (next.options.cacheKey) {
+                    runtimeState.fetchCache.set(next.options.cacheKey, {
+                        hash: hashFetchedText(text),
+                        text,
+                        expiresAt: Date.now() + (next.options.cacheTtl ?? 300000)
+                    });
+                }
                 runtimeState.fetchFailures = 0;
                 runtimeState.fetchBackoffUntil = 0;
                 next.resolve(text);
@@ -526,15 +673,29 @@
                 next.reject(error);
             } finally {
                 runtimeState.lastFetchAt = Date.now();
+                runtimeState.fetchController = null;
             }
         }
 
         runtimeState.fetchActive = false;
     }
 
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) processFetchQueue();
-    });
+    function abortQueuedBackgroundWork(reason = 'route changed') {
+        runtimeState.routeEpoch += 1;
+        const error = new Error(`background request cancelled: ${reason}`);
+        runtimeState.fetchQueue.splice(0).forEach(item => item.reject(error));
+        runtimeState.fetchController?.abort();
+        runtimeState.fetchController = null;
+    }
+
+    function handleVisibilityChange() {
+        if (!document.hidden) {
+            processFetchQueue();
+            if (runtimeState.featuresStarted && settings.watcherEnabled) renderWatchControls();
+        }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     function classifyRoute(pathname = window.location.pathname) {
         if (ROUTE_PATTERNS.thread.test(pathname)) return 'thread';
@@ -543,6 +704,33 @@
         if (ROUTE_PATTERNS.composer.test(pathname)) return 'composer';
         if (ROUTE_PATTERNS.profile.test(pathname)) return 'profile';
         return 'generic';
+    }
+
+    function runRouteSanity({ forceApply = false } = {}) {
+        const path = window.location.pathname;
+        const route = classifyRoute(path);
+        const changed = runtimeState.routePath && runtimeState.routePath !== path;
+        if (changed) {
+            abortQueuedBackgroundWork('route changed');
+            if (runtimeState.featuresStarted) destroyEnhancedUI({ keepStyles: true });
+        }
+        runtimeState.routePath = path;
+        runtimeState.route = route;
+
+        if (!settings.enabled) return;
+        if (!runtimeState.featuresStarted) {
+            startFeatures();
+        } else if (changed || forceApply) {
+            runFeatureRegistry('apply');
+        }
+    }
+
+    function bindRouteHooks() {
+        if (runtimeState.routeHooksBound) return;
+        runtimeState.routeHooksBound = true;
+        window.addEventListener('pageshow', () => runRouteSanity({ forceApply: true }));
+        window.addEventListener('popstate', () => runRouteSanity());
+        window.addEventListener('hashchange', () => runRouteSanity({ forceApply: true }));
     }
 
     // Surfaces that must resolve on a given route. A miss here is a real site change, not a
@@ -602,6 +790,17 @@
             root.querySelectorAll(selector).forEach(node => found.add(node));
         });
         return Array.from(found);
+    }
+
+    function waitForElement(surfaceKey, { root = document, timeout = 5000, backoff = 100 } = {}) {
+        const scope = featureScope(root);
+        const deadline = Date.now() + Math.max(0, timeout);
+        const find = (delay = backoff) => {
+            const match = querySurface(surfaceKey, scope);
+            if (match || Date.now() >= deadline) return Promise.resolve(match || null);
+            return new Promise(resolve => window.setTimeout(() => resolve(find(Math.min(delay * 1.5, 500))), delay));
+        };
+        return find();
     }
 
     function scopeCustomCSS(cssText) {
@@ -4880,6 +5079,13 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             runtimeState.observer = null;
         }
 
+        if (runtimeState.contextHandler) {
+            document.removeEventListener('contextmenu', runtimeState.contextHandler, true);
+            runtimeState.contextHandler = null;
+        }
+        runtimeState.contextBound = false;
+        runtimeState.lastContext = null;
+
         if (refreshTimer) {
             clearInterval(refreshTimer);
             refreshTimer = null;
@@ -4982,74 +5188,87 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
     function getFeatureRegistry() {
         return [
-            { id: 'dom.cleanup', routes: ['all'], init: applyDOMModifications, apply: applyDOMModifications, destroy: () => {} },
+            { id: 'dom.cleanup', routes: ['all'], fragment: true, init: applyDOMModifications, apply: applyDOMModifications, destroy: destroyDOMModifications },
             { id: 'nav.threadForumLink', routes: ['thread'], init: injectForumLink, apply: injectForumLink, destroy: () => document.querySelectorAll('.glp-forum-link, .glp-nav-gear').forEach(node => node.remove()) },
             { id: 'nav.forumToolbar', routes: ['feed', 'generic'], init: injectForumToolbar, apply: injectForumToolbar, destroy: () => document.getElementById('glp-forum-toolbar')?.remove() },
             { id: 'ui.backToTop', routes: ['all'], settingKey: 'backToTopButton', init: initBackToTop, apply: initBackToTop, destroy: () => document.getElementById('glp-back-to-top')?.remove() },
             { id: 'media.lightbox', routes: ['thread'], settingKey: 'imageLightbox', init: initGalleryLightbox, apply: initGalleryLightbox, destroy: destroyGalleryLightbox },
             { id: 'ui.noiseBudget', routes: ['thread', 'feed'], settingKey: 'noiseBudget', init: renderNoiseBudget, apply: renderNoiseBudget, destroy: destroyNoiseBudget },
             { id: 'media.actions', routes: ['thread'], settingKey: 'mediaActions', init: initMediaActions, apply: initMediaActions, destroy: destroyMediaActions },
-            { id: 'thread.collapsiblePosts', routes: ['thread'], settingKey: 'collapsiblePosts', init: initCollapsiblePosts, apply: initCollapsiblePosts, destroy: () => document.querySelectorAll('.glp-collapse-indicator').forEach(node => node.remove()) },
+            { id: 'thread.collapsiblePosts', routes: ['thread'], settingKey: 'collapsiblePosts', fragment: true, init: initCollapsiblePosts, apply: initCollapsiblePosts, destroy: () => { document.querySelectorAll('.glp-collapse-indicator').forEach(node => node.remove()); document.querySelectorAll('[data-glp-collapsible]').forEach(node => { delete node.dataset.glpCollapsible; node.closest('tr')?.classList.remove('glp-collapsed'); }); } },
             { id: 'feed.infiniteScroll', routes: ['feed'], settingKey: 'infiniteScroll', init: initInfiniteScroll, apply: initInfiniteScroll, destroy: () => document.getElementById('glp-infinite-loader')?.remove() },
             { id: 'thread.infiniteScroll', routes: ['thread'], settingKey: 'infiniteThreadScroll', init: initInfiniteThreadScroll, apply: initInfiniteThreadScroll, destroy: () => document.getElementById('glp-infinite-loader')?.remove() },
-            { id: 'thread.highlightOPPosts', routes: ['thread'], settingKey: 'highlightOPPosts', init: highlightOPPosts, apply: highlightOPPosts, destroy: () => document.querySelectorAll('.glp-op-post').forEach(node => node.classList.remove('glp-op-post')) },
+            { id: 'thread.highlightOPPosts', routes: ['thread'], settingKey: 'highlightOPPosts', fragment: true, init: highlightOPPosts, apply: highlightOPPosts, destroy: () => document.querySelectorAll('.glp-op-post').forEach(node => node.classList.remove('glp-op-post')) },
             { id: 'thread.highlightOPBadges', routes: ['thread'], settingKey: 'highlightOP', init: highlightOPBadges, apply: highlightOPBadges, destroy: () => document.querySelectorAll('.glp-op-badge').forEach(node => node.classList.remove('glp-op-badge')) },
-            { id: 'thread.postNumbers', routes: ['thread'], settingKey: 'inlinePostNumbers', init: addPostNumbers, apply: addPostNumbers, destroy: () => document.querySelectorAll('.glp-post-number').forEach(node => node.remove()) },
-            { id: 'time.relative', routes: ['all'], settingKey: 'relativeTimestamps', init: convertTimestamps, apply: convertTimestamps, destroy: () => {} },
-            { id: 'feed.hotBadges', routes: ['feed'], settingKey: 'hotThreadBadge', init: applyHotThreadBadges, apply: applyHotThreadBadges, destroy: () => {} },
-            { id: 'feed.freshness', routes: ['feed'], settingKey: 'freshnessColors', init: applyFreshnessColors, apply: applyFreshnessColors, destroy: () => document.querySelectorAll('.glp-fresh-now, .glp-fresh-recent, .glp-fresh-stale').forEach(node => node.classList.remove('glp-fresh-now', 'glp-fresh-recent', 'glp-fresh-stale')) },
-            { id: 'users.muteButtons', routes: ['all'], settingKey: 'userMuteList', init: initMuteButtons, apply: applyMuteList, destroy: () => { document.querySelectorAll('.glp-mute-btn').forEach(node => node.remove()); document.querySelectorAll('.glp-muted-post').forEach(node => node.classList.remove('glp-muted-post')); } },
-            { id: 'users.blockButtons', routes: ['thread'], settingKey: 'userBlockList', init: initUserBlockButtons, apply: initUserBlockButtons, destroy: () => { document.querySelectorAll('.glp-block-btn').forEach(node => node.remove()); document.querySelectorAll('.glp-user-blocked').forEach(node => node.classList.remove('glp-user-blocked')); } },
-            { id: 'thread.memeFilter', routes: ['thread'], settingKey: 'hideMemeReplies', init: applyMemeFilter, apply: applyMemeFilter, destroy: clearMemeFilter },
-            { id: 'feed.pinnedVisibility', routes: ['feed'], init: applyPinnedVisibility, apply: applyPinnedVisibility, destroy: clearPinnedVisibility },
-            { id: 'feed.hideThreads', routes: ['feed'], settingKey: 'hideThreadButtons', init: initHideThreadButtons, apply: applyHiddenThreads, destroy: () => document.querySelectorAll('.glp-hide-col, #glp-hidden-threads-bar').forEach(node => node.remove()) },
-            { id: 'feed.keywordFilters', routes: ['feed'], init: applyKeywordFilters, apply: applyKeywordFilters, destroy: clearKeywordFilters },
-            { id: 'feed.autoRefresh', routes: ['feed'], settingKey: 'autoRefresh', init: initAutoRefresh, apply: initAutoRefresh, destroy: () => { if (refreshTimer) clearInterval(refreshTimer); document.getElementById('glp-auto-refresh-bar')?.remove(); } },
+            { id: 'thread.postNumbers', routes: ['thread'], settingKey: 'inlinePostNumbers', fragment: true, init: addPostNumbers, apply: addPostNumbers, destroy: () => document.querySelectorAll('.glp-post-number').forEach(node => node.remove()) },
+            { id: 'time.relative', routes: ['all'], settingKey: 'relativeTimestamps', fragment: true, init: convertTimestamps, apply: convertTimestamps, destroy: destroyRelativeTimestamps },
+            { id: 'feed.hotBadges', routes: ['feed'], settingKey: 'hotThreadBadge', fragment: true, init: applyHotThreadBadges, apply: applyHotThreadBadges, destroy: destroyHotThreadBadges },
+            { id: 'feed.freshness', routes: ['feed'], settingKey: 'freshnessColors', fragment: true, init: applyFreshnessColors, apply: applyFreshnessColors, destroy: destroyFreshnessColors },
+            { id: 'users.muteButtons', routes: ['all'], settingKey: 'userMuteList', fragment: true, init: initMuteButtons, apply: initMuteButtons, destroy: () => { document.querySelectorAll('.glp-mute-btn').forEach(node => node.remove()); document.querySelectorAll('.glp-muted-post').forEach(node => node.classList.remove('glp-muted-post')); } },
+            { id: 'users.blockButtons', routes: ['thread'], settingKey: 'userBlockList', fragment: true, init: initUserBlockButtons, apply: initUserBlockButtons, destroy: () => { document.querySelectorAll('.glp-block-btn').forEach(node => node.remove()); document.querySelectorAll('.glp-user-blocked').forEach(node => node.classList.remove('glp-user-blocked')); } },
+            { id: 'thread.memeFilter', routes: ['thread'], settingKey: 'hideMemeReplies', fragment: true, init: applyMemeFilter, apply: applyMemeFilter, destroy: clearMemeFilter },
+            { id: 'feed.pinnedVisibility', routes: ['feed'], fragment: true, init: applyPinnedVisibility, apply: applyPinnedVisibility, destroy: clearPinnedVisibility },
+            { id: 'feed.hideThreads', routes: ['feed'], settingKey: 'hideThreadButtons', fragment: true, init: initHideThreadButtons, apply: initHideThreadButtons, destroy: destroyHiddenThreads },
+            { id: 'feed.keywordFilters', routes: ['feed'], fragment: true, init: applyKeywordFilters, apply: applyKeywordFilters, destroy: clearKeywordFilters },
+            { id: 'feed.autoRefresh', routes: ['feed'], settingKey: 'autoRefresh', init: initAutoRefresh, apply: initAutoRefresh, destroy: () => { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = null; refreshBar = null; document.getElementById('glp-auto-refresh-bar')?.remove(); } },
             { id: 'users.tags', routes: ['thread', 'feed'], settingKey: 'userTags', init: initUserTags, apply: initUserTags, destroy: () => document.querySelectorAll('.glp-user-tag, .glp-tag-btn, #glp-tag-picker').forEach(node => node.remove()) },
             { id: 'thread.scrollProgress', routes: ['thread'], settingKey: 'scrollProgress', init: initScrollProgress, apply: initScrollProgress, destroy: () => document.getElementById('glp-scroll-progress')?.remove() },
-            { id: 'feed.threadPreview', routes: ['feed'], settingKey: 'threadPreview', init: initThreadPreview, apply: initThreadPreview, destroy: removePreview },
-            { id: 'thread.readerMode', routes: ['thread'], settingKey: 'readerMode', init: initReaderMode, apply: initReaderMode, destroy: destroyReaderMode },
-            { id: 'thread.quoteDepthBadges', routes: ['thread'], settingKey: 'quoteDepthBadges', init: initQuoteDepthBadges, apply: initQuoteDepthBadges, destroy: () => document.querySelectorAll('.glp-quote-depth').forEach(n => n.remove()) },
-            { id: 'thread.quoteGraph', routes: ['thread'], settingKey: 'quoteBacklinks', init: buildQuoteGraph, apply: buildQuoteGraph, destroy: destroyQuoteGraph },
-            { id: 'thread.nestedQuoteCollapse', routes: ['thread'], settingKey: 'collapseNestedQuotes', init: initNestedQuoteCollapse, apply: initNestedQuoteCollapse, destroy: () => { document.querySelectorAll('.glp-nested-toggle').forEach(n => n.remove()); document.querySelectorAll('.glp-nested-collapsed').forEach(n => { n.classList.remove('glp-nested-collapsed', 'glp-nested-expanded'); delete n.dataset.glpNestedProcessed; }); } },
-            { id: 'thread.permalinks', routes: ['thread'], settingKey: 'postPermalinks', init: initPostPermalinks, apply: addPostNumbers, destroy: () => {} },
-            { id: 'media.youtube', routes: ['thread'], settingKey: 'youtubeEmbed', init: embedYouTubeLinks, apply: embedYouTubeLinks, destroy: () => document.querySelectorAll('.glp-yt-embed').forEach(node => node.remove()) },
+            { id: 'feed.threadPreview', routes: ['feed'], settingKey: 'threadPreview', init: initThreadPreview, apply: initThreadPreview, destroy: destroyThreadPreview },
+            { id: 'thread.readerMode', routes: ['thread'], settingKey: 'readerMode', fragment: true, init: initReaderMode, apply: initReaderMode, destroy: destroyReaderMode },
+            { id: 'thread.quoteDepthBadges', routes: ['thread'], settingKey: 'quoteDepthBadges', fragment: true, init: initQuoteDepthBadges, apply: initQuoteDepthBadges, destroy: () => document.querySelectorAll('.glp-quote-depth').forEach(n => n.remove()) },
+            { id: 'thread.quoteGraph', routes: ['thread'], settingKey: 'quoteBacklinks', fragment: true, init: buildQuoteGraph, apply: buildQuoteGraph, destroy: destroyQuoteGraph },
+            { id: 'thread.nestedQuoteCollapse', routes: ['thread'], settingKey: 'collapseNestedQuotes', fragment: true, init: initNestedQuoteCollapse, apply: initNestedQuoteCollapse, destroy: () => { document.querySelectorAll('.glp-nested-toggle').forEach(n => n.remove()); document.querySelectorAll('.glp-nested-collapsed').forEach(n => { n.classList.remove('glp-nested-collapsed', 'glp-nested-expanded'); delete n.dataset.glpNestedProcessed; }); } },
+            { id: 'thread.permalinks', routes: ['thread'], settingKey: 'postPermalinks', fragment: true, init: initPostPermalinks, apply: initPostPermalinks, destroy: destroyPostPermalinks },
+            { id: 'media.youtube', routes: ['thread'], settingKey: 'youtubeEmbed', fragment: true, init: embedYouTubeLinks, apply: embedYouTubeLinks, destroy: () => document.querySelectorAll('.glp-yt-embed').forEach(node => node.remove()) },
             { id: 'thread.opNav', routes: ['thread'], settingKey: 'opPostNav', init: initOPPostNav, apply: initOPPostNav, destroy: () => document.querySelectorAll('.glp-op-nav').forEach(node => node.remove()) },
-            { id: 'thread.collapseAll', routes: ['thread'], settingKey: 'collapseExpandAll', init: initCollapseExpandAll, apply: initCollapseExpandAll, destroy: () => document.querySelectorAll('[data-glp-thread-tool="collapse-all"], [data-glp-thread-tool="search"]').forEach(node => node.remove()) },
+            { id: 'thread.collapseAll', routes: ['thread'], settingKey: 'collapseExpandAll', init: initCollapseExpandAll, apply: initCollapseExpandAll, destroy: () => document.querySelectorAll('[data-glp-thread-tool="collapse-all"], [data-glp-thread-tool="expand-all"], [data-glp-thread-tool="collapse-quotes"], [data-glp-thread-tool="search"]').forEach(node => node.remove()) },
             { id: 'thread.quickSearch', routes: ['thread'], settingKey: 'threadQuickSearch', init: initQuickSearch, apply: initQuickSearch, destroy: () => document.getElementById('glp-quick-search')?.remove() },
             { id: 'thread.watcher', routes: ['thread', 'feed'], settingKey: 'watcherEnabled', init: initWatcher, apply: initWatcher, destroy: destroyWatcher },
             { id: 'users.reputation', routes: ['thread'], settingKey: 'userReputationOverlay', init: applyReputationOverlay, apply: applyReputationOverlay, destroy: destroyReputationOverlay },
             { id: 'thread.export', routes: ['thread'], init: initThreadExport, apply: initThreadExport, destroy: destroyThreadExport },
             // X normalization runs first: a rendered widget only carries its provenance
             // until privacy mode swaps the iframe out for a placeholder.
-            { id: 'media.xEmbeds', routes: ['thread'], settingKey: 'mediaXEmbeds', init: normalizeXEmbeds, apply: normalizeXEmbeds, destroy: destroyXEmbeds },
-            { id: 'media.privacy', routes: ['thread'], settingKey: 'mediaPrivacyMode', init: applyMediaPrivacy, apply: applyMediaPrivacy, destroy: destroyMediaPrivacy },
+            { id: 'media.xEmbeds', routes: ['thread'], settingKey: 'mediaXEmbeds', fragment: true, init: normalizeXEmbeds, apply: normalizeXEmbeds, destroy: destroyXEmbeds },
+            { id: 'media.privacy', routes: ['thread'], settingKey: 'mediaPrivacyMode', fragment: true, init: applyMediaPrivacy, apply: applyMediaPrivacy, destroy: destroyMediaPrivacy },
             { id: 'media.hoverPreview', routes: ['thread'], settingKey: 'mediaHoverPreview', init: initMediaHoverPreview, apply: initMediaHoverPreview, destroy: destroyMediaHoverPreview }
         ];
     }
 
-    function runFeatureRegistry(stage = 'init') {
-        const ctx = { route: runtimeState.route, settings, selectors: SELECTOR_REGISTRY };
-        getFeatureRegistry().forEach(feature => {
+    function runFeatureRegistry(stage = 'init', root = document) {
+        const roots = Array.isArray(root) ? mutationRoots(root) : [featureScope(root)];
+        roots.forEach(scope => {
+            const ctx = { route: runtimeState.route, settings, selectors: SELECTOR_REGISTRY, root: scope };
+            getFeatureRegistry().forEach(feature => {
             const routeOk = routeAllowsFeature(feature);
             if (!routeOk) return;
+            if (stage === 'apply' && scope !== document && !feature.fragment) return;
 
             // One failing feature must never take the rest of the page down with it.
             try {
                 if (!settingAllowsFeature(feature)) {
                     // A feature switched off in the panel must undo itself, not linger in the DOM.
-                    if (stage === 'apply' && typeof feature.destroy === 'function') feature.destroy(ctx);
+                    if (stage === 'apply') {
+                        clearFeatureResources(feature.id);
+                        if (typeof feature.destroy === 'function') feature.destroy(ctx);
+                    }
                     return;
                 }
                 const runner = feature[stage] || feature.init;
                 if (typeof runner === 'function') {
                     const startedAt = performance.now();
-                    runner(ctx);
+                    const previousFeatureId = runtimeState.activeFeatureId;
+                    runtimeState.activeFeatureId = feature.id;
+                    try {
+                        runner(scope, ctx);
+                    } finally {
+                        runtimeState.activeFeatureId = previousFeatureId;
+                    }
                     recordFeatureTiming(feature.id, stage, performance.now() - startedAt);
                 }
             } catch (error) {
                 recordFeatureError(feature.id, stage, error);
             }
+            });
         });
     }
 
@@ -5071,14 +5290,21 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
     function destroyRegisteredFeatures() {
         getFeatureRegistry().forEach(feature => {
-            if (typeof feature.destroy === 'function') feature.destroy({ route: runtimeState.route, settings });
+            clearFeatureResources(feature.id);
+            if (typeof feature.destroy !== 'function') return;
+            try {
+                feature.destroy({ route: runtimeState.route, settings });
+            } catch (error) {
+                recordFeatureError(feature.id, 'destroy', error);
+            }
         });
     }
 
     // ============================================
     // DOM MODIFICATIONS
     // ============================================
-    function applyDOMModifications() {
+    function applyDOMModifications(root = document) {
+        const scope = featureScope(root);
         // Everything else the noise budget reports can be counted off the live DOM. A removed ad
         // leaves nothing behind, so it has to be counted at the moment it goes.
         const removeAndCount = (nodes) => {
@@ -5087,15 +5313,15 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         };
 
         if (settings.removeWidgets) {
-            removeAndCount([...document.querySelectorAll('[data-type="_mgwidget"]')]);
+            removeAndCount([...scope.querySelectorAll('[data-type="_mgwidget"]')]);
         }
 
         if (settings.removeAmpEmbeds) {
-            removeAndCount([...document.querySelectorAll('amp-embed')]);
+            removeAndCount([...scope.querySelectorAll('amp-embed')]);
         }
 
         if (settings.hideInlineReplyAds) {
-            removeAndCount([...document.querySelectorAll('.post_main > div[style*="float"]')].filter(div =>
+            removeAndCount([...scope.querySelectorAll('.post_main > div[style*="float"]')].filter(div =>
                 div.querySelector('[data-type="_mgwidget"], amp-embed') ||
                 div.innerHTML.includes('replies inline')));
         }
@@ -5104,7 +5330,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         // height - that was the ~90px dead band under the thread title. `:empty` does not match a
         // node containing whitespace, so this has to be done here rather than in CSS.
         if (settings.removeAds || settings.removeWidgets) {
-            document.querySelectorAll('.msg tbody > tr, .threads tbody > tr').forEach(row => {
+            scope.querySelectorAll('.msg tbody > tr, .threads tbody > tr').forEach(row => {
                 if (row.id || row.querySelector('img, iframe, input, button, a, .post_main')) return;
                 if (row.textContent.trim()) return;
                 row.classList.add('glp-empty-row');
@@ -5112,13 +5338,29 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         }
 
         if (settings.autoExpandImages) {
-            document.querySelectorAll('.post_main img').forEach(img => {
+            scope.querySelectorAll('.post_main img').forEach(img => {
                 if (img.style.maxWidth) {
+                    if (!img.dataset.glpAutoExpanded) {
+                        img.dataset.glpOriginalMaxWidth = img.style.maxWidth;
+                        img.dataset.glpOriginalCursor = img.style.cursor;
+                    }
                     img.style.maxWidth = 'none';
                     img.style.cursor = 'pointer';
+                    img.dataset.glpAutoExpanded = '1';
                 }
             });
         }
+    }
+
+    function destroyDOMModifications() {
+        document.querySelectorAll('.glp-empty-row').forEach(row => row.classList.remove('glp-empty-row'));
+        document.querySelectorAll('[data-glp-auto-expanded]').forEach(img => {
+            img.style.maxWidth = img.dataset.glpOriginalMaxWidth || '';
+            img.style.cursor = img.dataset.glpOriginalCursor || '';
+            delete img.dataset.glpAutoExpanded;
+            delete img.dataset.glpOriginalMaxWidth;
+            delete img.dataset.glpOriginalCursor;
+        });
     }
 
     // ============================================
@@ -5130,7 +5372,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         // another button and another scroll listener on top of the first.
         if (document.getElementById('glp-back-to-top')) return;
 
-        const btn = document.createElement('button');
+        const btn = markFeatureOwned(document.createElement('button'));
         btn.id = 'glp-back-to-top';
         btn.title = 'Back to top';
         btn.setAttribute('aria-label', 'Back to top');
@@ -5139,7 +5381,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         document.body.appendChild(btn);
 
         let ticking = false;
-        window.addEventListener('scroll', () => {
+        addFeatureEventListener(window, 'scroll', () => {
             if (!ticking) {
                 requestAnimationFrame(() => {
                     btn.classList.toggle('visible', window.scrollY > 400);
@@ -5147,20 +5389,21 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                 });
                 ticking = true;
             }
-        });
+        }, { passive: true }, 'scroll');
     }
 
     // ============================================
     // READER MODE (distraction-free thread reading)
     // ============================================
-    function initReaderMode() {
+    function initReaderMode(root = document) {
+        const scope = featureScope(root);
         if (!settings.readerMode) return;
-        if (!document.querySelector('.msg')) return;
+        if (!scope.querySelector('.msg')) return;
 
         document.body.classList.add('glpx-reader-active');
 
         // Add author byline above each post content when author cell is hidden
-        document.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
+        scope.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
             if (tr.querySelector('.glp-reader-byline')) return;
             const authorCell = tr.querySelector('.messageauthor, .replyauthor');
             const contentCell = tr.querySelector('.messagecontent, .replycontent');
@@ -5203,10 +5446,11 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         return depth;
     }
 
-    function initQuoteDepthBadges() {
+    function initQuoteDepthBadges(root = document) {
         if (!settings.quoteDepthBadges) return;
+        const scope = featureScope(root);
 
-        document.querySelectorAll('.quoteo').forEach(quote => {
+        scope.querySelectorAll('.quoteo').forEach(quote => {
             if (quote.querySelector('.glp-quote-depth')) return;
             const depth = computeQuoteDepth(quote);
             if (depth > 0) {
@@ -5259,10 +5503,11 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         return text.length > limit ? `${text.slice(0, limit)}...` : text;
     }
 
-    function buildQuoteGraph() {
+    function buildQuoteGraph(root = document) {
         if (!settings.quoteBacklinks) return;
+        const scope = featureScope(root);
 
-        const rows = [...document.querySelectorAll('.msg tr[id^="post_"]')];
+        const rows = [...scope.querySelectorAll('.msg tr[id^="post_"]')];
         if (!rows.length) return;
 
         const byReplyId = new Map();
@@ -5337,7 +5582,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         if (runtimeState.quoteGraphBound) return;
         runtimeState.quoteGraphBound = true;
 
-        document.addEventListener('click', event => {
+        addFeatureEventListener(document, 'click', event => {
             const jump = event.target.closest('[data-glp-jump-to]');
             if (!jump) return;
             event.preventDefault();
@@ -5346,17 +5591,17 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             target.scrollIntoView({ behavior: settings.smoothScrolling ? 'smooth' : 'auto', block: 'center' });
             target.classList.add('glp-post-flash');
             window.setTimeout(() => target.classList.remove('glp-post-flash'), 1600);
-        });
+        }, undefined, 'jump');
 
         // Context card: reading who answered you should not cost a scroll.
-        document.addEventListener('mouseover', event => {
+        addFeatureEventListener(document, 'mouseover', event => {
             const chip = event.target.closest('.glp-backlink');
             if (!chip || !chip.dataset.glpExcerpt) return;
             showBacklinkCard(chip);
-        });
-        document.addEventListener('mouseout', event => {
+        }, undefined, 'hover-in');
+        addFeatureEventListener(document, 'mouseout', event => {
             if (event.target.closest('.glp-backlink')) hideBacklinkCard();
-        });
+        }, undefined, 'hover-out');
     }
 
     function showBacklinkCard(chip) {
@@ -5380,12 +5625,14 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     function destroyQuoteGraph() {
         document.querySelectorAll('.glp-backlinks, .glp-quote-jump').forEach(node => node.remove());
         document.getElementById('glp-backlink-card')?.remove();
+        runtimeState.quoteGraphBound = false;
     }
 
-    function initNestedQuoteCollapse() {
+    function initNestedQuoteCollapse(root = document) {
         if (!settings.collapseNestedQuotes) return;
+        const scope = featureScope(root);
 
-        document.querySelectorAll('.quoteo').forEach(quote => {
+        scope.querySelectorAll('.quoteo').forEach(quote => {
             if (quote.dataset.glpNestedProcessed) return;
             quote.dataset.glpNestedProcessed = '1';
 
@@ -5411,17 +5658,18 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     // ============================================
     // OP POST HIGHLIGHTING (JS-based)
     // ============================================
-    function highlightOPPosts() {
+    function highlightOPPosts(root = document) {
         if (!settings.highlightOPPosts) return;
+        const scope = featureScope(root);
 
-        const opPost = document.querySelector('.msg tr[id="post_1"]');
+        const opPost = scope.querySelector('.msg tr[id="post_1"]') || document.querySelector('.msg tr[id="post_1"]');
         if (!opPost) return;
 
         const opClass = opPost.className.match(/post_member_(\d+)/);
         if (!opClass || opClass[1] === '0') return;
 
         const opMemberClass = `post_member_${opClass[1]}`;
-        document.querySelectorAll(`.msg tr.${opMemberClass}`).forEach(tr => {
+        scope.querySelectorAll(`.msg tr.${opMemberClass}`).forEach(tr => {
             if (tr.id !== 'post_1') {
                 tr.classList.add('glp-op-post');
             }
@@ -5431,10 +5679,11 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     // ============================================
     // INLINE POST NUMBERS
     // ============================================
-    function addPostNumbers() {
+    function addPostNumbers(root = document) {
         if (!settings.inlinePostNumbers) return;
+        const scope = featureScope(root);
 
-        document.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
+        scope.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
             const num = tr.id.replace('post_', '');
             const hdr = tr.querySelector('.post_hdr');
             if (hdr && !hdr.querySelector('.glp-post-number')) {
@@ -5449,8 +5698,9 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     // ============================================
     // RELATIVE TIMESTAMPS
     // ============================================
-    function convertTimestamps() {
+    function convertTimestamps(root = document) {
         if (!settings.relativeTimestamps) return;
+        const scope = featureScope(root);
 
         const now = new Date();
 
@@ -5479,11 +5729,13 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         }
 
         // Thread list: .pfr and .mfr cells
-        document.querySelectorAll('.threads .pfr, .threads .mfr').forEach(td => {
+        scope.querySelectorAll('.threads .pfr, .threads .mfr').forEach(td => {
             if (td.dataset.glpConverted) return;
             const original = td.textContent;
             const date = parseGLPTime(original.replace(/\n/g, ' '));
             if (date && !isNaN(date)) {
+                td.dataset.glpOriginalText = original;
+                if (td.hasAttribute('title')) td.dataset.glpOriginalTitle = td.getAttribute('title');
                 td.textContent = toRelative(date);
                 td.title = original.trim();
                 td.dataset.glpConverted = '1';
@@ -5491,11 +5743,13 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         });
 
         // Post author dates
-        document.querySelectorAll('.author_date').forEach(div => {
+        scope.querySelectorAll('.author_date').forEach(div => {
             if (div.dataset.glpConverted) return;
             const original = div.textContent;
             const date = parseGLPTime(original);
             if (date && !isNaN(date)) {
+                div.dataset.glpOriginalText = original;
+                if (div.hasAttribute('title')) div.dataset.glpOriginalTitle = div.getAttribute('title');
                 div.textContent = toRelative(date);
                 div.title = original.trim();
                 div.dataset.glpConverted = '1';
@@ -5503,16 +5757,34 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         });
     }
 
+    function destroyRelativeTimestamps() {
+        document.querySelectorAll('[data-glp-converted]').forEach(node => {
+            if (Object.prototype.hasOwnProperty.call(node.dataset, 'glpOriginalText')) {
+                node.textContent = node.dataset.glpOriginalText;
+            }
+            if (Object.prototype.hasOwnProperty.call(node.dataset, 'glpOriginalTitle')) {
+                node.setAttribute('title', node.dataset.glpOriginalTitle);
+            } else {
+                node.removeAttribute('title');
+            }
+            delete node.dataset.glpConverted;
+            delete node.dataset.glpOriginalText;
+            delete node.dataset.glpOriginalTitle;
+        });
+    }
+
     // ============================================
     // HOT THREAD BADGE
     // ============================================
-    function applyHotThreadBadges() {
+    function applyHotThreadBadges(root = document) {
         if (!settings.hotThreadBadge) return;
+        const scope = featureScope(root);
 
-        document.querySelectorAll('.threads .rfr').forEach(td => {
+        scope.querySelectorAll('.threads .rfr').forEach(td => {
             if (td.dataset.glpBadged) return;
             const count = parseInt(td.textContent.replace(/,/g, ''));
             if (isNaN(count)) return;
+            td.dataset.glpOriginalColor = td.style.color;
             if (count >= 100) {
                 td.style.color = '#ff4444';
             } else if (count >= 50) {
@@ -5524,14 +5796,30 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         });
     }
 
+    function destroyHotThreadBadges() {
+        document.querySelectorAll('[data-glp-badged]').forEach(node => {
+            node.style.color = node.dataset.glpOriginalColor || '';
+            delete node.dataset.glpBadged;
+            delete node.dataset.glpOriginalColor;
+        });
+    }
+
+    function destroyFreshnessColors() {
+        document.querySelectorAll('[data-glp-freshness]').forEach(node => {
+            node.classList.remove('glp-fresh-now', 'glp-fresh-recent', 'glp-fresh-stale');
+            delete node.dataset.glpFreshness;
+        });
+    }
+
 
     // ============================================
     // COLLAPSIBLE POSTS
     // ============================================
-    function initCollapsiblePosts() {
+    function initCollapsiblePosts(root = document) {
         if (!settings.collapsiblePosts) return;
+        const scope = featureScope(root);
 
-        document.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
+        scope.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
             const authorCell = tr.querySelector('.messageauthor, .replyauthor');
             if (!authorCell || authorCell.dataset.glpCollapsible) return;
             authorCell.dataset.glpCollapsible = '1';
@@ -5542,11 +5830,12 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             const header = authorCell.querySelector('.author_header');
             if (header) header.appendChild(indicator);
 
-            authorCell.addEventListener('click', (e) => {
+            const onCollapseClick = (e) => {
                 if (e.target.closest('a') || e.target.closest('.glp-mute-btn')) return;
                 tr.classList.toggle('glp-collapsed');
                 indicator.textContent = tr.classList.contains('glp-collapsed') ? '[+]' : '[-]';
-            });
+            };
+            addFeatureEventListener(authorCell, 'click', onCollapseClick, undefined, `collapse:${tr.id}`);
         });
     }
 
@@ -5580,7 +5869,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
             try {
                 const url = `${basePath}/pg${nextPage}${window.location.search}`;
-                const html = await fetchTextQueued(url);
+                const html = await fetchTextQueued(url, { priority: 10 });
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 const rows = doc.querySelectorAll('.threads tbody tr:not(.threads_header_row)');
@@ -5611,16 +5900,18 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             if (entries[0].isIntersecting) loadNext();
         }, { rootMargin: '400px' });
         observer.observe(loader);
+        registerFeatureCleanup('intersection', () => observer.disconnect());
     }
 
     // ============================================
     // FRESHNESS COLORS
     // ============================================
-    function applyFreshnessColors() {
+    function applyFreshnessColors(root = document) {
         if (!settings.freshnessColors) return;
+        const scope = featureScope(root);
         const now = new Date();
 
-        document.querySelectorAll('.threads .mfr').forEach(td => {
+        scope.querySelectorAll('.threads .mfr').forEach(td => {
             if (td.dataset.glpFreshness) return;
             const text = td.title || td.textContent;
             let date = null;
@@ -5707,21 +5998,22 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         return name => exact.has(name);
     }
 
-    function applyMuteList() {
+    function applyMuteList(root = document) {
         if (!settings.userMuteList) return;
+        const scope = featureScope(root);
         // Not `mutedUsers.length === 0 -> return`: unmuting the last name has to run the pass
         // that takes the class back off, or those posts stay hidden until a reload.
         const isMuted = mutedUsers.length ? buildMuteMatcher() : () => false;
 
         // Thread list: hide rows by muted poster
-        document.querySelectorAll('.threads .hfr').forEach(td => {
+        scope.querySelectorAll('.threads .hfr').forEach(td => {
             const name = td.textContent.trim();
             const row = td.closest('tr');
             if (row) row.classList.toggle('glp-muted-post', !!name && isMuted(name));
         });
 
         // Thread page: hide posts by muted user
-        document.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
+        scope.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
             const name = postAuthorName(tr);
             if (name) tr.classList.toggle('glp-muted-post', isMuted(name));
         });
@@ -5819,7 +6111,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
             const badge = existing || document.createElement('span');
             badge.className = 'glp-user-rep';
-            badge.dataset.glpOwner = 'users.reputation';
+            markFeatureOwned(badge, 'users.reputation');
             badge.textContent = `${entry.posts} seen`;
             badge.title = [
                 `${reputationLabel(entry)} - ${entry.posts} posts seen locally`,
@@ -5834,11 +6126,12 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         document.querySelectorAll('.glp-user-rep').forEach(node => node.remove());
     }
 
-    function initMuteButtons() {
+    function initMuteButtons(root = document) {
         if (!settings.userMuteList) return;
         loadMutedUsers();
+        const scope = featureScope(root);
 
-        document.querySelectorAll('.msg tr[id^="post_"] .author_header, .threads .hfr').forEach(el => {
+        scope.querySelectorAll('.msg tr[id^="post_"] .author_header, .threads .hfr').forEach(el => {
             if (el.querySelector('.glp-mute-btn')) return;
             const btn = document.createElement('button');
             btn.type = 'button';
@@ -5854,7 +6147,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             el.appendChild(btn);
         });
 
-        applyMuteList();
+        applyMuteList(scope);
     }
 
     // ============================================
@@ -5904,7 +6197,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function applyUserBlocks(root = document) {
-        const scope = root && root.querySelectorAll ? root : document;
+        const scope = featureScope(root);
         scope.querySelectorAll('tr[class*="post_uid_"]').forEach(tr => {
             const match = tr.className.match(/post_uid_(\d+)/);
             const blocked = !!(settings.userBlockList && match && isUserBlocked(match[1]));
@@ -5918,7 +6211,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         if (!settings.userBlockList) return;
         loadBlockedUsers();
 
-        const scope = root && root.querySelectorAll ? root : document;
+        const scope = featureScope(root);
         scope.querySelectorAll('td.messageauthor, td.replyauthor').forEach(cell => {
             if (cell.querySelector('.glp-block-btn')) return;
             const row = cell.closest('tr');
@@ -5964,7 +6257,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     // CONTENT FILTERS (low-effort replies, reaction GIFs)
     // ============================================
     function applyMemeFilter(root = document) {
-        const scope = root && root.querySelectorAll ? root : document;
+        const scope = featureScope(root);
         if (!settings.hideMemeReplies) {
             scope.querySelectorAll('.glp-meme-hidden').forEach(tr => tr.classList.remove('glp-meme-hidden'));
             return;
@@ -5998,7 +6291,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     // PINNED THREAD VISIBILITY
     // ============================================
     function applyPinnedVisibility(root = document) {
-        const scope = root && root.querySelectorAll ? root : document;
+        const scope = featureScope(root);
         scope.querySelectorAll('.threads:not(.related) tbody tr').forEach(tr => {
             const pinned = !!tr.querySelector('span[title="Pinned Thread"], span[title="Karma Pin"]');
             tr.classList.toggle('glp-pinned-hidden', !!settings.hidePinnedThreads && pinned);
@@ -6235,7 +6528,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         const threadsWrapper = document.querySelector('.threads-wrapper') || document.querySelector('.threads');
         if (!threadsWrapper || document.getElementById('glp-forum-toolbar')) return;
 
-        const bar = document.createElement('div');
+        const bar = markFeatureOwned(document.createElement('div'));
         bar.id = 'glp-forum-toolbar';
         bar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 10px;font-size:12px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
 
@@ -6327,7 +6620,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
             try {
                 const url = `${basePath}/pg${nextPage}`;
-                const html = await fetchTextQueued(url);
+                const html = await fetchTextQueued(url, { priority: 10 });
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 const posts = doc.querySelectorAll('.msg tbody tr[id^="post_"]');
@@ -6377,6 +6670,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             if (entries[0].isIntersecting) loadNext();
         }, { rootMargin: '600px' });
         observer.observe(loader);
+        registerFeatureCleanup('intersection', () => observer.disconnect());
     }
 
     // ============================================
@@ -6460,11 +6754,12 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         applyHiddenThreads();
     }
 
-    function applyHiddenThreads() {
+    function applyHiddenThreads(root = document) {
         if (!settings.hideThreadButtons) return;
+        const scope = featureScope(root);
         let hiddenCount = 0;
 
-        document.querySelectorAll('.threads tbody tr:not(.threads_header_row)').forEach(row => {
+        queryFeatureNodes(root, '.threads tbody tr:not(.threads_header_row)').forEach(row => {
             const threadId = getThreadId(row);
             if (threadId && hiddenThreads.includes(threadId)) {
                 row.classList.add('glp-thread-hidden');
@@ -6476,6 +6771,12 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
         updateHiddenBar(hiddenCount);
 
+        renderNoiseBudget();
+    }
+
+    function destroyHiddenThreads() {
+        document.querySelectorAll('.glp-thread-hidden').forEach(row => row.classList.remove('glp-thread-hidden'));
+        document.querySelectorAll('.glp-hide-col, #glp-hidden-threads-bar').forEach(node => node.remove());
         renderNoiseBudget();
     }
 
@@ -6536,12 +6837,13 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         bar.appendChild(actions);
     }
 
-    function initHideThreadButtons() {
+    function initHideThreadButtons(root = document) {
         if (!settings.hideThreadButtons) return;
         loadHiddenThreads();
+        const scope = featureScope(root);
 
         // Add header column if missing
-        const headerRow = document.querySelector('.threads .threads_header_row');
+        const headerRow = scope.querySelector('.threads .threads_header_row') || document.querySelector('.threads .threads_header_row');
         if (headerRow && !headerRow.querySelector('.glp-hide-col')) {
             const th = document.createElement('th');
             th.className = 'glp-hide-col';
@@ -6550,7 +6852,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         }
 
         // Add hide button cell to each row
-        document.querySelectorAll('.threads tbody tr:not(.threads_header_row)').forEach(row => {
+        queryFeatureNodes(root, '.threads tbody tr:not(.threads_header_row)').forEach(row => {
             if (row.querySelector('.glp-hide-col')) return;
 
             const td = document.createElement('td');
@@ -6569,25 +6871,26 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             row.appendChild(td);
         });
 
-        applyHiddenThreads();
+        applyHiddenThreads(scope);
     }
 
     // ============================================
     // KEYWORD FILTER
     // ============================================
-    function applyKeywordFilters() {
+    function applyKeywordFilters(root = document) {
+        const scope = featureScope(root);
         const highlightWords = (settings.keywordHighlight || '').split(',').map(w => w.trim().toLowerCase()).filter(Boolean);
         const hideWords = (settings.keywordHide || '').split(',').map(w => w.trim().toLowerCase()).filter(Boolean);
 
         if (highlightWords.length === 0 && hideWords.length === 0) {
-            clearKeywordFilters();
+            clearKeywordFilters(scope);
             return;
         }
 
         let hiddenCount = 0;
         let highlightCount = 0;
 
-        document.querySelectorAll('.threads tbody tr:not(.threads_header_row)').forEach(row => {
+        scope.querySelectorAll('.threads tbody tr:not(.threads_header_row)').forEach(row => {
             const rowInfo = normalizeThreadRow(row);
             const link = rowInfo.link;
             if (!row) return;
@@ -6664,11 +6967,12 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         return strong;
     }
 
-    function clearKeywordFilters() {
-        document.querySelectorAll('.threads tbody tr').forEach(row => {
+    function clearKeywordFilters(root = document) {
+        const scope = featureScope(root);
+        scope.querySelectorAll('.threads tbody tr').forEach(row => {
             row.classList.remove('glp-keyword-hidden');
         });
-        document.querySelectorAll('.threads .sfr a[data-glp-original-title]').forEach(link => {
+        scope.querySelectorAll('.threads .sfr a[data-glp-original-title]').forEach(link => {
             link.replaceChildren(document.createTextNode(link.dataset.glpOriginalTitle || link.textContent));
             delete link.dataset.glpOriginalTitle;
             delete link.dataset.glpHighlighted;
@@ -6726,7 +7030,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
     async function refreshThreadList() {
         try {
-            const html = await fetchTextQueued(window.location.href);
+            const html = await fetchTextQueued(window.location.href, { priority: 3 });
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
             const newTbody = doc.querySelector('.threads tbody');
@@ -6872,7 +7176,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
         if (runtimeState.mediaActionsBound) return;
         runtimeState.mediaActionsBound = true;
-        document.addEventListener('click', onMediaActionClick);
+        addFeatureEventListener(document, 'click', onMediaActionClick, undefined, 'actions');
     }
 
     function onMediaActionClick(event) {
@@ -6913,7 +7217,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         try {
             // Same-origin GLP uploads fetch fine. A hotlinked image is a cross-origin request
             // from a content script, which is subject to the page's CORS rules and will throw.
-            const response = await fetch(src);
+            const response = await fetchResponseQueued(src, { priority: 30 });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
@@ -6921,7 +7225,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             link.href = url;
             link.download = name;
             link.click();
-            URL.revokeObjectURL(url);
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
             showNotification(`Saved ${name}.`, 'success');
         } catch (error) {
             window.open(src, '_blank', 'noopener,noreferrer');
@@ -6942,7 +7246,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         if (!settings.imageLightbox) return;
         if (runtimeState.lightboxBound) return;
         runtimeState.lightboxBound = true;
-        document.addEventListener('click', onLightboxClick);
+        addFeatureEventListener(document, 'click', onLightboxClick, undefined, 'lightbox');
     }
 
     function destroyGalleryLightbox() {
@@ -7203,7 +7507,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         document.body.appendChild(bar);
 
         let ticking = false;
-        window.addEventListener('scroll', () => {
+        addFeatureEventListener(window, 'scroll', () => {
             if (!ticking) {
                 requestAnimationFrame(() => {
                     const scrollTop = window.scrollY;
@@ -7214,7 +7518,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                 });
                 ticking = true;
             }
-        });
+        }, { passive: true }, 'scroll');
     }
 
     // ============================================
@@ -7231,7 +7535,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
         // These live on `document` for the life of the page, so they read the setting at call
         // time: switching previews off has to stop them firing, not just remove the last card.
-        document.addEventListener('mouseover', (e) => {
+        const onPreviewMouseOver = (e) => {
             if (!settings.threadPreview) return;
             const link = e.target.closest('.threads .sfr > a');
             if (!link) return;
@@ -7246,7 +7550,12 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                 let content = previewCache[id];
                 if (!content) {
                     try {
-                        const html = await fetchTextQueued(url, { minDelay: 1200 });
+                        const html = await fetchTextQueued(url, {
+                            minDelay: 1200,
+                            priority: 20,
+                            cacheKey: `preview:${url}`,
+                            cacheTtl: 300000
+                        });
                         if (token !== previewToken) return;
                         const doc = new DOMParser().parseFromString(html, 'text/html');
                         const postMain = doc.querySelector('#post_1 .post_main');
@@ -7280,16 +7589,27 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                     preview.style.left = `${window.innerWidth - pRect.width - 10}px`;
                 }
             }, 500);
-        });
+        };
+        addFeatureEventListener(document, 'mouseover', onPreviewMouseOver, undefined, 'hover-in');
 
-        document.addEventListener('mouseout', (e) => {
+        const onPreviewMouseOut = (e) => {
             if (!settings.threadPreview) return;
             if (e.target.closest('.threads .sfr > a')) {
                 previewToken++;
                 clearTimeout(previewTimeout);
                 removePreview();
             }
-        });
+        };
+        addFeatureEventListener(document, 'mouseout', onPreviewMouseOut, undefined, 'hover-out');
+    }
+
+    function destroyThreadPreview() {
+        runtimeState.threadPreviewBound = false;
+        previewToken++;
+        clearTimeout(previewTimeout);
+        previewTimeout = null;
+        previewCache = {};
+        removePreview();
     }
 
     function removePreview() {
@@ -7301,8 +7621,9 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     // ============================================
     function initPostPermalinks() {
         if (!settings.postPermalinks) return;
+        runtimeState.permalinksBound = true;
 
-        document.addEventListener('click', (e) => {
+        addFeatureEventListener(document, 'click', (e) => {
             const badge = e.target.closest('.glp-post-number');
             if (!badge) return;
             e.stopPropagation();
@@ -7320,16 +7641,21 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                 document.body.appendChild(toast);
                 setTimeout(() => toast.remove(), 1500);
             });
-        });
+        }, undefined, 'copy');
+    }
+
+    function destroyPostPermalinks() {
+        runtimeState.permalinksBound = false;
     }
 
     // ============================================
     // YOUTUBE AUTO-EMBED
     // ============================================
-    function embedYouTubeLinks() {
+    function embedYouTubeLinks(root = document) {
         if (!settings.youtubeEmbed) return;
+        const scope = featureScope(root);
 
-        document.querySelectorAll('.post_main a[href*="youtube.com/watch"], .post_main a[href*="youtu.be/"]').forEach(link => {
+        scope.querySelectorAll('.post_main a[href*="youtube.com/watch"], .post_main a[href*="youtu.be/"]').forEach(link => {
             if (link.dataset.glpYt) return;
             link.dataset.glpYt = '1';
 
@@ -7418,7 +7744,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         let bar = document.getElementById('glp-thread-tools-bar');
         if (bar) return bar;
 
-        bar = document.createElement('div');
+        bar = markFeatureOwned(document.createElement('div'));
         bar.id = 'glp-thread-tools-bar';
 
         // `.msgtitle` is a div parented straight to a <tr>, so inserting after it made this bar a
@@ -7460,6 +7786,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
         const expandBtn = document.createElement('button');
         expandBtn.type = 'button';
+        expandBtn.dataset.glpThreadTool = 'expand-all';
         expandBtn.textContent = 'Expand All';
         expandBtn.addEventListener('click', () => {
             document.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
@@ -7471,6 +7798,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
         const collapseQuotesBtn = document.createElement('button');
         collapseQuotesBtn.type = 'button';
+        collapseQuotesBtn.dataset.glpThreadTool = 'collapse-quotes';
         collapseQuotesBtn.textContent = 'Collapse Quoted';
         collapseQuotesBtn.addEventListener('click', () => {
             document.querySelectorAll('.msg tr[id^="post_"]').forEach(tr => {
@@ -7749,7 +8077,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     async function checkWatchedThread(entry) {
-        const firstPage = await fetchTextQueued(entry.url, { minDelay: 1200 });
+        const firstPage = await fetchTextQueued(entry.url, { minDelay: 1200, priority: 5 });
         const parser = new DOMParser();
         let doc = parser.parseFromString(firstPage, 'text/html');
 
@@ -7760,7 +8088,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         });
 
         if (lastPage > 1) {
-            const lastHtml = await fetchTextQueued(`${entry.url}/pg${lastPage}`, { minDelay: 1200 });
+            const lastHtml = await fetchTextQueued(`${entry.url}/pg${lastPage}`, { minDelay: 1200, priority: 5 });
             doc = parser.parseFromString(lastHtml, 'text/html');
         }
 
@@ -8047,7 +8375,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         const provider = MEDIA_PROVIDERS.find(entry => entry.id === providerId) || mediaProviderFor(src);
         const placeholder = document.createElement('div');
         placeholder.className = 'glp-media-placeholder';
-        placeholder.dataset.glpOwner = 'media.privacy';
+        markFeatureOwned(placeholder);
         placeholder.dataset.glpMediaSrc = src;
         placeholder.dataset.glpMediaProvider = provider.id;
         if (width) placeholder.dataset.glpMediaWidth = width;
@@ -8098,7 +8426,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function applyMediaPrivacy(root = document) {
-        const scope = root && root.querySelectorAll ? root : document;
+        const scope = featureScope(root);
         if (!settings.mediaPrivacyMode) return;
 
         scope.querySelectorAll('.post_main iframe, .glp-yt-embed iframe, .glp-x-embed iframe').forEach(iframe => {
@@ -8143,7 +8471,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function normalizeXEmbeds(root = document) {
-        const scope = root && root.querySelectorAll ? root : document;
+        const scope = featureScope(root);
         if (!settings.mediaXEmbeds) return;
 
         const candidates = new Set();
@@ -8158,7 +8486,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
             const wrapper = document.createElement('div');
             wrapper.className = 'glp-x-embed';
-            wrapper.dataset.glpOwner = 'media.x';
+            markFeatureOwned(wrapper);
 
             const header = document.createElement('div');
             header.className = 'glp-x-embed-header';
@@ -8713,6 +9041,8 @@ ${manifest}
 
     function onDOMReady() {
         runtimeState.route = classifyRoute();
+        runtimeState.routePath = window.location.pathname;
+        bindRouteHooks();
 
         if (typeof GM_registerMenuCommand !== 'undefined' && !runtimeState.menuRegistered) {
             GM_registerMenuCommand('GLP Ultra Settings', createSettingsPanel);
@@ -8757,27 +9087,24 @@ ${manifest}
 
         if (runtimeState.observer) runtimeState.observer.disconnect();
         runtimeState.observer = new MutationObserver((mutations) => {
-            let shouldApply = false;
-            mutations.forEach(mutation => {
-                if (mutation.addedNodes.length > 0) {
-                    mutation.addedNodes.forEach(node => {
-                        if (node.nodeType === 1 && (
-                            node.matches?.('[data-type="_mgwidget"]') ||
-                            node.matches?.('amp-embed') ||
-                            node.querySelector?.('[data-type="_mgwidget"]') ||
-                            node.querySelector?.('amp-embed')
-                        )) {
-                            shouldApply = true;
-                        }
-                    });
-                }
-            });
-            if (shouldApply) {
-                runFeatureRegistry('apply');
-            }
+            // Only new site nodes are candidates. Ignoring GLP-owned nodes prevents the
+            // enhancements we append from recursively retriggering the entire registry.
+            const added = mutations.flatMap(mutation => [...mutation.addedNodes])
+                .filter(node => node.nodeType === 1)
+                .filter(node => {
+                    if (node.matches?.('[data-glpx-owner], [id^="glp-"], [class*="glp-"]')) return false;
+                    const owner = node.parentElement?.closest?.('[data-glpx-owner], [id^="glp-"], [class*="glp-"]');
+                    return !owner || owner === document.body;
+                });
+            if (added.length) runFeatureRegistry('apply', added);
         });
 
-        runtimeState.observer.observe(document.body, { childList: true, subtree: true });
+        const roots = [...new Set([
+            ...document.querySelectorAll('#forum_l, table.msg, table.threads, #rightpanel_inner, #glpNotifyMenu')
+        ])];
+        (roots.length ? roots : [document.body]).forEach(root => {
+            runtimeState.observer.observe(root, { childList: true, subtree: true });
+        });
         announceVersionChange();
     }
 
@@ -9108,9 +9435,10 @@ ${manifest}
     function bindContextTracking() {
         if (runtimeState.contextBound) return;
         runtimeState.contextBound = true;
-        document.addEventListener('contextmenu', event => {
+        runtimeState.contextHandler = event => {
             runtimeState.lastContext = describeContextTarget(event.target);
-        }, true);
+        };
+        document.addEventListener('contextmenu', runtimeState.contextHandler, true);
     }
 
     function describeContextTarget(target) {
@@ -9264,9 +9592,41 @@ ${manifest}
                 consecutiveFailures: runtimeState.fetchFailures,
                 backoffMs: Math.max(0, runtimeState.fetchBackoffUntil - Date.now()),
                 active: runtimeState.fetchActive,
+                cachedResponses: runtimeState.fetchCache.size,
                 lastFetchAge: runtimeState.lastFetchAt ? relativeAge(runtimeState.lastFetchAt) : 'never'
             }
         };
+    }
+
+    function buildIssueBundle() {
+        return {
+            format: 'glp-ultra-issue-bundle',
+            schemaVersion: 1,
+            generator: `GLP Ultra v${SCRIPT_VERSION}`,
+            createdAt: new Date().toISOString(),
+            context: {
+                route: runtimeState.route,
+                url: window.location.href,
+                userAgent: navigator.userAgent,
+                language: navigator.language || ''
+            },
+            diagnostics: buildDiagnostics(),
+            settings: { ...settings },
+            lists: {
+                mutedUsers: [...mutedUsers],
+                blockedUsers: blockedUsers.map(user => ({ ...user })),
+                hiddenThreads: [...hiddenThreads],
+                hiddenThreadTitles: { ...hiddenThreadTitles }
+            }
+        };
+    }
+
+    function downloadIssueBundle() {
+        const bundle = buildIssueBundle();
+        const stamp = bundle.createdAt.replace(/[:.]/g, '-');
+        downloadExport(`glp-issue-${stamp}.json`, JSON.stringify(bundle, null, 2), 'application/json');
+        showNotification('Issue bundle saved. Review local details before sharing.', 'success');
+        return bundle;
     }
 
     function diagnosticsRow(parent, label, value, tone) {
@@ -9356,6 +9716,13 @@ ${manifest}
                 .catch(() => showNotification('Clipboard refused the copy.', 'error'));
         });
 
+        const save = document.createElement('button');
+        save.type = 'button';
+        save.className = 'glp-btn glp-btn-secondary';
+        save.textContent = 'Save report';
+        save.title = 'Save diagnostics, settings, and local lists as a JSON issue bundle';
+        save.addEventListener('click', downloadIssueBundle);
+
         const close = document.createElement('button');
         close.type = 'button';
         close.className = 'glp-btn glp-btn-secondary';
@@ -9363,7 +9730,7 @@ ${manifest}
         close.dataset.glpClose = '1';
         close.addEventListener('click', () => panel.remove());
 
-        actions.append(copy, close);
+        actions.append(copy, save, close);
         header.append(title, actions);
         addBackToSettings(header);
 
@@ -9458,7 +9825,9 @@ ${manifest}
         openRecovery: renderRecoveryShelf,
         getRecoveryInventory: recoveryInventory,
         buildPack,
-        applyPack
+        applyPack,
+        buildIssueBundle,
+        downloadIssueBundle
     };
 
     init();

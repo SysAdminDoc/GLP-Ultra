@@ -24,14 +24,19 @@ v3.0.0 merged the two previously separate projects (the *GLP Enhanced Declutter*
 | Watcher | watch threads, unread-delta digest with last-checked age and failed-check state, hidden-tab pause, toolbar badge |
 | Export | thread to Markdown / HTML / JSON with a media manifest, copy thread link, full data backup and restore |
 | Recovery | one shelf listing hidden threads, muted and blocked users, and active filters, each restorable on its own |
-| Diagnostics | route, active features, per-feature worst-run timings, fetch queue state, and selector health with drift warnings |
+| Diagnostics | route, active features, per-feature worst-run timings, fetch queue state, selector health with drift warnings, and a local issue-bundle export |
 | Quote graph | who answered a post, inferred from the site's own "Quoting:" links — backlink chips with hover excerpts and in-page jumps |
 | Noise budget | a running count of what is being kept off the page, with a breakdown and a route to restore any of it |
 | Media | Save / Open / Copy link on post images, click-to-load third-party embeds, lightbox and gallery |
 | Accessibility | reduce motion, high contrast, larger click targets — emitted last so they beat the theme |
 | Portability | full backup and restore, shareable theme and filter packs, optional settings sync across devices |
 
-Every feature exposes `init`/`destroy` and unwinds itself completely when switched off. Errors in one feature can no longer take the rest of the page down with them.
+Every feature exposes `init`/`apply`/`destroy`, tracks its owned listeners and observers, and unwinds itself completely when switched off. Errors in one feature can no longer take the rest of the page down with them.
+
+The Diagnostics panel's **Save report** action creates a local JSON issue bundle containing the
+current route, browser context, settings, local lists, selector health, feature errors, timings,
+and fetch-queue state. Review it before sharing: it may contain your forum URL and private local
+mute, block, tag, and hidden-thread data.
 
 ## Install
 
@@ -106,7 +111,7 @@ scripts/                     build, icons, package, verification gates
 
 | Command | Purpose |
 | --- | --- |
-| `npm run check` | Syntax + policy gates (no remote code, no confirm dialogs, schema coverage) |
+| `npm run check` | Syntax + policy + lifecycle gates (no remote code, no confirm dialogs, schema coverage, teardown/queue/observer checks) |
 | `npm run load` | Copies the extension path and opens `chrome://extensions` |
 | `npm run build` | Emits `dist/`, `extension/content/glp-ultra.user.js`, and the options-page schema |
 | `npm run verify:captures` | Asserts the selector registry still matches real captured GLP pages |

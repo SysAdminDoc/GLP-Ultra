@@ -187,6 +187,32 @@ try {
   await page.waitForTimeout(200);
   check('feed: the recovery shelf closes', await page.locator('#glp-recovery').count() === 0);
 
+  // A forum update is a fragment, not a reason to rescan the whole document. Append a clean
+  // capture row and require the scoped fragment registry to add its owned control in place.
+  await page.locator('.threads tbody tr:not(.threads_header_row)').first().evaluate(row => {
+    const clone = row.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.classList.remove(...[...clone.classList].filter(name => name.startsWith('glp-')));
+    clone.querySelectorAll('[id^="glp-"], [class*="glp-"], [data-glp-converted], [data-glp-freshness], [data-glp-badged]').forEach(node => node.remove());
+    clone.dataset.glpRuntimeAdded = '1';
+    row.parentElement.appendChild(clone);
+  });
+  await waitFor(
+    () => page.locator('[data-glp-runtime-added] .glp-hide-col-btn').count(),
+    count => count === 1,
+    3000,
+    150
+  );
+  const addedRowState = await page.evaluate(() => {
+    const row = document.querySelector('[data-glp-runtime-added]');
+    return row ? { buttons: row.querySelectorAll('.glp-hide-col-btn').length, html: row.outerHTML.slice(0, 500) } : null;
+  });
+  const addedDiag = await workerDiagnostics(worker, page);
+  const fragmentTiming = (addedDiag?.timings || []).find(entry => entry.id === 'feed.hideThreads' && entry.stage === 'apply');
+  check('feed: added rows are processed by the scoped fragment registry',
+    await page.locator('[data-glp-runtime-added] .glp-hide-col-btn').count() === 1,
+    JSON.stringify({ addedRowState, fragmentTiming, setting: await sendMessage(worker, page, { type: 'glp:get-state' }).then(state => state?.settings?.hideThreadButtons) }));
+
   // ---------------- Thread route ----------------
   await page.goto(CAPTURES.thread.url, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1200);
@@ -248,6 +274,20 @@ try {
     await page.locator('#glp-diagnostics .glp-diag-group').count() >= 4);
   check('thread: the diagnostics panel reports no feature errors',
     (await page.locator('#glp-diagnostics .glp-diag-group').nth(2).innerText()).includes('None recorded'));
+  check('thread: the diagnostics panel offers an issue bundle export',
+    await page.locator('#glp-diagnostics button:text("Save report")').count() === 1);
+  const issueDownload = await captureDownload(page,
+    () => page.locator('#glp-diagnostics button:text("Save report")').click());
+  const issueText = issueDownload ? await readDownload(issueDownload) : '';
+  let issueBundle = null;
+  try { issueBundle = JSON.parse(issueText); } catch (error) { /* asserted below */ }
+  check('thread: the issue bundle has a reviewable JSON shape',
+    issueDownload?.suggestedFilename().startsWith('glp-issue-')
+      && issueBundle?.format === 'glp-ultra-issue-bundle'
+      && issueBundle?.diagnostics?.route === 'thread'
+      && issueBundle?.settings
+      && issueBundle?.lists,
+    issueDownload ? issueDownload.suggestedFilename() : 'no download');
   await page.locator('#glp-diagnostics [data-glp-close]').click();
   await page.waitForTimeout(200);
   check('thread: the diagnostics panel closes', await page.locator('#glp-diagnostics').count() === 0);
@@ -273,6 +313,37 @@ try {
     await page.locator('.glp-media-placeholder').count() === 0);
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { mediaPrivacyMode: true } });
   await page.waitForTimeout(400);
+
+  // Feature teardown must restore page-owned state, not only remove GLP nodes. Capture one
+  // converted date and exercise both reversible data markers and listener-backed controls.
+  const timestampBefore = await page.locator('.author_date').first().evaluate(node => ({
+    text: node.dataset.glpOriginalText || node.textContent,
+    title: node.dataset.glpOriginalTitle || node.getAttribute('title') || ''
+  }));
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { relativeTimestamps: false } });
+  await page.waitForTimeout(350);
+  const timestampOff = await page.locator('.author_date').first().evaluate(node => ({
+    text: node.textContent,
+    title: node.getAttribute('title') || '',
+    converted: node.hasAttribute('data-glp-converted')
+  }));
+  check('lifecycle: disabling relative timestamps restores original text and title',
+    !timestampOff.converted && timestampOff.text === timestampBefore.text && timestampOff.title === timestampBefore.title,
+    JSON.stringify({ timestampBefore, timestampOff }));
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { relativeTimestamps: true } });
+  await page.waitForTimeout(350);
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { collapsiblePosts: false } });
+  await page.waitForTimeout(350);
+  check('lifecycle: disabling collapsible posts removes indicators and markers',
+    await page.locator('.glp-collapse-indicator').count() === 0
+      && await page.locator('[data-glp-collapsible]').count() === 0);
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { collapsiblePosts: true } });
+  await page.waitForTimeout(350);
+  check('lifecycle: re-enabling collapsible posts restores one indicator per author',
+    await page.locator('.glp-collapse-indicator').count() > 0);
+  check('lifecycle: injected thread toolbar carries its feature owner',
+    await page.locator('#glp-thread-tools-bar[data-glpx-owner]').count() === 1);
 
   // Persistence: the storage shim must hand back exactly what the engine stored, or every
   // store silently resets to defaults on the next page load.

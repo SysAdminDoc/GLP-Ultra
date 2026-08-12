@@ -11,6 +11,13 @@
   make an existing recovery path unreadable.
 - **Userscript auto-updates are wired.** Generated metadata now carries GitHub Raw
   `@updateURL`/`@downloadURL` entries, and the build gate rejects missing or redirected metadata.
+- **Feature lifecycle and fragment processing are explicit.** The registry now owns event-listener
+  and observer cleanup, reverses inline timestamp/color/DOM markers, and processes newly appended
+  forum fragments through stable scoped roots instead of rescanning the whole document. A lifecycle
+  gate and runtime replay cover owner tags, live toggles, and teardown.
+- **Diagnostics can be saved for support.** The diagnostics panel now downloads a local JSON issue
+  bundle with selector health, feature timing/errors, settings, and local lists. The UI warns that
+  the file should be reviewed before sharing.
 
 ### Redesigned
 

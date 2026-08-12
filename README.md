@@ -81,6 +81,10 @@ harness drives Chromium only, so Firefox behaviour is not machine-verified.
 
 Install `dist/glp-ultra.user.js` in Tampermonkey or Violentmonkey. Same engine, same settings panel; the popup, options page, and network-level ad blocking are extension-only.
 
+The generated userscript metadata includes GitHub Raw `@updateURL` and `@downloadURL` entries, so
+Tampermonkey or Violentmonkey can check for updates from the `main` build. The small
+`dist/glp-ultra.meta.js` file is also suitable for managers that request metadata separately.
+
 ## Layout
 
 ```

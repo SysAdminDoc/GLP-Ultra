@@ -2,6 +2,16 @@
 
 ## 3.6.0 — 2026-08-08
 
+### Hardened
+
+- **Versioned settings migration.** Upgrades now read the previous nested `glpx.settings.v1`
+  payload and known legacy aliases, validate values against the current schema, migrate old list
+  keys when their modern store is empty, and expose the migration source/schema in diagnostics.
+  The pre-upgrade recovery backup accepts both string and parsed payloads, so migration cannot
+  make an existing recovery path unreadable.
+- **Userscript auto-updates are wired.** Generated metadata now carries GitHub Raw
+  `@updateURL`/`@downloadURL` entries, and the build gate rejects missing or redirected metadata.
+
 ### Redesigned
 
 - **The 23 settings sections are now real routed pages.** Both the in-page panel and extension

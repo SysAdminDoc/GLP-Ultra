@@ -19,6 +19,7 @@
     const SYNC_ITEM_LIMIT = 7500;
     const MIRRORED_KEYS = [
         'glpEnhancedSettings',
+        'glpSettingsSchemaVersion',
         'glpMutedUsers',
         'glpBlockedUsers',
         'glpHiddenThreads',

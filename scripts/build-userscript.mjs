@@ -41,6 +41,16 @@ if (!versionMatch) {
   fail(`@version ${versionMatch[1]} does not match package version ${packageJson.version}`);
 }
 
+const updateURL = source.match(/\/\/ @updateURL\s+([^\s]+)/)?.[1] || '';
+const downloadURL = source.match(/\/\/ @downloadURL\s+([^\s]+)/)?.[1] || '';
+const expectedRawBase = 'https://raw.githubusercontent.com/SysAdminDoc/GLP_Userscript/main/dist/';
+if (updateURL !== `${expectedRawBase}glp-ultra.meta.js`) {
+  fail(`@updateURL must point to ${expectedRawBase}glp-ultra.meta.js`);
+}
+if (downloadURL !== `${expectedRawBase}glp-ultra.user.js`) {
+  fail(`@downloadURL must point to ${expectedRawBase}glp-ultra.user.js`);
+}
+
 const scriptVersionMatch = source.match(/const SCRIPT_VERSION = '([^']+)'/);
 if (!scriptVersionMatch) {
   fail('missing SCRIPT_VERSION constant');

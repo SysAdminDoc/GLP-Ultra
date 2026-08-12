@@ -4,6 +4,8 @@
 // @version      3.6.0
 // @description  Declutter, theming, filtering, blocking, and reading tools for Godlike Productions
 // @author       Matthew Parker
+// @updateURL    https://raw.githubusercontent.com/SysAdminDoc/GLP_Userscript/main/dist/glp-ultra.meta.js
+// @downloadURL  https://raw.githubusercontent.com/SysAdminDoc/GLP_Userscript/main/dist/glp-ultra.user.js
 // @match        *://www.godlikeproductions.com/*
 // @match        *://godlikeproductions.com/*
 // @icon         https://www.godlikeproductions.com/favicon.ico
@@ -449,7 +451,14 @@
         fetchFailures: 0,
         fetchBackoffUntil: 0,
         mediaHoverBound: false,
-        lightboxBound: false
+        lightboxBound: false,
+        migration: {
+            schemaVersion: 0,
+            source: 'defaults',
+            fromVersion: 0,
+            migratedKeys: [],
+            migratedStores: []
+        }
     };
 
     function wait(ms) {
@@ -627,6 +636,146 @@
     let settings = {};
 
     const SETTINGS_BACKUP_KEY = 'glpEnhancedSettings_backup';
+    const SETTINGS_SCHEMA_KEY = 'glpSettingsSchemaVersion';
+    const SETTINGS_SCHEMA_VERSION = 2;
+
+    const LEGACY_SETTINGS_KEYS = Object.freeze([
+        'glpx.settings.v1',
+        'glpSettings',
+        'glpSettingsV1',
+        'glpEnhancedConfig'
+    ]);
+
+    const SETTING_ALIASES = Object.freeze({
+        theme: 'colorTheme',
+        themeName: 'colorTheme',
+        darkTheme: 'colorTheme',
+        hideAds: 'removeAds',
+        hideWidgets: 'removeWidgets',
+        hideAmp: 'removeAmpEmbeds',
+        hideAmpEmbeds: 'removeAmpEmbeds',
+        muteList: 'userMuteList',
+        blockList: 'userBlockList',
+        quoteDepth: 'quoteDepthBadges',
+        quoteBacklinksEnabled: 'quoteBacklinks',
+        quickSearch: 'threadQuickSearch',
+        infiniteForumScroll: 'infiniteScroll',
+        infiniteThread: 'infiniteThreadScroll',
+        watchEnabled: 'watcherEnabled',
+        watchInterval: 'watcherIntervalMinutes',
+        sync: 'syncSettings',
+        customCss: 'customCSS',
+        customCssText: 'customCSS',
+        reduceAnimations: 'reduceMotion',
+        largerTargets: 'largeTargets'
+    });
+
+    const LEGACY_STORE_KEYS = Object.freeze({
+        glpMutedUsers: ['glpMuteList', 'glpMuted', 'glpUserMuteList'],
+        glpBlockedUsers: ['glpBlockList', 'glpBlocked'],
+        glpUserTags: ['glpTags', 'glpTaggedUsers'],
+        glpHiddenThreads: ['glpHiddenThreadIds', 'glpHidden'],
+        glpHiddenThreadTitles: ['glpThreadTitles'],
+        glpWatchedThreads: ['glpWatchList', 'glpWatched'],
+        glpUserStats: ['glpPosterStats'],
+        glpUserStatsPages: ['glpSeenPages']
+    });
+
+    function parseStoredJSON(raw, fallback = null) {
+        if (raw === null || raw === undefined || raw === '') return fallback;
+        try {
+            return typeof raw === 'string' ? JSON.parse(raw) : raw;
+        } catch (error) {
+            return fallback;
+        }
+    }
+
+    function readStoredValue(key, fallback = null) {
+        let value = GM_getValue(key, null);
+        if (value !== null && value !== undefined) return value;
+        // v1 stored its settings under a plain localStorage key in some userscript managers.
+        // Reading that key is migration-only; all new data still goes through GM_*.
+        try {
+            const local = window.localStorage?.getItem(key);
+            return local === null ? fallback : local;
+        } catch (error) {
+            return fallback;
+        }
+    }
+
+    function normalizeThemeValue(value) {
+        const normalized = String(value || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+        const aliases = {
+            amoledblack: 'amoled',
+            solarizeddark: 'solarized',
+            aliengreen: 'alien',
+            highcontrastdark: 'highcontrast',
+            catppuccinmocha: 'catppuccin'
+        };
+        return aliases[normalized] || normalized;
+    }
+
+    function normalizeSettingValue(key, value) {
+        const fallback = DEFAULT_SETTINGS[key];
+        if (key === 'colorTheme') {
+            const theme = normalizeThemeValue(value);
+            return Object.prototype.hasOwnProperty.call(THEME_PALETTES, theme) ? theme : fallback;
+        }
+        if (typeof fallback === 'boolean') return typeof value === 'boolean' ? value : fallback;
+        if (typeof fallback === 'number') {
+            const number = typeof value === 'number' ? value : Number(value);
+            return Number.isFinite(number) ? number : fallback;
+        }
+        if (typeof fallback === 'string') return typeof value === 'string' ? value : String(value ?? fallback);
+        return value;
+    }
+
+    function extractSettingsPayload(payload) {
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+        const nested = [payload.settings, payload.payload?.settings, payload.config, payload.options]
+            .find(candidate => candidate && typeof candidate === 'object' && !Array.isArray(candidate));
+        return nested || payload;
+    }
+
+    function migrateSettingsPayload(payload) {
+        const source = extractSettingsPayload(payload) || {};
+        const migrated = {};
+        const migratedKeys = [];
+
+        Object.entries(source).forEach(([key, value]) => {
+            const target = Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key)
+                ? key
+                : SETTING_ALIASES[key];
+            if (!target || !Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, target)) return;
+            if (Object.prototype.hasOwnProperty.call(migrated, target) && target !== key) return;
+            migrated[target] = normalizeSettingValue(target, value);
+            if (target !== key || migrated[target] !== value) migratedKeys.push(target);
+        });
+
+        return { settings: migrated, migratedKeys };
+    }
+
+    function migrateLegacyStore(targetKey, fallback, transform = value => value) {
+        const current = parseStoredJSON(GM_getValue(targetKey, null), null);
+        if (current !== null) return;
+
+        const candidates = LEGACY_STORE_KEYS[targetKey] || [];
+        for (const key of candidates) {
+            const value = parseStoredJSON(readStoredValue(key, null), null);
+            if (value === null) continue;
+            const migrated = transform(value);
+            GM_setValue(targetKey, JSON.stringify(migrated));
+            runtimeState.migration.migratedStores.push(targetKey);
+            return;
+        }
+
+        if (fallback !== undefined) return fallback;
+        return null;
+    }
+
+    function migrateLegacyStores() {
+        Object.entries(LEGACY_STORE_KEYS).forEach(([targetKey]) => migrateLegacyStore(targetKey));
+    }
 
     /**
      * Keeps one copy of the settings payload as it was before the most recent upgrade.
@@ -644,7 +793,7 @@
                 version: previous || 'unstamped',
                 upgradedTo: SCRIPT_VERSION,
                 savedAt: new Date().toISOString(),
-                payload: saved
+                payload: typeof saved === 'string' ? saved : JSON.stringify(saved)
             }));
         } catch (e) {
             /* A backup that cannot be written must not stop the upgrade. */
@@ -663,28 +812,49 @@
     }
 
     function loadSettings() {
-        const saved = GM_getValue('glpEnhancedSettings', null);
+        const saved = readStoredValue('glpEnhancedSettings', null);
         runtimeState.previousVersion = String(GM_getValue('glpSettingsVersion', '') || '');
-        backupSettingsBeforeUpgrade(saved, runtimeState.previousVersion);
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                settings = { ...DEFAULT_SETTINGS };
-                Object.keys(DEFAULT_SETTINGS).forEach(key => {
-                    if (Object.prototype.hasOwnProperty.call(parsed, key)) {
-                        settings[key] = parsed[key];
-                    }
-                });
-                // Keys the stored payload never heard of are exactly the settings this build
-                // added, so the update notice can name them without a hand-kept changelog.
-                runtimeState.newSettingKeys = Object.keys(DEFAULT_SETTINGS)
-                    .filter(key => !Object.prototype.hasOwnProperty.call(parsed, key));
-            } catch (e) {
-                settings = { ...DEFAULT_SETTINGS };
+        const schemaVersion = Number(GM_getValue(SETTINGS_SCHEMA_KEY, 0)) || 0;
+        const currentPayload = parseStoredJSON(saved, null);
+        let source = currentPayload;
+        let sourceName = currentPayload ? 'glpEnhancedSettings' : 'defaults';
+
+        if (!source) {
+            for (const key of LEGACY_SETTINGS_KEYS) {
+                const candidate = parseStoredJSON(readStoredValue(key, null), null);
+                if (candidate && typeof candidate === 'object') {
+                    source = candidate;
+                    sourceName = key;
+                    break;
+                }
             }
-        } else {
-            settings = { ...DEFAULT_SETTINGS };
         }
+
+        backupSettingsBeforeUpgrade(source || saved, runtimeState.previousVersion || schemaVersion);
+        const { settings: migrated, migratedKeys } = migrateSettingsPayload(source);
+        settings = { ...DEFAULT_SETTINGS, ...migrated };
+
+        // Keys the stored payload never heard of are exactly the settings this build added, so
+        // the update notice can name them without a hand-kept changelog.
+        const knownSource = extractSettingsPayload(source) || {};
+        runtimeState.newSettingKeys = Object.keys(DEFAULT_SETTINGS)
+            .filter(key => !Object.prototype.hasOwnProperty.call(knownSource, key)
+                && !Object.entries(SETTING_ALIASES).some(([legacy, current]) => current === key
+                    && Object.prototype.hasOwnProperty.call(knownSource, legacy)));
+
+        runtimeState.migration = {
+            schemaVersion: SETTINGS_SCHEMA_VERSION,
+            source: sourceName,
+            fromVersion: schemaVersion,
+            migratedKeys: [...new Set(migratedKeys)],
+            migratedStores: []
+        };
+
+        if (source && (sourceName !== 'glpEnhancedSettings' || schemaVersion < SETTINGS_SCHEMA_VERSION || migratedKeys.length)) {
+            saveSettings();
+        }
+        GM_setValue(SETTINGS_SCHEMA_KEY, String(SETTINGS_SCHEMA_VERSION));
+        migrateLegacyStores();
     }
 
     /**
@@ -8742,10 +8912,8 @@ ${manifest}
         const backup = readSettingsBackup();
         if (!backup) return false;
         const current = GM_getValue('glpEnhancedSettings', null);
-        let parsed;
-        try {
-            parsed = JSON.parse(backup.payload);
-        } catch (e) {
+        const parsed = parseStoredJSON(backup.payload, null);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
             showNotification('That settings backup could not be read.', 'error');
             return false;
         }
@@ -9060,6 +9228,7 @@ ${manifest}
         return {
             version: SCRIPT_VERSION,
             settingsVersionSeen: runtimeState.previousVersion || SCRIPT_VERSION,
+            settingsSchema: { ...runtimeState.migration, migratedKeys: [...runtimeState.migration.migratedKeys], migratedStores: [...runtimeState.migration.migratedStores] },
             route: runtimeState.route,
             url: window.location.href,
             settingsBackup: (() => {

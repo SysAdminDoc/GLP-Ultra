@@ -89,6 +89,38 @@ try {
     await route.abort();
   });
 
+  // Migration: an older userscript may have kept a nested payload under the pre-v2 key and a
+  // mute list under its old name. Exercise the actual document-start path, not a copied helper,
+  // then clear both stores before the main golden-path run.
+  const migrationPage = await context.newPage();
+  await migrationPage.addInitScript(() => {
+    localStorage.setItem('glpx.settings.v1', JSON.stringify({
+      version: 1,
+      settings: { theme: 'alien-green', hideAds: false, fontSize: '17' }
+    }));
+    localStorage.setItem('glpMuteList', JSON.stringify(['LegacyMute']));
+  });
+  await migrationPage.goto(CAPTURES.feed.url, { waitUntil: 'domcontentloaded' });
+  await migrationPage.waitForTimeout(500);
+  const migrated = await sendMessage(worker, migrationPage, { type: 'glp:get-state' });
+  check('migration: nested legacy settings are imported',
+    migrated?.settings?.colorTheme === 'alien' && migrated?.settings?.removeAds === false
+      && migrated?.settings?.fontSize === 17,
+    JSON.stringify(migrated?.settings));
+  check('migration: legacy list keys are imported',
+    migrated?.lists?.mutedUsers?.includes('LegacyMute'), JSON.stringify(migrated?.lists?.mutedUsers));
+  const migrationDiag = await workerDiagnostics(worker, migrationPage);
+  check('migration: diagnostics record the source and schema version',
+    migrationDiag?.settingsSchema?.source === 'glpx.settings.v1'
+      && migrationDiag?.settingsSchema?.schemaVersion >= 2,
+    JSON.stringify(migrationDiag?.settingsSchema));
+  await migrationPage.evaluate(() => localStorage.clear());
+  await migrationPage.close();
+  await worker.evaluate(async () => {
+    await chrome.storage.local.clear();
+    await chrome.storage.sync.clear();
+  });
+
   const page = await context.newPage();
 
   // ---------------- Feed route ----------------

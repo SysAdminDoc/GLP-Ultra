@@ -1,6 +1,6 @@
 # GLP Ultra
 
-[![version](https://img.shields.io/badge/version-3.6.0-4a90d9)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-3.7.0-4a90d9)](CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Firefox%20%7C%20userscript-1f6feb)](#install)
 [![manifest](https://img.shields.io/badge/manifest-v3-8957e5)](extension/manifest.json)
@@ -21,7 +21,7 @@ v3.0.0 merged the two previously separate projects (the *GLP Enhanced Declutter*
 | Posts | compact/wider layouts, reader mode, OP highlighting, post numbers and permalinks, relative timestamps, collapsible posts, quote depth badges, nested-quote collapse, YouTube embedding, image lightbox with gallery navigation, in-thread quick search |
 | Moderation | mute users by name, block users by numeric user ID, hide image-only replies, hide `/sm/` reaction GIFs, per-user tags, hidden-thread manager |
 | Look | 10 dark themes, corner style, font size, line height, max width, custom CSS (scoped) |
-| Watcher | watch threads, unread-delta digest with last-checked age and failed-check state, hidden-tab pause, toolbar badge |
+| Watcher | watch threads, unread-delta digest with last-checked age and failed-check state, hidden-tab pause, toolbar badge, MV3 background alarms |
 | Export | thread to Markdown / HTML / JSON with a media manifest, copy thread link, full data backup and restore |
 | Recovery | one shelf listing hidden threads, muted and blocked users, and active filters, each restorable on its own |
 | Diagnostics | route, active features, per-feature worst-run timings, fetch queue state, selector health with drift warnings, and a local issue-bundle export |
@@ -63,13 +63,13 @@ and hit **Reload** on the extension card.
 
 ```bash
 npm run verify      # gates + build + structure checks
-npm run package     # dist/glp-ultra-v3.6.0.zip
+npm run package     # dist/glp-ultra-v3.7.0.zip
 ```
 
 ### Firefox
 
 ```bash
-npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.6.0.zip
+npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.7.0.zip
 ```
 
 Everything but the manifest is identical to the Chrome build. The Gecko variant swaps the
@@ -99,7 +99,7 @@ extension/
   content/gm-shim.js         GM_* -> localStorage, mirrored to chrome.storage
   content/glp-ultra.user.js  Built from src/ (do not edit)
   content/ext-bridge.js      Messaging bridge for popup/options/service worker
-  background/                Service worker: context menus, DNR toggle, badge
+  background/                Service worker: context menus, DNR toggle, badge, watcher alarms
   popup/ options/            Extension UI (options page generated from the engine schema)
   rules/ad-network.json      declarativeNetRequest rules, scoped to GLP
   generated/                 settings-schema.js (build output)

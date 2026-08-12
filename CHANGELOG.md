@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.7.0 — 2026-08-12
+
+### Hardened
+
+- **The extension watcher now survives tab lifecycle changes.** MV3 builds schedule checks with
+  `chrome.alarms`, route them through the content bridge, and clear the alarm when disabled;
+  standalone userscripts retain their tab-local timer.
+- **Feature stores now use a typed storage adapter.** Mutes, blocks, tags, hidden threads,
+  watcher entries, and local history no longer reach into `GM_*` directly, while the engine-level
+  migration and settings layer remains the single persistence boundary.
+- **The roadmap's lifecycle and safety requirements are complete.** The registry has 41 explicit
+  init/apply/destroy entries, 21 fragment-safe processors, owned-resource cleanup, scoped
+  mutation processing, queued same-origin fetches, Trusted Types-compatible HTML, and local issue
+  bundle export.
+
+### Verified
+
+- `npm run verify` gates, captures, Chrome/Firefox builds, extension structure, and the Chromium
+  replay harness pass as 204/204 runtime checks. Firefox remains structurally gated and logged-in
+  captures/store submission remain in `Roadmap_Blocked.md`.
+
 ## 3.6.0 — 2026-08-08
 
 ### Hardened

@@ -38,7 +38,6 @@
 
         // Registration Nag
         autoBypassRegNag: true,
-        autoBypassClubNag: true,
 
         // Header Options
         hideHeaderBanner: true,
@@ -241,7 +240,6 @@
         removeMsgAds: 'Hides ad rows injected into thread pages.',
         removeAmpEmbeds: 'Removes AMP embed blocks used by ad widgets.',
         autoBypassRegNag: 'Skips the registration interstitial when GLP exposes a bypass link.',
-        autoBypassClubNag: 'Accepts the "Private Virtual Country Club" disclaimer automatically.',
         sortControls: 'Adds sort buttons (updated, posted, rating, views, replies) above the thread list.',
         defaultSortByNew: 'Redirects forum pages to newest-first ordering when no sort is specified.',
         hidePinnedThreads: 'Hides pinned and karma-pinned rows from the thread list.',
@@ -836,7 +834,7 @@
 
     const SETTINGS_BACKUP_KEY = 'glpEnhancedSettings_backup';
     const SETTINGS_SCHEMA_KEY = 'glpSettingsSchemaVersion';
-    const SETTINGS_SCHEMA_VERSION = 2;
+    const SETTINGS_SCHEMA_VERSION = 3;
 
     const LEGACY_SETTINGS_KEYS = Object.freeze([
         'glpx.settings.v1',
@@ -1998,7 +1996,6 @@ body.glp-enhanced-active { color-scheme: dark; }
         if (settings.removeAds) {
             css += `
 [data-type="_mgwidget"],
-.ads,
 [id^="mgid"],
 iframe[src*="mgid"],
 div[id*="ScriptRoot"] { display: none !important; }
@@ -4051,7 +4048,6 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                 ])}
                 ${createSettingsSection('Registration & Login', [
                     { key: 'autoBypassRegNag', label: 'Auto-Bypass Registration Nag' },
-                    { key: 'autoBypassClubNag', label: 'Auto-Accept Country Club Disclaimer' },
                     { key: 'hideLoginLinks', label: 'Hide All Login Buttons' }
                 ])}
                 ${createSettingsSection('Header Options', [
@@ -5323,8 +5319,10 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             runtimeState.adsRemoved += nodes.length;
         };
 
-        if (settings.removeWidgets) {
-            removeAndCount([...scope.querySelectorAll('[data-type="_mgwidget"]')]);
+        if (settings.removeAds || settings.removeWidgets) {
+            removeAndCount([...scope.querySelectorAll(
+                '[data-type="_mgwidget"], [id^="mgid"], iframe[src*="mgid"], div[id*="ScriptRoot"]'
+            )]);
         }
 
         if (settings.removeAmpEmbeds) {
@@ -6400,26 +6398,11 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     // ============================================
-    // COUNTRY CLUB DISCLAIMER BYPASS
-    // ============================================
-    function bypassCountryClubNag() {
-        if (!settings.autoBypassClubNag) return false;
-
-        const submit = document.querySelector('input[type="submit"][name="disclaimer"]');
-        if (!submit) return false;
-
-        const form = submit.closest('form') || document;
-        form.querySelectorAll('input[type="checkbox"]').forEach(box => { box.checked = true; });
-        submit.click();
-        return true;
-    }
-
-    // ============================================
     // PRESETS
     // ============================================
     const READER_PRESET_KEYS = Object.freeze([
         'removeAds', 'removeWidgets', 'removeMsgAds', 'removeAmpEmbeds',
-        'autoBypassRegNag', 'autoBypassClubNag',
+        'autoBypassRegNag',
         'hideHeaderBanner', 'hideStatsBar', 'hideHeaderTime', 'hideLoginLinks',
         'hideTopLinks', 'hideMainNav', 'hideTabNav', 'hideRSS', 'hideChatRoom', 'hideJoinLink',
         'compactHeader', 'compactNav', 'compactThreadList', 'compactPosts', 'compactQuotes',
@@ -9063,7 +9046,6 @@ ${manifest}
         }
 
         if (settings.autoBypassRegNag && bypassRegistrationNag()) return;
-        if (bypassCountryClubNag()) return;
         if (applyDefaultSort()) return;
 
         loadBlockedUsers();

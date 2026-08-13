@@ -10,7 +10,6 @@ window.GLP_SCHEMA = {
     "removeMsgAds": true,
     "removeAmpEmbeds": true,
     "autoBypassRegNag": true,
-    "autoBypassClubNag": true,
     "hideHeaderBanner": true,
     "hideStatsBar": true,
     "hideHeaderTime": true,
@@ -154,7 +153,6 @@ window.GLP_SCHEMA = {
     "removeMsgAds": "Hides ad rows injected into thread pages.",
     "removeAmpEmbeds": "Removes AMP embed blocks used by ad widgets.",
     "autoBypassRegNag": "Skips the registration interstitial when GLP exposes a bypass link.",
-    "autoBypassClubNag": "Accepts the \"Private Virtual Country Club\" disclaimer automatically.",
     "sortControls": "Adds sort buttons (updated, posted, rating, views, replies) above the thread list.",
     "defaultSortByNew": "Redirects forum pages to newest-first ordering when no sort is specified.",
     "hidePinnedThreads": "Hides pinned and karma-pinned rows from the thread list.",
@@ -296,10 +294,6 @@ window.GLP_SCHEMA = {
         {
           "key": "autoBypassRegNag",
           "label": "Auto-Bypass Registration Nag"
-        },
-        {
-          "key": "autoBypassClubNag",
-          "label": "Auto-Accept Country Club Disclaimer"
         },
         {
           "key": "hideLoginLinks",

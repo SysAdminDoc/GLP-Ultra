@@ -22,6 +22,13 @@ const CAPTURES = {
   thread: { file: 'captures/thread-message.mhtml', url: 'https://www.godlikeproductions.com/forum1/message6170474/pg1' }
 };
 
+const CONTRACT_PROOF_URL = 'https://www.godlikeproductions.com/glp-contract-proof';
+const AD_PROOF_URL = 'https://www.godlikeproductions.com/glp-ad-proof';
+const AD_PROBE_URLS = [
+  'https://cdn.mgid.com/glp-probe.js',
+  'https://securepubads.g.doubleclick.net/glp-probe.js'
+];
+
 function decodeQuotedPrintable(text) {
   return text
     .replace(/=\r?\n/g, '')
@@ -77,6 +84,40 @@ try {
   // watcher polls the thread's base URL, infinite scroll asks for /pgN - reach the capture too.
   await context.route('**/*', async route => {
     const url = route.request().url();
+    if (url === CONTRACT_PROOF_URL) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html; charset=utf-8',
+        body: `<!doctype html><html><body>
+          <form id="membership" onsubmit="window.contractSubmitted = true; return false">
+            <label><input type="checkbox" name="adult"> I am 18 or older</label>
+            <label><input type="checkbox" name="terms"> I accept the membership contract</label>
+            <input type="submit" name="disclaimer" value="Enter">
+          </form>
+        </body></html>`
+      });
+      return;
+    }
+    if (url === AD_PROOF_URL) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html; charset=utf-8',
+        body: `<!doctype html><html><body>
+          <script src="https://assets.example.test/glp-control.js"></script>
+          <script src="${AD_PROBE_URLS[0]}"></script>
+          <script src="${AD_PROBE_URLS[1]}"></script>
+        </body></html>`
+      });
+      return;
+    }
+    if (url === 'https://assets.example.test/glp-control.js') {
+      await route.fulfill({ status: 200, contentType: 'application/javascript', body: 'window.glpControlLoaded = true;' });
+      return;
+    }
+    if (AD_PROBE_URLS.includes(url)) {
+      await route.fulfill({ status: 200, contentType: 'application/javascript', body: 'window.glpAdProbeLoaded = true;' });
+      return;
+    }
     const key = captureKeyFor(url);
     if (key) {
       await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html[key] });
@@ -121,6 +162,56 @@ try {
     await chrome.storage.sync.clear();
   });
 
+  // A removed v3.7 setting used to tick both legal checkboxes and submit this form. Loading an
+  // old payload must now prune that key and leave consent entirely to the person at the browser.
+  const contractPage = await context.newPage();
+  await contractPage.addInitScript(() => {
+    localStorage.setItem('glpEnhanced.mv3.glpEnhancedSettings', JSON.stringify({
+      enabled: true,
+      autoBypassClubNag: true
+    }));
+    localStorage.setItem('glpEnhanced.mv3.glpSettingsSchemaVersion', '2');
+  });
+  await contractPage.goto(CONTRACT_PROOF_URL, { waitUntil: 'domcontentloaded' });
+  await contractPage.waitForTimeout(500);
+  check('consent: membership contract remains unchecked',
+    await contractPage.locator('input[type="checkbox"]:checked').count() === 0);
+  check('consent: membership contract is never auto-submitted',
+    await contractPage.evaluate(() => window.contractSubmitted !== true));
+  const contractState = await sendMessage(worker, contractPage, { type: 'glp:get-state' });
+  check('consent: removed auto-accept key is pruned during migration',
+    !Object.prototype.hasOwnProperty.call(contractState?.settings || {}, 'autoBypassClubNag'),
+    JSON.stringify(contractState?.settings));
+  await contractPage.evaluate(() => localStorage.clear());
+  await contractPage.close();
+  await worker.evaluate(async () => {
+    await chrome.storage.local.clear();
+    await chrome.storage.sync.clear();
+  });
+
+  // Exercise the installed declarative rules instead of merely parsing their JSON. The control
+  // resource proves the page can load a script; both ad-network resources must fail before their
+  // bodies execute, with Chromium identifying the extension block.
+  const adProofPage = await context.newPage();
+  const adFailures = [];
+  adProofPage.on('requestfailed', request => {
+    if (AD_PROBE_URLS.includes(request.url())) {
+      adFailures.push({ url: request.url(), error: request.failure()?.errorText || '' });
+    }
+  });
+  await adProofPage.goto(AD_PROOF_URL, { waitUntil: 'domcontentloaded' });
+  await adProofPage.waitForTimeout(500);
+  const probeState = await adProofPage.evaluate(() => ({
+    control: window.glpControlLoaded === true,
+    ad: window.glpAdProbeLoaded === true
+  }));
+  check('network: non-ad control resource loads', probeState.control, JSON.stringify(probeState));
+  check('network: MGID and DoubleClick scripts do not execute', !probeState.ad, JSON.stringify(probeState));
+  check('network: browser reports both ad probes blocked by the extension',
+    AD_PROBE_URLS.every(url => adFailures.some(entry => entry.url === url && /BLOCKED_BY_CLIENT/i.test(entry.error))),
+    JSON.stringify(adFailures));
+  await adProofPage.close();
+
   const page = await context.newPage();
 
   // ---------------- Feed route ----------------
@@ -134,6 +225,9 @@ try {
   check('feed: settings gear present', await page.locator('#glp-open-settings-btn').count() === 1);
   check('feed: hide-thread buttons on rows', await page.locator('.glp-hide-col-btn').count() > 0);
   check('feed: ad widgets removed', await page.locator('[data-type="_mgwidget"]').count() === 0);
+  check('feed: native links using the site ads class are not targeted',
+    await page.locator('a.ads').evaluateAll(nodes => nodes.length > 0
+      && nodes.every(node => getComputedStyle(node).display !== 'none')));
 
   const feedDiag = await workerDiagnostics(worker, page);
   check('feed: route classified as feed', feedDiag?.route === 'feed', JSON.stringify(feedDiag));

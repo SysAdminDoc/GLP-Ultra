@@ -4,11 +4,18 @@ Items that cannot be implemented without input from outside the codebase. Each n
 specific thing that would unblock it. Moved here out of `ROADMAP.md` so the active tracker holds
 only work that can actually be done.
 
-## Needs page captures that only a logged-in human can take
+## Needs page access that only a consenting or logged-in human can provide
 
-The repo verifies against real MHTML captures (`captures/`) because the live site answers
-automation with a Cloudflare challenge. Features whose DOM was never captured cannot be designed
-against real markup, and the selector registry has nothing to validate them with.
+The repo verifies against real MHTML captures (`captures/`). On 2026-08-13 the public root, feed,
+and thread routes progressed past Cloudflare but stopped at a membership contract with age and
+legal-attestation controls. An automated pass cannot accept that contract for the reader.
+Features whose DOM was never captured cannot be designed against real markup, and the selector
+registry has nothing to validate them with.
+
+- **Fresh public feed/thread contract and cold-load ad trace.** Needs a person to accept the
+  membership contract in the isolated browser, followed by read-only 1440x900 and 1920x1080
+  capture/network runs. This is required to upgrade the current capture-replay ad proof to a live
+  current-template claim.
 
 - **Floating reply launcher and draft autosave.** Needs a capture of `/bbs/reply.php`.
 - **Composer cleanup.** Same capture.

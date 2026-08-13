@@ -1,21 +1,21 @@
 # GLP Ultra
 
-[![version](https://img.shields.io/badge/version-3.7.0-4a90d9)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-3.8.0-4a90d9)](CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Firefox%20%7C%20userscript-1f6feb)](#install)
 [![manifest](https://img.shields.io/badge/manifest-v3-8957e5)](extension/manifest.json)
 
-Declutter, theming, filtering, blocking, and reading tools for [Godlike Productions](https://www.godlikeproductions.com/) — one MV3 browser extension, built from one source file that also ships as a standalone userscript.
+Declutter, theming, filtering, blocking, and reading tools for [Godlike Productions](https://www.godlikeproductions.com/) on desktop browsers — one MV3 browser extension, built from one source file that also ships as a standalone userscript.
 
 v3.0.0 merged the two previously separate projects (the *GLP Enhanced Declutter* userscript and the *GodLikeProductions Enhanced Suite* userscript) into a single engine. Nothing is loaded from the network: no jQuery CDN, no remote fonts, no remote code of any kind.
 
 ## What it does
 
-**142 settings across 23 routed pages**, all searchable from the in-page control center or the extension options page.
+**141 settings across 23 routed pages**, all searchable from the in-page control center or the extension options page.
 
 | Area | Highlights |
 | --- | --- |
-| Ads & nags | mgid/widget/AMP removal, network-level blocking via `declarativeNetRequest`, registration-nag bypass, country-club disclaimer auto-accept |
+| Ads & nags | precise MGID/widget/AMP removal, extension-only network blocking via `declarativeNetRequest`, registration-nag bypass, and no automation of membership contracts or consent |
 | Chrome | header, nav, tab-bar, footer, and layout-spacer cleanup; compact and sticky modes |
 | Thread list | column control, sort toolbar (updated/posted/rating/views/replies, both directions), newest-first default, pinned-thread hide or highlight, freshness colors, hot-thread badges, hide-thread buttons, keyword filters, infinite scroll, auto-refresh, hover previews |
 | Posts | compact/wider layouts, reader mode, OP highlighting, post numbers and permalinks, relative timestamps, collapsible posts, quote depth badges, nested-quote collapse, YouTube embedding, image lightbox with gallery navigation, in-thread quick search |
@@ -32,6 +32,16 @@ v3.0.0 merged the two previously separate projects (the *GLP Enhanced Declutter*
 | Portability | full backup and restore, shareable theme and filter packs, optional settings sync across devices |
 
 Every feature exposes `init`/`apply`/`destroy`, tracks its owned listeners and observers, and unwinds itself completely when switched off. Errors in one feature can no longer take the rest of the page down with them.
+
+## Settings control center
+
+The desktop control center exposes one focused page per job, with search, truthful saved/changed
+state, dependent-control feedback, page and per-setting reset with undo, operational presets,
+local-list management, data recovery, diagnostics, and keyboard navigation.
+
+![Core settings at 1440x900](design/screenshots/options-core-1440x900.png)
+
+![Operational presets at 1440x900](design/screenshots/options-presets-1440x900.png)
 
 The Diagnostics panel's **Save report** action creates a local JSON issue bundle containing the
 current route, browser context, settings, local lists, selector health, feature errors, timings,
@@ -63,13 +73,13 @@ and hit **Reload** on the extension card.
 
 ```bash
 npm run verify      # gates + build + structure checks
-npm run package     # dist/glp-ultra-v3.7.0.zip
+npm run package     # dist/glp-ultra-v3.8.0.zip
 ```
 
 ### Firefox
 
 ```bash
-npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.7.0.zip
+npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.8.0.zip
 ```
 
 Everything but the manifest is identical to the Chrome build. The Gecko variant swaps the
@@ -116,6 +126,7 @@ scripts/                     build, icons, package, verification gates
 | `npm run build` | Emits `dist/`, `extension/content/glp-ultra.user.js`, and the options-page schema |
 | `npm run verify:captures` | Asserts the selector registry still matches real captured GLP pages |
 | `npm run verify:extension` | Manifest/file/version/rule integrity, both browser variants |
+| `npm run verify:options` | Drives all 23 options routes, state transitions, recovery actions, and both supported desktop viewports |
 | `npm run verify:runtime` | Loads the unpacked extension in Chromium and drives it against the real captures |
 | `npm run verify` | All of the above |
 | `npm run shots` | Screenshots every surface in every theme into `dist/ui-shots/` |

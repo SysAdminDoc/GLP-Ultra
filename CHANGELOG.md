@@ -1,5 +1,42 @@
 # Changelog
 
+## 3.8.0 — 2026-08-13
+
+### Fixed
+
+- **Membership contracts remain a reader decision.** Removed the legacy club-disclaimer setting
+  and automation after the current public site showed that the matched form is now a membership
+  contract with age and legal-attestation controls. Schema migration prunes the old key, and the
+  runtime harness proves the controls remain unchecked and the form is never submitted.
+- **Native site links no longer disappear with ads.** GLP uses the generic `ads` class for real
+  **Adv. Search** and **Email Support** links. Cosmetic cleanup now targets confirmed MGID/AMP
+  hooks only, preserves those links, and still removes empty rows left by real ad units.
+
+### Redesigned
+
+- **The complete 23-page settings interface is now an operational desktop control center.** One
+  ImageGen-led design direction per page informed a code-native shell with truthful local state,
+  focused page hierarchy, compact desktop control matrices, dependency feedback, explicit theme
+  and custom-colour behavior, and the real extension icon instead of decorative fake previews.
+- **Reset and recovery are visible parts of the normal journey.** Every changed setting can be
+  reset individually; every page can be reset with Undo; presets apply real setting patches with
+  Undo; mute/block lists support search and reversible clearing; User Data reports real counts,
+  exports the complete local backup, and clears poster history reversibly.
+- **Diagnostics and Recovery are directly reachable from Options.** Search supports `Ctrl+K`,
+  Escape, hashes, no-match recovery, saved feedback, and keyboard-visible focus across all pages.
+
+### Verified
+
+- Added a 57-check options journey gate covering all 23 routes, resets and undo, dependency
+  states, presets, lists, data export/history recovery, direct tools, keyboard use, page errors,
+  and zero horizontal overflow at 1440x900 and 1920x1080.
+- Runtime replay now passes 213/213 checks. A real unpacked Chromium extension blocks GLP-origin
+  MGID and DoubleClick probes with `ERR_BLOCKED_BY_CLIENT` while a control request succeeds; real
+  feed/thread captures lose MGID/AMP DOM and empty shells while native `a.ads` links survive.
+- All 23 pages were rendered at 1440x900, 1920x1080, and the mockups' exact 1586x992 size for
+  direct visual comparison. Current live feed/thread cold-load proof remains blocked by the
+  membership contract and is not claimed.
+
 ## 3.7.0 — 2026-08-12
 
 ### Hardened

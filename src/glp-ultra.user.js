@@ -14,10 +14,16 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_addStyle
 // @run-at       document-start
+// @noframes
 // ==/UserScript==
 
 (function() {
     'use strict';
+
+    // The extension manifest is explicitly top-frame-only. Userscript managers inject into
+    // matching child frames unless told otherwise, so keep the two distributions equivalent
+    // even if a manager ignores or predates the metadata directive.
+    if (window.top !== window.self) return;
 
     const SCRIPT_VERSION = '3.8.0';
 
@@ -836,6 +842,21 @@
     const SETTINGS_SCHEMA_KEY = 'glpSettingsSchemaVersion';
     const SETTINGS_SCHEMA_VERSION = 3;
 
+    // Every non-boolean setting with a bounded domain is declared once here. The build exports
+    // this into the options schema and checks it against the panel metadata, so migration,
+    // backup import, packs, external extension edits, and visible inputs cannot disagree.
+    const SETTING_CONSTRAINTS = Object.freeze({
+        shapeStyle: { values: ['default', 'rounded', 'square'] },
+        fontSize: { min: 10, max: 24 },
+        lineHeight: { min: 1, max: 2.5 },
+        maxContentWidth: { min: 0, max: 2000 },
+        autoRefreshInterval: { min: 15, max: 600 },
+        watcherIntervalMinutes: { min: 5, max: 240 },
+        userMuteMatchMode: { values: ['exact', 'contains', 'regex'] },
+        userHistoryCap: { min: 50, max: 5000 },
+        mediaHoverPreviewSize: { min: 30, max: 95 }
+    });
+
     const LEGACY_SETTINGS_KEYS = Object.freeze([
         'glpx.settings.v1',
         'glpSettings',
@@ -887,6 +908,146 @@
         }
     }
 
+    function isRecord(value) {
+        return !!value && typeof value === 'object' && !Array.isArray(value);
+    }
+
+    function cleanImportText(value, maxLength = 200) {
+        if (typeof value !== 'string' && typeof value !== 'number') return '';
+        return String(value).trim().slice(0, maxLength);
+    }
+
+    function sanitizeStringList(value, { numeric = false, maxItems = 5000, maxLength = 160 } = {}) {
+        if (!Array.isArray(value)) return undefined;
+        const seen = new Set();
+        const result = [];
+        value.forEach(entry => {
+            const text = cleanImportText(entry, maxLength);
+            if (!text || (numeric && !/^\d+$/.test(text)) || seen.has(text)) return;
+            seen.add(text);
+            if (result.length < maxItems) result.push(text);
+        });
+        return result;
+    }
+
+    function sanitizeMutedUsers(value) {
+        return sanitizeStringList(value);
+    }
+
+    function sanitizeBlockedUsers(value) {
+        if (!Array.isArray(value)) return undefined;
+        const seen = new Set();
+        const result = [];
+        value.forEach(entry => {
+            const source = isRecord(entry) ? entry : { id: entry, name: entry };
+            const id = cleanImportText(source.id, 40);
+            if (!/^\d+$/.test(id) || seen.has(id) || result.length >= 5000) return;
+            seen.add(id);
+            result.push({ id, name: cleanImportText(source.name, 160) || id });
+        });
+        return result;
+    }
+
+    function sanitizeHiddenThreads(value) {
+        return sanitizeStringList(value, { numeric: true, maxItems: 5000, maxLength: 40 });
+    }
+
+    function sanitizeHiddenThreadTitles(value) {
+        if (!isRecord(value)) return undefined;
+        const result = Object.create(null);
+        Object.entries(value).forEach(([id, title]) => {
+            if (!/^\d+$/.test(id)) return;
+            const text = cleanImportText(title, 160);
+            if (text) result[id] = text;
+        });
+        return result;
+    }
+
+    function sanitizeTagColor(value, fallback) {
+        const color = cleanImportText(value, 40);
+        return /^(?:#[0-9a-f]{3,8}|var\(--glpx-(?:accent|warning)\))$/i.test(color)
+            ? color
+            : fallback;
+    }
+
+    function sanitizeUserTags(value) {
+        if (!isRecord(value)) return undefined;
+        const result = Object.create(null);
+        Object.entries(value).slice(0, 5000).forEach(([rawName, rawTag]) => {
+            const name = cleanImportText(rawName, 160);
+            if (!name || ['__proto__', 'prototype', 'constructor'].includes(name) || !isRecord(rawTag)) return;
+            const label = cleanImportText(rawTag.label, 80);
+            if (!label) return;
+            result[name] = {
+                bg: sanitizeTagColor(rawTag.bg, 'var(--glpx-accent)'),
+                fg: sanitizeTagColor(rawTag.fg, '#fff'),
+                label,
+                note: typeof rawTag.note === 'string' ? rawTag.note.trim().slice(0, 2000) : ''
+            };
+        });
+        return result;
+    }
+
+    function nonNegativeInteger(value, fallback = 0) {
+        const number = Number(value);
+        return Number.isFinite(number) && number >= 0 ? Math.floor(number) : fallback;
+    }
+
+    function sanitizeWatchedThreads(value) {
+        if (!Array.isArray(value)) return undefined;
+        const seen = new Set();
+        const result = [];
+        value.forEach(rawEntry => {
+            if (!isRecord(rawEntry) || result.length >= 25) return;
+            const id = cleanImportText(rawEntry.id, 40);
+            if (!/^\d+$/.test(id) || seen.has(id)) return;
+            let parsed;
+            try {
+                parsed = new URL(String(rawEntry.url || ''));
+            } catch (error) {
+                return;
+            }
+            if (!/^https?:$/.test(parsed.protocol)
+                || !/^(?:www\.)?godlikeproductions\.com$/i.test(parsed.hostname)
+                || !new RegExp(`/forum\\d+/message${id}(?:/|$)`, 'i').test(parsed.pathname)) return;
+            seen.add(id);
+            result.push({
+                id,
+                url: `https://${parsed.hostname}${parsed.pathname.replace(/\/$/, '')}`,
+                title: cleanImportText(rawEntry.title, 200) || `Thread ${id}`,
+                lastSeenPost: nonNegativeInteger(rawEntry.lastSeenPost),
+                latestPost: nonNegativeInteger(rawEntry.latestPost),
+                unread: nonNegativeInteger(rawEntry.unread),
+                lastCheckedAt: nonNegativeInteger(rawEntry.lastCheckedAt),
+                pages: nonNegativeInteger(rawEntry.pages),
+                error: cleanImportText(rawEntry.error, 300)
+            });
+        });
+        return result;
+    }
+
+    function sanitizeUserStats(value) {
+        if (!isRecord(value)) return undefined;
+        const result = Object.create(null);
+        Object.entries(value).slice(0, 5000).forEach(([rawName, rawEntry]) => {
+            const name = cleanImportText(rawName, 160);
+            if (!name || ['__proto__', 'prototype', 'constructor'].includes(name) || !isRecord(rawEntry)) return;
+            const threads = sanitizeStringList(rawEntry.threads, { maxItems: 50, maxLength: 80 }) || [];
+            result[name] = {
+                posts: nonNegativeInteger(rawEntry.posts),
+                threads,
+                first: nonNegativeInteger(rawEntry.first),
+                last: nonNegativeInteger(rawEntry.last)
+            };
+        });
+        return result;
+    }
+
+    function sanitizeUserStatsPages(value) {
+        const pages = sanitizeStringList(value, { maxItems: 200, maxLength: 240 });
+        return pages?.filter(page => /^\/forum\d+\/message\d+(?:\/pg\d+)?$/i.test(page));
+    }
+
     function readStoredValue(key, fallback = null) {
         let value = GM_getValue(key, null);
         if (value !== null && value !== undefined) return value;
@@ -929,12 +1090,21 @@
             const theme = normalizeThemeValue(value);
             return Object.prototype.hasOwnProperty.call(THEME_PALETTES, theme) ? theme : fallback;
         }
+        if (key === 'quoteBorderColor') {
+            const color = typeof value === 'string' ? value.trim() : '';
+            return color === fallback || /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
+        }
+        const constraint = SETTING_CONSTRAINTS[key] || {};
+        if (constraint.values) return constraint.values.includes(value) ? value : fallback;
         if (typeof fallback === 'boolean') return typeof value === 'boolean' ? value : fallback;
         if (typeof fallback === 'number') {
-            const number = typeof value === 'number' ? value : Number(value);
-            return Number.isFinite(number) ? number : fallback;
+            const number = typeof value === 'number'
+                ? value
+                : (typeof value === 'string' && value.trim() ? Number(value) : NaN);
+            if (!Number.isFinite(number)) return fallback;
+            return Math.min(constraint.max ?? number, Math.max(constraint.min ?? number, number));
         }
-        if (typeof fallback === 'string') return typeof value === 'string' ? value : String(value ?? fallback);
+        if (typeof fallback === 'string') return typeof value === 'string' ? value : fallback;
         return value;
     }
 
@@ -4763,9 +4933,10 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         loadUserTags();
         loadHiddenThreads();
         loadUserStats();
+        loadWatchedThreads();
         return {
             format: 'glp-ultra-backup',
-            formatVersion: 2,
+            formatVersion: 3,
             version: SCRIPT_VERSION,
             exportedAt: new Date().toISOString(),
             settings,
@@ -4773,8 +4944,10 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             blockedUsers,
             userTags,
             userStats,
+            userStatsPages,
             hiddenThreads,
-            hiddenThreadTitles
+            hiddenThreadTitles,
+            watchedThreads
         };
     }
 
@@ -4786,7 +4959,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     // future setting is not silently swept into a file people hand to each other.
     const PACK_KEYS = Object.freeze({
         theme: ['colorTheme', 'shapeStyle', 'fontSize', 'lineHeight', 'maxContentWidth',
-            'darkModeEnhance', 'quoteBorderColor', 'customCSS'],
+            'darkModeEnhance', 'quoteBorderColor'],
         filters: ['keywordHide', 'keywordHighlight', 'hideMemeReplies', 'hideBoomerGifs',
             'userMuteMatchMode']
     });
@@ -4819,7 +4992,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         link.href = url;
         link.download = `glp-ultra-${kind}-pack-${new Date().toISOString().slice(0, 10)}.json`;
         link.click();
-        URL.revokeObjectURL(url);
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
         showNotification(`${kind === 'theme' ? 'Theme' : 'Filter'} pack exported.`, 'success');
     }
 
@@ -4845,12 +5018,14 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     function applyPack(pack) {
         const kind = pack && pack.kind;
         const keys = PACK_KEYS[kind];
-        if (!keys) return { ok: false, reason: 'unknown pack kind' };
+        if (!keys || pack.format !== 'glp-ultra-pack' || !isRecord(pack.settings)) {
+            return { ok: false, reason: 'invalid pack' };
+        }
 
         let changed = 0;
         keys.forEach(key => {
-            if (!Object.prototype.hasOwnProperty.call(pack.settings || {}, key)) return;
-            const incoming = pack.settings[key];
+            if (!Object.prototype.hasOwnProperty.call(pack.settings, key)) return;
+            const incoming = normalizeSettingValue(key, pack.settings[key]);
             if (kind === 'filters' && (key === 'keywordHide' || key === 'keywordHighlight')) {
                 const merged = mergeCommaList(settings[key], incoming);
                 if (merged !== settings[key]) { settings[key] = merged; changed++; }
@@ -4863,17 +5038,11 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         if (kind === 'filters') {
             loadMutedUsers();
             loadBlockedUsers();
-            (pack.mutedUsers || []).forEach(name => {
-                const value = String(name || '').trim();
-                if (value && !mutedUsers.includes(value)) { mutedUsers.push(value); addedUsers++; }
-            });
-            (pack.blockedUsers || []).forEach(user => {
-                const id = String(user && user.id || '').trim();
-                if (id && !blockedUsers.some(existing => existing.id === id)) {
-                    blockedUsers.push({ id, name: String(user.name || id) });
-                    addedUsers++;
-                }
-            });
+            const previousMuted = mutedUsers.length;
+            const previousBlocked = blockedUsers.length;
+            mutedUsers = sanitizeMutedUsers([...mutedUsers, ...(sanitizeMutedUsers(pack.mutedUsers) || [])]) || [];
+            blockedUsers = sanitizeBlockedUsers([...blockedUsers, ...(sanitizeBlockedUsers(pack.blockedUsers) || [])]) || [];
+            addedUsers = (mutedUsers.length - previousMuted) + (blockedUsers.length - previousBlocked);
             saveMutedUsers();
             saveBlockedUsers();
         }
@@ -4927,61 +5096,129 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         a.href = url;
         a.download = `glp-ultra-backup-${new Date().toISOString().slice(0, 10)}.json`;
         a.click();
-        URL.revokeObjectURL(url);
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
         showNotification('Settings and user data exported.', 'success');
+    }
+
+    /**
+     * Restores a parsed backup through the same constraints used for stored settings. A malformed
+     * family is ignored instead of replacing healthy local data; a present, valid empty family
+     * still clears that family, which keeps intentional empty backups useful.
+     */
+    function applyBackupPayload(data) {
+        if (!isRecord(data)) return { ok: false, reason: 'invalid backup' };
+
+        const directSettings = isRecord(data.settings)
+            ? data.settings
+            : (!data.format && Object.keys(data).some(key => Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key))
+                ? data
+                : null);
+        const source = isRecord(data.data) ? data.data : data;
+        const oldLists = isRecord(data.lists) ? data.lists : {};
+        const candidates = {
+            mutedUsers: source.mutedUsers ?? oldLists.muted,
+            blockedUsers: source.blockedUsers ?? oldLists.blocked,
+            hiddenThreads: source.hiddenThreads ?? oldLists.hidden,
+            hiddenThreadTitles: source.hiddenThreadTitles,
+            userTags: source.userTags,
+            watchedThreads: source.watchedThreads,
+            userStats: source.userStats,
+            userStatsPages: source.userStatsPages
+        };
+
+        const hasRecognizedData = Object.values(candidates).some(value => value !== undefined);
+        if (!directSettings && !hasRecognizedData) return { ok: false, reason: 'unrecognized backup' };
+
+        let importedSettings = 0;
+        let importedStores = 0;
+        if (directSettings) {
+            const migrated = migrateSettingsPayload(directSettings).settings;
+            importedSettings = Object.keys(migrated).length;
+            settings = { ...DEFAULT_SETTINGS, ...migrated };
+            saveSettings();
+        }
+
+        const nextMuted = sanitizeMutedUsers(candidates.mutedUsers);
+        if (nextMuted !== undefined) {
+            mutedUsers = nextMuted;
+            saveMutedUsers();
+            importedStores++;
+        }
+
+        const nextBlocked = sanitizeBlockedUsers(candidates.blockedUsers);
+        if (nextBlocked !== undefined) {
+            blockedUsers = nextBlocked;
+            saveBlockedUsers();
+            importedStores++;
+        }
+
+        const nextHidden = sanitizeHiddenThreads(candidates.hiddenThreads);
+        const nextTitles = sanitizeHiddenThreadTitles(candidates.hiddenThreadTitles);
+        if (nextHidden !== undefined || nextTitles !== undefined) {
+            if (nextHidden !== undefined) hiddenThreads = nextHidden;
+            if (nextTitles !== undefined) hiddenThreadTitles = nextTitles;
+            saveHiddenThreads();
+            importedStores += Number(nextHidden !== undefined) + Number(nextTitles !== undefined);
+        }
+
+        const nextTags = sanitizeUserTags(candidates.userTags);
+        if (nextTags !== undefined) {
+            userTags = nextTags;
+            saveUserTags();
+            importedStores++;
+        }
+
+        const nextWatched = sanitizeWatchedThreads(candidates.watchedThreads);
+        if (nextWatched !== undefined) {
+            watchedThreads = nextWatched;
+            saveWatchedThreads();
+            importedStores++;
+        }
+
+        const nextStats = sanitizeUserStats(candidates.userStats);
+        const nextStatsPages = sanitizeUserStatsPages(candidates.userStatsPages);
+        if (nextStats !== undefined || nextStatsPages !== undefined) {
+            if (nextStats !== undefined) userStats = nextStats;
+            if (nextStatsPages !== undefined) userStatsPages = nextStatsPages;
+            saveUserStats();
+            importedStores += Number(nextStats !== undefined) + Number(nextStatsPages !== undefined);
+        }
+
+        applyStyles();
+        if (!settings.enabled) {
+            destroyEnhancedUI({ keepStyles: true });
+        } else if (!runtimeState.featuresStarted) {
+            startFeatures();
+        } else {
+            runFeatureRegistry('apply');
+        }
+        return { ok: true, importedSettings, importedStores };
     }
 
     function importSettings() {
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.json';
+        input.accept = 'application/json,.json';
         input.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
+            if (file.size > 8 * 1024 * 1024) {
+                showNotification('Import failed. The selected backup is larger than 8 MB.', 'error');
+                return;
+            }
             const reader = new FileReader();
             reader.onload = (ev) => {
                 try {
                     const data = JSON.parse(ev.target.result);
-                    if (data.settings) {
-                        settings = { ...DEFAULT_SETTINGS };
-                        Object.keys(DEFAULT_SETTINGS).forEach(key => {
-                            if (Object.prototype.hasOwnProperty.call(data.settings, key)) {
-                                settings[key] = data.settings[key];
-                            }
-                        });
-                        saveSettings();
-                    }
-                    if (Array.isArray(data.mutedUsers)) {
-                        mutedUsers = data.mutedUsers;
-                        saveMutedUsers();
-                    }
-                    if (Array.isArray(data.blockedUsers)) {
-                        blockedUsers = data.blockedUsers;
-                        saveBlockedUsers();
-                    }
-                    if (data.userTags && typeof data.userTags === 'object') {
-                        userTags = data.userTags;
-                        saveUserTags();
-                    }
-                    if (data.userStats && typeof data.userStats === 'object') {
-                        userStats = data.userStats;
-                        saveUserStats();
-                    }
-                    if (Array.isArray(data.hiddenThreads)) {
-                        hiddenThreads = data.hiddenThreads;
-                        // Older backups predate the titles; the ids still restore, unnamed.
-                        hiddenThreadTitles = (data.hiddenThreadTitles && typeof data.hiddenThreadTitles === 'object')
-                            ? data.hiddenThreadTitles
-                            : {};
-                        saveHiddenThreads();
-                    }
-                    applyStyles();
+                    const result = applyBackupPayload(data);
+                    if (!result.ok) throw new Error(result.reason);
                     closeSettings();
-                    showNotification('Settings and user data imported. Reload if a feature needs a fresh page.', 'success');
+                    showNotification(`Imported ${result.importedSettings} settings and ${result.importedStores} local data stores.`, 'success');
                 } catch (err) {
                     showNotification('Import failed. Choose a valid GLP Ultra JSON file.', 'error');
                 }
             };
+            reader.onerror = () => showNotification('Import failed. The selected file could not be read.', 'error');
             reader.readAsText(file);
         });
         input.click();
@@ -5955,7 +6192,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
     function loadMutedUsers() {
         const stored = readFeatureStore('glpMutedUsers', []);
-        mutedUsers = Array.isArray(stored) ? stored : [];
+        mutedUsers = sanitizeMutedUsers(stored) || [];
     }
 
     function saveMutedUsers() {
@@ -6045,8 +6282,8 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     function loadUserStats() {
         const storedStats = readFeatureStore('glpUserStats', {});
         const storedPages = readFeatureStore('glpUserStatsPages', []);
-        userStats = storedStats && typeof storedStats === 'object' && !Array.isArray(storedStats) ? storedStats : {};
-        userStatsPages = Array.isArray(storedPages) ? storedPages : [];
+        userStats = sanitizeUserStats(storedStats) || {};
+        userStatsPages = sanitizeUserStatsPages(storedPages) || [];
     }
 
     function saveUserStats() {
@@ -6165,9 +6402,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
     function loadBlockedUsers() {
         const parsed = readFeatureStore('glpBlockedUsers', []);
-        blockedUsers = Array.isArray(parsed)
-            ? parsed.map(entry => (typeof entry === 'object' && entry ? entry : { id: String(entry), name: String(entry) }))
-            : [];
+        blockedUsers = sanitizeBlockedUsers(parsed) || [];
     }
 
     function saveBlockedUsers() {
@@ -6674,9 +6909,8 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     function loadHiddenThreads() {
         const storedThreads = readFeatureStore('glpHiddenThreads', []);
         const storedTitles = readFeatureStore('glpHiddenThreadTitles', {});
-        hiddenThreads = Array.isArray(storedThreads) ? storedThreads : [];
-        hiddenThreadTitles = storedTitles && typeof storedTitles === 'object' && !Array.isArray(storedTitles)
-            ? storedTitles : {};
+        hiddenThreads = sanitizeHiddenThreads(storedThreads) || [];
+        hiddenThreadTitles = sanitizeHiddenThreadTitles(storedTitles) || {};
     }
 
     function saveHiddenThreads() {
@@ -7306,7 +7540,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
     function loadUserTags() {
         const stored = readFeatureStore('glpUserTags', {});
-        userTags = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+        userTags = sanitizeUserTags(stored) || {};
     }
 
     function saveUserTags() {
@@ -7953,7 +8187,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
     function loadWatchedThreads() {
         const parsed = readFeatureStore('glpWatchedThreads', []);
-        watchedThreads = Array.isArray(parsed) ? parsed : [];
+        watchedThreads = sanitizeWatchedThreads(parsed) || [];
     }
 
     function saveWatchedThreads() {
@@ -9231,10 +9465,12 @@ ${manifest}
             showNotification('That settings backup could not be read.', 'error');
             return false;
         }
-        settings = { ...DEFAULT_SETTINGS };
-        Object.keys(DEFAULT_SETTINGS).forEach(key => {
-            if (Object.prototype.hasOwnProperty.call(parsed, key)) settings[key] = parsed[key];
-        });
+        const migrated = migrateSettingsPayload(parsed).settings;
+        if (!Object.keys(migrated).length) {
+            showNotification('That settings backup has no recognized settings.', 'error');
+            return false;
+        }
+        settings = { ...DEFAULT_SETTINGS, ...migrated };
         saveSettings();
         applyStyles();
         runFeatureRegistry('apply');
@@ -9785,10 +10021,10 @@ ${manifest}
         getSettings: () => ({ ...settings }),
         getDefaults: () => ({ ...DEFAULT_SETTINGS }),
         applyExternalSettings(patch) {
-            if (!patch || typeof patch !== 'object') return false;
-            Object.keys(DEFAULT_SETTINGS).forEach(key => {
-                if (Object.prototype.hasOwnProperty.call(patch, key)) settings[key] = patch[key];
-            });
+            if (!isRecord(patch)) return false;
+            const migrated = migrateSettingsPayload(patch).settings;
+            if (!Object.keys(migrated).length) return false;
+            Object.assign(settings, migrated);
             saveSettings();
             applyStyles();
             // The nav's theme picker is a plain <select>; nothing repaints it when the theme is
@@ -9811,6 +10047,8 @@ ${manifest}
         describeContext: () => ({ ...(runtimeState.lastContext || {}) }),
         openRecovery: renderRecoveryShelf,
         getRecoveryInventory: recoveryInventory,
+        buildBackup: buildBackupPayload,
+        applyBackup: applyBackupPayload,
         buildPack,
         applyPack,
         buildIssueBundle,

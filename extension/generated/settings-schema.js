@@ -144,6 +144,50 @@ window.GLP_SCHEMA = {
     "syncSettings": false,
     "noiseBudget": true
   },
+  "constraints": {
+    "shapeStyle": {
+      "values": [
+        "default",
+        "rounded",
+        "square"
+      ]
+    },
+    "fontSize": {
+      "min": 10,
+      "max": 24
+    },
+    "lineHeight": {
+      "min": 1,
+      "max": 2.5
+    },
+    "maxContentWidth": {
+      "min": 0,
+      "max": 2000
+    },
+    "autoRefreshInterval": {
+      "min": 15,
+      "max": 600
+    },
+    "watcherIntervalMinutes": {
+      "min": 5,
+      "max": 240
+    },
+    "userMuteMatchMode": {
+      "values": [
+        "exact",
+        "contains",
+        "regex"
+      ]
+    },
+    "userHistoryCap": {
+      "min": 50,
+      "max": 5000
+    },
+    "mediaHoverPreviewSize": {
+      "min": 30,
+      "max": 95
+    }
+  },
   "settingDescriptions": {
     "enabled": "Turns every GLP Ultra page modification on or off without clearing saved settings.",
     "overrideDarkReader": "Tells Dark Reader to leave this site alone while GLP Ultra is theming it. Two dark themes over one page wash out every colour the theme picked.",

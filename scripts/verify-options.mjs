@@ -191,6 +191,83 @@ try {
       && Array.isArray(exported?.watchedThreads),
     download ? download.suggestedFilename() : 'no download');
 
+  const hostileBackup = {
+    format: 'glp-ultra-backup',
+    formatVersion: 3,
+    settings: {
+      enabled: 'yes',
+      colorTheme: 'not-a-theme',
+      shapeStyle: 'pill',
+      quoteBorderColor: 'red; } body { display: none',
+      fontSize: 999,
+      lineHeight: -5,
+      autoRefreshInterval: 1,
+      watcherIntervalMinutes: 9999,
+      userMuteMatchMode: 'wildcard',
+      userHistoryCap: 999999,
+      mediaHoverPreviewSize: -20
+    },
+    mutedUsers: ['  Valid Reader  ', '', null, 'Valid Reader'],
+    blockedUsers: [{ id: '42', name: 123 }, { id: 'not-numeric', name: 'Bad' }, null],
+    hiddenThreads: ['6170474', 'not-a-thread', 6170474],
+    hiddenThreadTitles: { 6170474: '  Saved title  ', nope: 'Bad' },
+    userTags: {
+      'Known Poster': { label: '  Friend  ', note: 42, bg: 'url(https://invalid.example)', fg: '#fff' }
+    },
+    watchedThreads: [
+      { id: '6170474', url: 'https://www.godlikeproductions.com/forum1/message6170474', title: ' Watched ', unread: 2 },
+      { id: '5', url: 'javascript:alert(1)', title: 'Bad' }
+    ],
+    userStats: {
+      'Known Poster': { posts: 4, threads: ['6170474', null], first: 1, last: 2 },
+      Broken: 'not-an-entry'
+    },
+    userStatsPages: ['/forum1/message6170474/pg1', 'javascript:alert(1)', null]
+  };
+  await page.locator('#import-file').setInputFiles({
+    name: 'hostile-backup.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(hostileBackup))
+  });
+  await waitFor(() => page.locator('#toast-stack').innerText(), value => value.includes('Imported'));
+  const importedStores = await worker.evaluate(async () => chrome.storage.local.get([
+    'glpEnhancedSettings', 'glpMutedUsers', 'glpBlockedUsers', 'glpHiddenThreads',
+    'glpHiddenThreadTitles', 'glpUserTags', 'glpWatchedThreads', 'glpUserStats', 'glpUserStatsPages'
+  ]));
+  const importedSettings = parseJSON(importedStores.glpEnhancedSettings, {});
+  check('options: imported settings are type-checked and range-clamped',
+    importedSettings.enabled === schema.defaults.enabled
+      && importedSettings.colorTheme === schema.defaults.colorTheme
+      && importedSettings.shapeStyle === schema.defaults.shapeStyle
+      && importedSettings.quoteBorderColor === schema.defaults.quoteBorderColor
+      && importedSettings.fontSize === 24
+      && importedSettings.lineHeight === 1
+      && importedSettings.autoRefreshInterval === 15
+      && importedSettings.watcherIntervalMinutes === 240
+      && importedSettings.userMuteMatchMode === schema.defaults.userMuteMatchMode
+      && importedSettings.userHistoryCap === 5000
+      && importedSettings.mediaHoverPreviewSize === 30,
+    JSON.stringify(importedSettings));
+  const importedMuted = parseJSON(importedStores.glpMutedUsers, []);
+  const importedBlocked = parseJSON(importedStores.glpBlockedUsers, []);
+  const importedHidden = parseJSON(importedStores.glpHiddenThreads, []);
+  const importedTitles = parseJSON(importedStores.glpHiddenThreadTitles, {});
+  const importedTags = parseJSON(importedStores.glpUserTags, {});
+  const importedWatched = parseJSON(importedStores.glpWatchedThreads, []);
+  const importedStats = parseJSON(importedStores.glpUserStats, {});
+  const importedStatsPages = parseJSON(importedStores.glpUserStatsPages, []);
+  check('options: imported local data drops malformed and duplicate entries',
+    JSON.stringify(importedMuted) === JSON.stringify(['Valid Reader'])
+      && importedBlocked.length === 1 && importedBlocked[0].id === '42'
+      && JSON.stringify(importedHidden) === JSON.stringify(['6170474'])
+      && Object.keys(importedTitles).length === 1 && importedTitles['6170474'] === 'Saved title'
+      && importedTags['Known Poster']?.label === 'Friend'
+      && importedTags['Known Poster']?.bg !== 'url(https://invalid.example)'
+      && importedWatched.length === 1 && importedWatched[0].id === '6170474'
+      && Object.keys(importedStats).length === 1
+      && JSON.stringify(importedStatsPages) === JSON.stringify(['/forum1/message6170474/pg1']),
+    JSON.stringify({ importedMuted, importedBlocked, importedHidden, importedTitles, importedTags, importedWatched, importedStats, importedStatsPages }));
+
   for (const section of schema.sections) {
     await navigate(section.title);
     check('options route: ' + section.title,

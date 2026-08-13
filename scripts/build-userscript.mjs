@@ -33,6 +33,12 @@ const metadataMatch = source.match(/\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScri
 if (!metadataMatch) {
   fail('missing userscript metadata block');
 }
+if (!metadataMatch?.[0].includes('// @noframes')) {
+  fail('userscript must declare @noframes so it matches the extension top-frame contract');
+}
+if (!/if \(window\.top !== window\.self\) return;/.test(source)) {
+  fail('userscript is missing its top-frame runtime guard');
+}
 
 const versionMatch = source.match(/\/\/ @version\s+([^\s]+)/);
 if (!versionMatch) {
@@ -168,6 +174,7 @@ try {
   const defaults = evalObjectLiteral('const DEFAULT_SETTINGS =');
   const settingDescriptions = evalObjectLiteral('const SETTING_DESCRIPTIONS =');
   const sectionDescriptions = evalObjectLiteral('const SECTION_DESCRIPTIONS =');
+  const constraints = evalObjectLiteral('const SETTING_CONSTRAINTS = Object.freeze(');
   // The extension pages are separate documents and cannot read the injected token layer, so the
   // palette travels with the schema. One source, three surfaces, one theme.
   const palettes = evalObjectLiteral('const THEME_PALETTES = Object.freeze(');
@@ -181,7 +188,27 @@ try {
     fail(`settings missing from the panel schema: ${missing.join(', ')}`);
   }
 
-  schemaPayload = { version: packageJson.version, defaults, settingDescriptions, sectionDescriptions, sections, palettes };
+  const itemByKey = new Map(sections.flatMap(section => section.items).map(item => [item.key, item]));
+  Object.entries(constraints).forEach(([key, constraint]) => {
+    const item = itemByKey.get(key);
+    if (!Object.prototype.hasOwnProperty.call(defaults, key) || !item) {
+      fail(`constraint ${key} does not map to a declared setting control`);
+      return;
+    }
+    if (constraint.values) {
+      const optionKeys = Object.keys(item.options || {});
+      if (item.type !== 'select' || JSON.stringify(optionKeys) !== JSON.stringify(constraint.values)) {
+        fail(`constraint values for ${key} do not match its select options`);
+      }
+    }
+    if (constraint.min !== undefined || constraint.max !== undefined) {
+      if (item.type !== 'number' || item.min !== constraint.min || item.max !== constraint.max) {
+        fail(`constraint range for ${key} does not match its number control`);
+      }
+    }
+  });
+
+  schemaPayload = { version: packageJson.version, defaults, constraints, settingDescriptions, sectionDescriptions, sections, palettes };
 } catch (error) {
   fail(error.message);
 }

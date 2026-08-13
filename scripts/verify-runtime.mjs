@@ -620,10 +620,17 @@ try {
 
   const themePack = (await sendMessage(worker, page, { type: 'glp:build-pack', kind: 'theme' }))?.pack;
   check('packs: a theme pack carries the look and nothing else',
-    themePack?.kind === 'theme' && 'colorTheme' in (themePack.settings || {}) && !('keywordHide' in (themePack.settings || {})),
+    themePack?.kind === 'theme' && 'colorTheme' in (themePack.settings || {})
+      && !('keywordHide' in (themePack.settings || {})) && !('customCSS' in (themePack.settings || {})),
     JSON.stringify(Object.keys(themePack?.settings || {})));
   check('packs: a theme pack carries no user lists',
     !themePack?.mutedUsers && !themePack?.blockedUsers);
+
+  const fullBackup = (await sendMessage(worker, page, { type: 'glp:build-backup' }))?.backup;
+  check('backup: the in-page export uses the complete format-3 data contract',
+    fullBackup?.format === 'glp-ultra-backup' && fullBackup?.formatVersion === 3
+      && Array.isArray(fullBackup?.watchedThreads) && Array.isArray(fullBackup?.userStatsPages),
+    JSON.stringify({ formatVersion: fullBackup?.formatVersion, keys: Object.keys(fullBackup || {}) }));
 
   const applied = await sendMessage(worker, page, {
     type: 'glp:apply-pack',
@@ -633,6 +640,56 @@ try {
   const themedState = await sendMessage(worker, page, { type: 'glp:get-state' });
   check('packs: the theme pack took effect', themedState?.settings?.colorTheme === 'dracula', themedState?.settings?.colorTheme);
   check('packs: a theme pack leaves filters untouched', themedState?.settings?.keywordHide === 'mine', themedState?.settings?.keywordHide);
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { customCSS: '.local-rule { color: red; }' } });
+  const hostileTheme = await sendMessage(worker, page, {
+    type: 'glp:apply-pack',
+    pack: {
+      format: 'glp-ultra-pack',
+      kind: 'theme',
+      settings: {
+        colorTheme: 'not-a-theme',
+        shapeStyle: 'pill',
+        quoteBorderColor: 'red; } body { display: none',
+        fontSize: 999,
+        customCSS: '* { display: none !important; }'
+      }
+    }
+  });
+  const afterHostileTheme = await sendMessage(worker, page, { type: 'glp:get-state' });
+  check('packs: imported theme values are validated before application',
+    hostileTheme?.result?.ok === true
+      && afterHostileTheme?.settings?.colorTheme === 'midnight'
+      && afterHostileTheme?.settings?.shapeStyle === 'default'
+      && afterHostileTheme?.settings?.quoteBorderColor === 'var(--glpx-accent)'
+      && afterHostileTheme?.settings?.fontSize === 24,
+    JSON.stringify(afterHostileTheme?.settings));
+  check('packs: shareable themes cannot import executable custom CSS',
+    afterHostileTheme?.settings?.customCSS === '.local-rule { color: red; }',
+    afterHostileTheme?.settings?.customCSS);
+
+  const hostilePatch = await sendMessage(worker, page, {
+    type: 'glp:patch-settings',
+    patch: {
+      enabled: 'yes', colorTheme: 'invalid', shapeStyle: 'pill',
+      quoteBorderColor: 'red; } body { display: none', fontSize: 999, lineHeight: -5,
+      autoRefreshInterval: 1, watcherIntervalMinutes: 9999, userMuteMatchMode: 'wildcard',
+      userHistoryCap: 999999, mediaHoverPreviewSize: -20
+    }
+  });
+  check('settings API: external patches are type-checked and range-clamped',
+    hostilePatch?.settings?.enabled === true
+      && hostilePatch?.settings?.colorTheme === 'midnight'
+      && hostilePatch?.settings?.shapeStyle === 'default'
+      && hostilePatch?.settings?.quoteBorderColor === 'var(--glpx-accent)'
+      && hostilePatch?.settings?.fontSize === 24
+      && hostilePatch?.settings?.lineHeight === 1
+      && hostilePatch?.settings?.autoRefreshInterval === 15
+      && hostilePatch?.settings?.watcherIntervalMinutes === 240
+      && hostilePatch?.settings?.userMuteMatchMode === 'exact'
+      && hostilePatch?.settings?.userHistoryCap === 5000
+      && hostilePatch?.settings?.mediaHoverPreviewSize === 30,
+    JSON.stringify(hostilePatch?.settings));
 
   await sendMessage(worker, page, {
     type: 'glp:apply-pack',
@@ -655,7 +712,14 @@ try {
     ['PackedMuteOne', 'PackedMuteTwo'].every(name => (merged?.lists?.mutedUsers || []).includes(name)),
     JSON.stringify(merged?.lists?.mutedUsers));
 
-  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { keywordHide: '', colorTheme: 'midnight' } });
+  await sendMessage(worker, page, {
+    type: 'glp:patch-settings',
+    patch: {
+      keywordHide: '', colorTheme: 'midnight', customCSS: '', fontSize: 14, lineHeight: 1.5,
+      autoRefreshInterval: 60, watcherIntervalMinutes: 15, userMuteMatchMode: 'exact',
+      userHistoryCap: 400, mediaHoverPreviewSize: 70
+    }
+  });
 
   // Divergence between localStorage (the primary store) and its chrome.storage mirror is the
   // state that fires the shim's sync at document_start. Two things must hold afterwards: the
@@ -1429,6 +1493,86 @@ try {
   check('timers: switching it back on restores exactly one countdown bar',
     await page.locator('#glp-auto-refresh-bar').count() === 1);
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { autoRefresh: false } });
+
+  // ---------------- Full backup ingress ----------------
+  // This exercises the engine's own file-import path through its parsed-payload boundary. The
+  // Options page has a separate document and a separate copy of these guards, tested elsewhere.
+  const engineImport = await sendMessage(worker, page, {
+    type: 'glp:apply-backup',
+    backup: {
+      format: 'glp-ultra-backup',
+      formatVersion: 3,
+      settings: {
+        enabled: 'yes', colorTheme: 'not-a-theme', shapeStyle: 'pill',
+        quoteBorderColor: 'red; } body { display: none', fontSize: 999,
+        lineHeight: -5, autoRefreshInterval: 1, watcherIntervalMinutes: 9999,
+        userMuteMatchMode: 'wildcard', userHistoryCap: 999999, mediaHoverPreviewSize: -20
+      },
+      mutedUsers: ['  Valid Reader  ', '', null, 'Valid Reader'],
+      blockedUsers: [{ id: '42', name: 123 }, { id: 'not-numeric', name: 'Bad' }, null],
+      hiddenThreads: ['6170474', 'not-a-thread', 6170474],
+      hiddenThreadTitles: { 6170474: '  Saved title  ', nope: 'Bad' },
+      userTags: {
+        'Known Poster': { label: '  Friend  ', note: 42, bg: 'url(https://invalid.example)', fg: '#fff' }
+      },
+      watchedThreads: [
+        { id: '6170474', url: 'https://www.godlikeproductions.com/forum1/message6170474', title: ' Watched ', unread: 2 },
+        { id: '5', url: 'javascript:alert(1)', title: 'Bad' }
+      ],
+      userStats: {
+        'Known Poster': { posts: 4, threads: ['6170474', null], first: 1, last: 2 },
+        Broken: 'not-an-entry'
+      },
+      userStatsPages: ['/forum1/message6170474/pg1', 'javascript:alert(1)', null]
+    }
+  });
+  const afterEngineImport = await sendMessage(worker, page, { type: 'glp:get-state' });
+  check('backup: the in-page importer validates settings before applying them',
+    engineImport?.result?.ok === true
+      && afterEngineImport?.settings?.enabled === true
+      && afterEngineImport?.settings?.colorTheme === 'midnight'
+      && afterEngineImport?.settings?.shapeStyle === 'default'
+      && afterEngineImport?.settings?.quoteBorderColor === 'var(--glpx-accent)'
+      && afterEngineImport?.settings?.fontSize === 24
+      && afterEngineImport?.settings?.lineHeight === 1
+      && afterEngineImport?.settings?.autoRefreshInterval === 15
+      && afterEngineImport?.settings?.watcherIntervalMinutes === 240
+      && afterEngineImport?.settings?.userMuteMatchMode === 'exact'
+      && afterEngineImport?.settings?.userHistoryCap === 5000
+      && afterEngineImport?.settings?.mediaHoverPreviewSize === 30,
+    JSON.stringify(afterEngineImport?.settings));
+
+  const engineStores = await waitFor(
+    () => worker.evaluate(async () => chrome.storage.local.get([
+      'glpMutedUsers', 'glpBlockedUsers', 'glpHiddenThreads', 'glpHiddenThreadTitles',
+      'glpUserTags', 'glpWatchedThreads', 'glpUserStats', 'glpUserStatsPages'
+    ])),
+    stored => {
+      try {
+        return JSON.parse(stored.glpUserStatsPages || '[]').length === 1;
+      } catch (error) {
+        return false;
+      }
+    });
+  const engineMuted = JSON.parse(engineStores.glpMutedUsers || '[]');
+  const engineBlocked = JSON.parse(engineStores.glpBlockedUsers || '[]');
+  const engineHidden = JSON.parse(engineStores.glpHiddenThreads || '[]');
+  const engineTitles = JSON.parse(engineStores.glpHiddenThreadTitles || '{}');
+  const engineTags = JSON.parse(engineStores.glpUserTags || '{}');
+  const engineWatched = JSON.parse(engineStores.glpWatchedThreads || '[]');
+  const engineStats = JSON.parse(engineStores.glpUserStats || '{}');
+  const engineStatsPages = JSON.parse(engineStores.glpUserStatsPages || '[]');
+  check('backup: the in-page importer drops malformed and duplicate local data',
+    JSON.stringify(engineMuted) === JSON.stringify(['Valid Reader'])
+      && engineBlocked.length === 1 && engineBlocked[0].id === '42'
+      && JSON.stringify(engineHidden) === JSON.stringify(['6170474'])
+      && Object.keys(engineTitles).length === 1 && engineTitles['6170474'] === 'Saved title'
+      && engineTags['Known Poster']?.label === 'Friend'
+      && engineTags['Known Poster']?.bg !== 'url(https://invalid.example)'
+      && engineWatched.length === 1 && engineWatched[0].id === '6170474'
+      && Object.keys(engineStats).length === 1
+      && JSON.stringify(engineStatsPages) === JSON.stringify(['/forum1/message6170474/pg1']),
+    JSON.stringify({ engineMuted, engineBlocked, engineHidden, engineTitles, engineTags, engineWatched, engineStats, engineStatsPages }));
 } finally {
   if (context) await context.close();
   await rm(userDataDir, { recursive: true, force: true }).catch(() => {});

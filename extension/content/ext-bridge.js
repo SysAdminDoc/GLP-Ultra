@@ -59,6 +59,14 @@
                 sendResponse(api ? { ok: true, pack: api.buildPack(message.kind) } : { ok: false });
                 return false;
 
+            case 'glp:build-backup':
+                sendResponse(api ? { ok: true, backup: api.buildBackup() } : { ok: false });
+                return false;
+
+            case 'glp:apply-backup':
+                sendResponse(api ? { ok: true, result: api.applyBackup(message.backup) } : { ok: false });
+                return false;
+
             case 'glp:apply-pack':
                 sendResponse(api ? { ok: true, result: api.applyPack(message.pack) } : { ok: false });
                 return false;

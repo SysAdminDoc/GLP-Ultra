@@ -184,6 +184,150 @@ function parseJSON(raw, fallback) {
     }
 }
 
+function isRecord(value) {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function cleanImportText(value, maxLength = 200) {
+    if (typeof value !== 'string' && typeof value !== 'number') return '';
+    return String(value).trim().slice(0, maxLength);
+}
+
+function sanitizeStringList(value, { numeric = false, maxItems = 5000, maxLength = 160 } = {}) {
+    if (!Array.isArray(value)) return undefined;
+    const seen = new Set();
+    const result = [];
+    value.forEach(entry => {
+        const text = cleanImportText(entry, maxLength);
+        if (!text || (numeric && !/^\d+$/.test(text)) || seen.has(text)) return;
+        seen.add(text);
+        if (result.length < maxItems) result.push(text);
+    });
+    return result;
+}
+
+function sanitizeBlockedUsers(value) {
+    if (!Array.isArray(value)) return undefined;
+    const seen = new Set();
+    const result = [];
+    value.forEach(entry => {
+        const source = isRecord(entry) ? entry : { id: entry, name: entry };
+        const id = cleanImportText(source.id, 40);
+        if (!/^\d+$/.test(id) || seen.has(id) || result.length >= 5000) return;
+        seen.add(id);
+        result.push({ id, name: cleanImportText(source.name, 160) || id });
+    });
+    return result;
+}
+
+function sanitizeHiddenThreadTitles(value) {
+    if (!isRecord(value)) return undefined;
+    const result = Object.create(null);
+    Object.entries(value).forEach(([id, title]) => {
+        if (!/^\d+$/.test(id)) return;
+        const text = cleanImportText(title, 160);
+        if (text) result[id] = text;
+    });
+    return result;
+}
+
+function sanitizeTagColor(value, fallback) {
+    const color = cleanImportText(value, 40);
+    return /^(?:#[0-9a-f]{3,8}|var\(--glpx-(?:accent|warning)\))$/i.test(color) ? color : fallback;
+}
+
+function sanitizeUserTags(value) {
+    if (!isRecord(value)) return undefined;
+    const result = Object.create(null);
+    Object.entries(value).slice(0, 5000).forEach(([rawName, rawTag]) => {
+        const name = cleanImportText(rawName, 160);
+        if (!name || ['__proto__', 'prototype', 'constructor'].includes(name) || !isRecord(rawTag)) return;
+        const label = cleanImportText(rawTag.label, 80);
+        if (!label) return;
+        result[name] = {
+            bg: sanitizeTagColor(rawTag.bg, 'var(--glpx-accent)'),
+            fg: sanitizeTagColor(rawTag.fg, '#fff'),
+            label,
+            note: typeof rawTag.note === 'string' ? rawTag.note.trim().slice(0, 2000) : ''
+        };
+    });
+    return result;
+}
+
+function nonNegativeInteger(value, fallback = 0) {
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? Math.floor(number) : fallback;
+}
+
+function sanitizeWatchedThreads(value) {
+    if (!Array.isArray(value)) return undefined;
+    const seen = new Set();
+    const result = [];
+    value.forEach(rawEntry => {
+        if (!isRecord(rawEntry) || result.length >= 25) return;
+        const id = cleanImportText(rawEntry.id, 40);
+        if (!/^\d+$/.test(id) || seen.has(id)) return;
+        let parsed;
+        try {
+            parsed = new URL(String(rawEntry.url || ''));
+        } catch (error) {
+            return;
+        }
+        if (!/^https?:$/.test(parsed.protocol)
+            || !/^(?:www\.)?godlikeproductions\.com$/i.test(parsed.hostname)
+            || !new RegExp(`/forum\\d+/message${id}(?:/|$)`, 'i').test(parsed.pathname)) return;
+        seen.add(id);
+        result.push({
+            id,
+            url: `https://${parsed.hostname}${parsed.pathname.replace(/\/$/, '')}`,
+            title: cleanImportText(rawEntry.title, 200) || `Thread ${id}`,
+            lastSeenPost: nonNegativeInteger(rawEntry.lastSeenPost),
+            latestPost: nonNegativeInteger(rawEntry.latestPost),
+            unread: nonNegativeInteger(rawEntry.unread),
+            lastCheckedAt: nonNegativeInteger(rawEntry.lastCheckedAt),
+            pages: nonNegativeInteger(rawEntry.pages),
+            error: cleanImportText(rawEntry.error, 300)
+        });
+    });
+    return result;
+}
+
+function sanitizeUserStats(value) {
+    if (!isRecord(value)) return undefined;
+    const result = Object.create(null);
+    Object.entries(value).slice(0, 5000).forEach(([rawName, rawEntry]) => {
+        const name = cleanImportText(rawName, 160);
+        if (!name || ['__proto__', 'prototype', 'constructor'].includes(name) || !isRecord(rawEntry)) return;
+        result[name] = {
+            posts: nonNegativeInteger(rawEntry.posts),
+            threads: sanitizeStringList(rawEntry.threads, { maxItems: 50, maxLength: 80 }) || [],
+            first: nonNegativeInteger(rawEntry.first),
+            last: nonNegativeInteger(rawEntry.last)
+        };
+    });
+    return result;
+}
+
+function sanitizeUserStatsPages(value) {
+    const pages = sanitizeStringList(value, { maxItems: 200, maxLength: 240 });
+    return pages?.filter(page => /^\/forum\d+\/message\d+(?:\/pg\d+)?$/i.test(page));
+}
+
+const DATA_SANITIZERS = Object.freeze({
+    muted: value => sanitizeStringList(value),
+    blocked: sanitizeBlockedUsers,
+    hidden: value => sanitizeStringList(value, { numeric: true, maxItems: 5000, maxLength: 40 }),
+    hiddenTitles: sanitizeHiddenThreadTitles,
+    tags: sanitizeUserTags,
+    watched: sanitizeWatchedThreads,
+    stats: sanitizeUserStats,
+    statsPages: sanitizeUserStatsPages
+});
+
+function sanitizeDataValue(name, value) {
+    return DATA_SANITIZERS[name] ? DATA_SANITIZERS[name](value) : undefined;
+}
+
 function valuesEqual(left, right) {
     return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -259,11 +403,54 @@ function toast(message, kind, undoAction) {
 }
 
 function safeSettingsPayload(candidate) {
-    const source = candidate && typeof candidate === 'object' ? candidate : {};
-    return Object.fromEntries(Object.keys(schema.defaults).map(key => [
-        key,
-        Object.prototype.hasOwnProperty.call(source, key) ? source[key] : schema.defaults[key]
-    ]));
+    return Object.assign({}, schema.defaults, safeSettingsPatch(candidate));
+}
+
+function normalizeThemeValue(value) {
+    const normalized = String(value || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+    const aliases = {
+        amoledblack: 'amoled',
+        solarizeddark: 'solarized',
+        aliengreen: 'alien',
+        highcontrastdark: 'highcontrast',
+        catppuccinmocha: 'catppuccin'
+    };
+    return aliases[normalized] || normalized;
+}
+
+function normalizeSettingValue(key, value) {
+    const fallback = schema.defaults[key];
+    if (key === 'colorTheme') {
+        const theme = normalizeThemeValue(value);
+        return Object.prototype.hasOwnProperty.call(schema.palettes || {}, theme) ? theme : fallback;
+    }
+    if (key === 'quoteBorderColor') {
+        const color = typeof value === 'string' ? value.trim() : '';
+        return color === fallback || /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
+    }
+    const constraint = (schema.constraints && schema.constraints[key]) || {};
+    if (constraint.values) return constraint.values.includes(value) ? value : fallback;
+    if (typeof fallback === 'boolean') return typeof value === 'boolean' ? value : fallback;
+    if (typeof fallback === 'number') {
+        const number = typeof value === 'number'
+            ? value
+            : (typeof value === 'string' && value.trim() ? Number(value) : NaN);
+        if (!Number.isFinite(number)) return fallback;
+        return Math.min(constraint.max ?? number, Math.max(constraint.min ?? number, number));
+    }
+    if (typeof fallback === 'string') return typeof value === 'string' ? value : fallback;
+    return fallback;
+}
+
+function safeSettingsPatch(candidate) {
+    if (!isRecord(candidate)) return {};
+    const accepted = {};
+    Object.keys(schema.defaults).forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(candidate, key)) {
+            accepted[key] = normalizeSettingValue(key, candidate[key]);
+        }
+    });
+    return accepted;
 }
 
 async function loadAll() {
@@ -271,49 +458,45 @@ async function loadAll() {
     const stored = await chrome.storage.local.get(keys);
     settings = safeSettingsPayload(parseJSON(stored[SETTINGS_KEY], {}));
     data = {
-        muted: parseJSON(stored[DATA_KEYS.muted], []),
-        blocked: parseJSON(stored[DATA_KEYS.blocked], []),
-        hidden: parseJSON(stored[DATA_KEYS.hidden], []),
-        hiddenTitles: parseJSON(stored[DATA_KEYS.hiddenTitles], {}),
-        tags: parseJSON(stored[DATA_KEYS.tags], {}),
-        watched: parseJSON(stored[DATA_KEYS.watched], []),
-        stats: parseJSON(stored[DATA_KEYS.stats], {}),
-        statsPages: parseJSON(stored[DATA_KEYS.statsPages], [])
+        muted: sanitizeDataValue('muted', parseJSON(stored[DATA_KEYS.muted], [])) || [],
+        blocked: sanitizeDataValue('blocked', parseJSON(stored[DATA_KEYS.blocked], [])) || [],
+        hidden: sanitizeDataValue('hidden', parseJSON(stored[DATA_KEYS.hidden], [])) || [],
+        hiddenTitles: sanitizeDataValue('hiddenTitles', parseJSON(stored[DATA_KEYS.hiddenTitles], {})) || {},
+        tags: sanitizeDataValue('tags', parseJSON(stored[DATA_KEYS.tags], {})) || {},
+        watched: sanitizeDataValue('watched', parseJSON(stored[DATA_KEYS.watched], [])) || [],
+        stats: sanitizeDataValue('stats', parseJSON(stored[DATA_KEYS.stats], {})) || {},
+        statsPages: sanitizeDataValue('statsPages', parseJSON(stored[DATA_KEYS.statsPages], [])) || []
     };
-    if (!Array.isArray(data.muted)) data.muted = [];
-    if (!Array.isArray(data.blocked)) data.blocked = [];
-    if (!Array.isArray(data.hidden)) data.hidden = [];
-    if (!Array.isArray(data.watched)) data.watched = [];
-    if (!Array.isArray(data.statsPages)) data.statsPages = [];
-    if (!data.hiddenTitles || Array.isArray(data.hiddenTitles)) data.hiddenTitles = {};
-    if (!data.tags || Array.isArray(data.tags)) data.tags = {};
-    if (!data.stats || Array.isArray(data.stats)) data.stats = {};
     networkBlockEnabled = stored[NETWORK_BLOCK_KEY] !== false;
     applyPageTheme(settings.colorTheme || 'midnight');
 }
 
 async function persistSettings(changes) {
-    settings = safeSettingsPayload(Object.assign({}, settings, changes));
+    const accepted = safeSettingsPatch(changes);
+    settings = safeSettingsPayload(Object.assign({}, settings, accepted));
     setSaveStatus('Saving changes locally...', false);
     ignoreStorageChanges = true;
     await chrome.storage.local.set({ [SETTINGS_KEY]: JSON.stringify(settings) });
     const tabs = await chrome.tabs.query({ url: '*://*.godlikeproductions.com/*' });
     tabs.forEach(tab => {
-        chrome.tabs.sendMessage(tab.id, { type: 'glp:patch-settings', patch: changes }, () => void chrome.runtime.lastError);
+        chrome.tabs.sendMessage(tab.id, { type: 'glp:patch-settings', patch: accepted }, () => void chrome.runtime.lastError);
     });
-    if (Object.prototype.hasOwnProperty.call(changes, 'colorTheme')) applyPageTheme(changes.colorTheme);
+    if (Object.prototype.hasOwnProperty.call(accepted, 'colorTheme')) applyPageTheme(accepted.colorTheme);
     setTimeout(() => { ignoreStorageChanges = false; }, 0);
     refreshChangedState();
     setSaveStatus('Saved locally · Applied to open GLP tabs', true);
 }
 
 async function persistData(name, value) {
-    data[name] = value;
+    const sanitized = sanitizeDataValue(name, value);
+    if (sanitized === undefined) return false;
+    data[name] = sanitized;
     setSaveStatus('Saving changes locally...', false);
     ignoreStorageChanges = true;
-    await chrome.storage.local.set({ [DATA_KEYS[name]]: JSON.stringify(value) });
+    await chrome.storage.local.set({ [DATA_KEYS[name]]: JSON.stringify(sanitized) });
     setTimeout(() => { ignoreStorageChanges = false; }, 0);
     setSaveStatus('Saved locally · Applied to open GLP tabs', true);
+    return true;
 }
 
 function attachPersistence(input, item, readValue, afterChange) {
@@ -851,7 +1034,7 @@ function downloadJSON(filename, payload) {
     anchor.href = url;
     anchor.download = filename;
     anchor.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function exportAllData() {
@@ -1253,37 +1436,55 @@ function applySearch() {
 }
 
 async function importSettings(file) {
+    if (file.size > 8 * 1024 * 1024) {
+        toast('That backup is larger than 8 MB and was not imported.', 'warn');
+        return;
+    }
     const reader = new FileReader();
     reader.onload = async () => {
         const parsed = parseJSON(String(reader.result), null);
-        if (!parsed || typeof parsed !== 'object') {
+        if (!isRecord(parsed)) {
             toast('That file is not a GLP Ultra export.', 'warn');
             return;
         }
-        const incomingSettings = parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : parsed;
-        const accepted = {};
-        Object.keys(schema.defaults).forEach(key => {
-            if (Object.prototype.hasOwnProperty.call(incomingSettings, key)) accepted[key] = incomingSettings[key];
-        });
-        await persistSettings(accepted);
-        const source = parsed.data && typeof parsed.data === 'object' ? parsed.data : parsed;
-        const oldLists = parsed.lists && typeof parsed.lists === 'object' ? parsed.lists : {};
+        const nestedSettings = [parsed.settings, parsed.payload?.settings, parsed.config, parsed.options]
+            .find(isRecord);
+        const incomingSettings = nestedSettings
+            || (Object.keys(parsed).some(key => Object.prototype.hasOwnProperty.call(schema.defaults, key)) ? parsed : null);
+        const accepted = safeSettingsPatch(incomingSettings);
+        const source = isRecord(parsed.data) ? parsed.data : parsed;
+        const oldLists = isRecord(parsed.lists) ? parsed.lists : {};
         const imports = {
-            muted: source.mutedUsers || oldLists.muted,
-            blocked: source.blockedUsers || oldLists.blocked,
-            hidden: source.hiddenThreads || oldLists.hidden,
+            muted: source.mutedUsers ?? oldLists.muted,
+            blocked: source.blockedUsers ?? oldLists.blocked,
+            hidden: source.hiddenThreads ?? oldLists.hidden,
             hiddenTitles: source.hiddenThreadTitles,
             tags: source.userTags,
             watched: source.watchedThreads,
             stats: source.userStats,
             statsPages: source.userStatsPages
         };
+
+        if (!incomingSettings && !Object.values(imports).some(value => value !== undefined)) {
+            toast('That file has no recognized GLP Ultra settings or local data.', 'warn');
+            return;
+        }
+
+        if (incomingSettings) {
+            const replacement = nestedSettings
+                ? Object.assign({}, schema.defaults, accepted)
+                : Object.assign({}, settings, accepted);
+            await persistSettings(replacement);
+        }
+
+        let importedStores = 0;
         for (const [name, value] of Object.entries(imports)) {
-            if (value !== undefined) await persistData(name, value);
+            if (value !== undefined && await persistData(name, value)) importedStores++;
         }
         render();
-        toast('Imported ' + Object.keys(accepted).length + ' settings and available local data.');
+        toast('Imported ' + Object.keys(accepted).length + ' settings and ' + importedStores + ' local data stores.');
     };
+    reader.onerror = () => toast('The selected backup could not be read.', 'warn');
     reader.readAsText(file);
 }
 

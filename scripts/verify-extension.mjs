@@ -34,6 +34,9 @@ if (manifest.version !== packageJson.version) fail(`manifest ${manifest.version}
 if (/^\d+\.\d+\.\d+$/.test(manifest.version) === false) fail(`manifest version "${manifest.version}" is not a 3-part version`);
 if (manifest.commands) fail('command shortcuts are not allowed');
 if (!manifest.permissions?.includes('alarms')) fail('manifest is missing the alarms permission');
+if (manifest.content_scripts?.some(entry => entry.all_frames !== false)) {
+  fail('content scripts must explicitly opt out of nested frames');
+}
 if (!serviceWorker.includes("chrome.alarms.onAlarm")
     || !serviceWorker.includes("chrome.alarms.create(WATCHER_ALARM")
     || !serviceWorker.includes("type: 'glp:watch-check'")) {

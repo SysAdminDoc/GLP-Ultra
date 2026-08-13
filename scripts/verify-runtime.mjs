@@ -281,6 +281,17 @@ try {
   await page.waitForTimeout(200);
   check('feed: the recovery shelf closes', await page.locator('#glp-recovery').count() === 0);
 
+  const directDiagnostics = await sendMessage(worker, page, { type: 'glp:open-diagnostics' });
+  await page.waitForTimeout(200);
+  check('feed: options bridge opens diagnostics directly',
+    directDiagnostics?.ok && await page.locator('#glp-diagnostics').count() === 1);
+  await page.locator('#glp-diagnostics [data-glp-close]').click();
+  const directRecovery = await sendMessage(worker, page, { type: 'glp:open-recovery' });
+  await page.waitForTimeout(200);
+  check('feed: options bridge opens recovery directly',
+    directRecovery?.ok && await page.locator('#glp-recovery').count() === 1);
+  await page.locator('#glp-recovery [data-glp-close]').click();
+
   // A forum update is a fragment, not a reason to rescan the whole document. Append a clean
   // capture row and require the scoped fragment registry to add its owned control in place.
   await page.locator('.threads tbody tr:not(.threads_header_row)').first().evaluate(row => {

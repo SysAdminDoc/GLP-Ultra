@@ -16,8 +16,9 @@
     "shots:pages": "node scripts/screenshot-ui.mjs --settings-pages midnight",
     "verify:captures": "node scripts/verify-captures.mjs",
     "verify:extension": "node scripts/verify-extension.mjs",
+    "verify:options": "node scripts/verify-options.mjs",
     "verify:runtime": "node scripts/verify-runtime.mjs",
-    "verify": "npm run check && npm run verify:captures && npm run build && npm run build:firefox && npm run verify:extension && npm run verify:runtime"
+    "verify": "npm run check && npm run verify:captures && npm run build && npm run build:firefox && npm run verify:extension && npm run verify:options && npm run verify:runtime"
   },
   "devDependencies": {
     "playwright": "^1.62.1"

@@ -16,12 +16,17 @@ import { chromium } from 'playwright';
 
 const root = process.cwd();
 const extensionPath = path.join(root, 'extension');
-const outDir = path.join(root, 'dist', 'ui-shots');
-const pageOutDir = path.join(root, 'dist', 'ui-pages');
 
 const ALL_THEMES = ['midnight', 'catppuccin', 'dracula', 'nord', 'gruvbox', 'amoled', 'solarized', 'blood', 'alien', 'highcontrast'];
 const args = process.argv.slice(2);
 const captureSettingsPages = args.includes('--settings-pages');
+const viewportMatch = args.find(arg => arg.startsWith('--viewport='))?.match(/^(?:--viewport=)(\d+)x(\d+)$/i);
+const viewport = viewportMatch
+  ? { width: Number(viewportMatch[1]), height: Number(viewportMatch[2]) }
+  : { width: 1440, height: 900 };
+const viewportSuffix = viewport.width === 1440 && viewport.height === 900 ? '' : `-${viewport.width}x${viewport.height}`;
+const outDir = path.join(root, 'dist', `ui-shots${viewportSuffix}`);
+const pageOutDir = path.join(root, 'dist', `ui-pages${viewportSuffix}`);
 const requestedThemes = args.filter(arg => !arg.startsWith('--'));
 const themes = requestedThemes.length ? requestedThemes : ALL_THEMES;
 
@@ -66,7 +71,7 @@ try {
   context = await chromium.launchPersistentContext(userDataDir, {
     headless: true,
     channel: 'chromium',
-    viewport: { width: 1440, height: 960 },
+    viewport,
     args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`]
   });
 
@@ -144,6 +149,11 @@ try {
         const title = await button.getAttribute('data-section-title');
         await button.click();
         await page.waitForTimeout(100);
+        await page.evaluate(() => {
+          document.scrollingElement.scrollTop = 0;
+          const content = document.querySelector('.content');
+          if (content) content.scrollTop = 0;
+        });
         const slug = String(title || `page-${index + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
         await page.screenshot({ path: path.join(pageOutDir, `${theme}-${String(index + 1).padStart(2, '0')}-${slug}.png`) });
         shots++;

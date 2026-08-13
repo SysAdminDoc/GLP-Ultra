@@ -33,6 +33,16 @@
                 sendResponse(api ? { ok: true, diagnostics: api.getDiagnostics() } : { ok: false });
                 return false;
 
+            case 'glp:open-diagnostics':
+                if (api) api.openDiagnostics();
+                sendResponse({ ok: !!api });
+                return false;
+
+            case 'glp:open-recovery':
+                if (api) api.openRecovery();
+                sendResponse({ ok: !!api });
+                return false;
+
             case 'glp:get-state':
                 sendResponse(api
                     ? { ok: true, version: api.version, settings: api.getSettings(), defaults: api.getDefaults(), lists: api.getLists() }

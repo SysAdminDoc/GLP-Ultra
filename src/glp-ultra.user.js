@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLP Ultra
 // @namespace    https://github.com/SysAdminDoc/GLP_Userscript
-// @version      3.8.0
+// @version      3.8.1
 // @description  Declutter, theming, filtering, blocking, and reading tools for Godlike Productions
 // @author       Matthew Parker
 // @updateURL    https://raw.githubusercontent.com/SysAdminDoc/GLP_Userscript/main/dist/glp-ultra.meta.js
@@ -25,7 +25,7 @@
     // even if a manager ignores or predates the metadata directive.
     if (window.top !== window.self) return;
 
-    const SCRIPT_VERSION = '3.8.0';
+    const SCRIPT_VERSION = '3.8.1';
 
     // ============================================
     // DEFAULT SETTINGS

@@ -1,5 +1,28 @@
 # Changelog
 
+## 3.8.1 — 2026-08-13
+
+### Hardened
+
+- **Every settings and local-data ingress is now constrained.** Stored payloads, Options imports,
+  in-page backups, shareable packs, pre-upgrade recovery, and extension messages normalize types,
+  enums, colours, and numeric ranges before applying them. Local mutes, blocks, hidden threads,
+  titles, tags, watcher entries, and poster-history stores are bounded, deduplicated, and cleaned.
+- **Shareable themes cannot carry Custom CSS.** Theme packs now contain appearance values only, so
+  an imported pack cannot inject a blanket rule that hides the page or its recovery controls.
+- **Userscript and extension frame behavior is explicit and equivalent.** The userscript combines
+  `@noframes` with a runtime top-frame guard; extension content scripts declare `all_frames: false`.
+  Build gates reject a future drift in any of those contracts.
+- **In-page backups now use the complete format-3 contract.** Watcher entries and visited
+  poster-history pages join all existing local stores. Imports reject files over 8 MB, skip
+  malformed store families without erasing healthy data, and retain empty arrays as intentional
+  clears. Download URLs remain alive long enough for slower browsers to claim them.
+
+### Verified
+
+- Added fault-injected backup, pack, external-patch, local-data, and frame-policy regressions.
+  Options passes 59/59 checks and the unpacked Chromium runtime passes 219/219 checks.
+
 ## 3.8.0 — 2026-08-13
 
 ### Fixed

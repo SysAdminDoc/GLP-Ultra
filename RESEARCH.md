@@ -73,7 +73,10 @@ Operational persistence is local and synchronous through the userscript-compatib
 then mirrored to `chrome.storage.local` in the extension. Stable stores cover settings, schema and
 version stamps, pre-upgrade recovery, mutes, blocks, tags/notes, hidden threads/titles, watched
 threads, user statistics and visited-stat pages. Optional settings sync sends only the bounded
-settings payload to `chrome.storage.sync`; unbounded private lists remain local.
+settings payload to `chrome.storage.sync`; unbounded private lists remain local. The complete
+format-3 backup carries every one of those stores. Stored settings, both import surfaces, packs,
+and extension messages use the same generated type/enum/range constraints, while each local-data
+family is bounded and sanitized before use or persistence.
 
 ## Advertising inventory and proof
 
@@ -155,7 +158,8 @@ not a separate light shell, so parity was performed in Midnight plus the existin
   access limited to the two GLP HTTPS hosts. There is no remote executable code, analytics, or
   page-content exfiltration.
 - The userscript has no network grant and runs at `document-start`; generated update/download
-  metadata points to this repository's raw `main` artifacts.
+  metadata points to this repository's raw `main` artifacts. `@noframes` plus a runtime top-frame
+  guard matches the extension's explicit `all_frames: false` execution policy.
 - Firefox receives a generated MV3-compatible event-page manifest and passes structural gates.
   Its runtime behavior is unverified because the local harness drives Chromium.
 - The removed auto-contract behavior restores a legal/authentication boundary and the removed
@@ -188,6 +192,12 @@ Accessed 2026-08-13:
   https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/declarativeNetRequest
 - Chrome Extensions, declarativeNetRequest:
   https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest
+- Chrome Extensions, content-script manifest (`all_frames`):
+  https://developer.chrome.com/docs/extensions/reference/manifest/content-scripts
+- Tampermonkey metadata (`@noframes`):
+  https://www.tampermonkey.net/documentation.php#meta:noframes
+- Violentmonkey metadata (`@noframes`):
+  https://violentmonkey.github.io/api/metadata-block/#noframes
 - Chrome Web Store Program Policies:
   https://developer.chrome.com/docs/webstore/program-policies/policies
 - Chrome Web Store user-data FAQ:

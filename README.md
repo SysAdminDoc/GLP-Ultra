@@ -1,6 +1,6 @@
 # GLP Ultra
 
-[![version](https://img.shields.io/badge/version-3.8.0-4a90d9)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-3.8.1-4a90d9)](CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Firefox%20%7C%20userscript-1f6feb)](#install)
 [![manifest](https://img.shields.io/badge/manifest-v3-8957e5)](extension/manifest.json)
@@ -29,7 +29,7 @@ v3.0.0 merged the two previously separate projects (the *GLP Enhanced Declutter*
 | Noise budget | a running count of what is being kept off the page, with a breakdown and a route to restore any of it |
 | Media | Save / Open / Copy link on post images, click-to-load third-party embeds, lightbox and gallery |
 | Accessibility | reduce motion, high contrast, larger click targets — emitted last so they beat the theme |
-| Portability | full backup and restore, shareable theme and filter packs, optional settings sync across devices |
+| Portability | validated format-3 backup and restore for every local store, safe theme/filter packs, optional settings sync across devices |
 
 Every feature exposes `init`/`apply`/`destroy`, tracks its owned listeners and observers, and unwinds itself completely when switched off. Errors in one feature can no longer take the rest of the page down with them.
 
@@ -73,13 +73,13 @@ and hit **Reload** on the extension card.
 
 ```bash
 npm run verify      # gates + build + structure checks
-npm run package     # dist/glp-ultra-v3.8.0.zip
+npm run package     # dist/glp-ultra-v3.8.1.zip
 ```
 
 ### Firefox
 
 ```bash
-npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.8.0.zip
+npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.8.1.zip
 ```
 
 Everything but the manifest is identical to the Chrome build. The Gecko variant swaps the
@@ -95,6 +95,11 @@ harness drives Chromium only, so Firefox behaviour is not machine-verified.
 ### Userscript
 
 Install `dist/glp-ultra.user.js` in Tampermonkey or Violentmonkey. Same engine, same settings panel; the popup, options page, and network-level ad blocking are extension-only.
+
+Both distributions run only in the top-level page. The userscript declares `@noframes` and also
+checks the runtime frame, matching the extension's explicit top-frame-only content-script policy.
+Theme packs never carry Custom CSS; complete backups do, and every imported setting and local-data
+family is validated before it reaches storage or the page.
 
 The generated userscript metadata includes GitHub Raw `@updateURL` and `@downloadURL` entries, so
 Tampermonkey or Violentmonkey can check for updates from the `main` build. The small

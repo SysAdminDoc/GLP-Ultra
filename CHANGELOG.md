@@ -1,6 +1,33 @@
 # Changelog
 
-## 3.8.1 — 2026-08-13
+## 3.8.2 (2026-09-03)
+
+### Redesigned
+
+- **Thread pages now have a clear reading hierarchy.** Posts are separate cards with a compact
+  author rail, a wide message surface, layered quotes, and an accent treatment for the original
+  poster. The Midnight palette now uses a deeper navy canvas with brighter, clearer type.
+- **The forum feed follows the same visual system.** Thread rows are separated, titles are easier
+  to scan, and metadata uses consistent spacing and contrast across all ten themes.
+- **Narrow layouts no longer feel like a squeezed desktop page.** Post cards stack cleanly, feed
+  rows become full-width cards, and both navigation bars wrap without covering content.
+
+### Fixed
+
+- **OP navigation stays inside the thread toolbar and renders once.** Reapplying settings can no
+  longer duplicate the controls or leave a floating overlay over the first post.
+- **Narrow visual captures can open diagnostics and recovery reliably.** Their checks no longer
+  depend on a footer button being visible in the current viewport.
+
+### Verified
+
+- Added computed-style checks for typography, card separation, author-to-message proportions,
+  quote surfaces, feed rows, and OP navigation idempotency. The Chromium replay passes 227/227
+  checks, including the membership-contract safeguards.
+- Rendered 80 desktop screenshots across all ten palettes and checked the Midnight thread and feed
+  again at 390x844. The options journey still passes 59/59 checks at both supported desktop sizes.
+
+## 3.8.1 (2026-08-13)
 
 ### Hardened
 
@@ -23,14 +50,14 @@
 - Added fault-injected backup, pack, external-patch, local-data, and frame-policy regressions.
   Options passes 59/59 checks and the unpacked Chromium runtime passes 219/219 checks.
 
-## 3.8.0 — 2026-08-13
+## 3.8.0 (2026-08-13)
 
 ### Fixed
 
 - **Membership contracts remain a reader decision.** Removed the legacy club-disclaimer setting
   and automation after the current public site showed that the matched form is now a membership
   contract with age and legal-attestation controls. Schema migration prunes the old key, and the
-  runtime harness proves the controls remain unchecked and the form is never submitted.
+  runtime test runner proves the controls remain unchecked and the form is never submitted.
 - **Native site links no longer disappear with ads.** GLP uses the generic `ads` class for real
   **Adv. Search** and **Email Support** links. Cosmetic cleanup now targets confirmed MGID/AMP
   hooks only, preserves those links, and still removes empty rows left by real ad units.
@@ -38,7 +65,7 @@
 ### Redesigned
 
 - **The complete 23-page settings interface is now an operational desktop control center.** One
-  ImageGen-led design direction per page informed a code-native shell with truthful local state,
+  reference-led design direction per page informed a code-native shell with truthful local state,
   focused page hierarchy, compact desktop control matrices, dependency feedback, explicit theme
   and custom-colour behavior, and the real extension icon instead of decorative fake previews.
 - **Reset and recovery are visible parts of the normal journey.** Every changed setting can be
@@ -60,7 +87,7 @@
   direct visual comparison. Current live feed/thread cold-load proof remains blocked by the
   membership contract and is not claimed.
 
-## 3.7.0 — 2026-08-12
+## 3.7.0 (2026-08-12)
 
 ### Hardened
 
@@ -78,10 +105,10 @@
 ### Verified
 
 - `npm run verify` gates, captures, Chrome/Firefox builds, extension structure, and the Chromium
-  replay harness pass as 204/204 runtime checks. Firefox remains structurally gated and logged-in
+  replay all pass. The runtime checks are 204/204. Firefox remains structurally gated and logged-in
   captures/store submission remain in `Roadmap_Blocked.md`.
 
-## 3.6.0 — 2026-08-08
+## 3.6.0 (2026-08-08)
 
 ### Hardened
 
@@ -123,7 +150,7 @@
   The redesigned shell passes all 191 runtime checks, including changed-state filtering,
   section resets, narrow-viewport footer containment, diagnostics, recovery, and live apply.
 
-## 3.5.0 — 2026-08-07
+## 3.5.0 (2026-08-07)
 
 The roadmap's risk table has named five mitigations since Phase 3 with nothing behind them. This
 is the four that were still missing, and the defect found while implementing the fifth.
@@ -133,7 +160,7 @@ is the four that were still missing, and the defect found while implementing the
 - **A failing site got hammered as fast as it could refuse.** The fetch queue stamped its
   rate-limiter clock only after a *successful* response, so a run of failures made the elapsed
   time grow, the computed delay go negative, and the one-second floor between requests stop
-  applying exactly when it mattered — a watcher with twenty threads on it emptying its queue into
+  applying exactly when it mattered, such as when a watcher with twenty threads emptied its queue into
   a site already saying no. Both outcomes stamp the clock now, and a refusal also backs off: the
   server's own `Retry-After` when it sent one, otherwise exponential from the caller's floor,
   capped at a minute. Consecutive failures and the remaining backoff are reported in diagnostics.
@@ -141,8 +168,8 @@ is the four that were still missing, and the defect found while implementing the
 ### Added
 
 - **Safe mode, so custom CSS cannot lock you out of the settings that undo it.** Pasting
-  `* { display: none !important }` hid the settings panel along with the page — measured at 0px
-  wide — and the setting is saved, so reloading brought the same page back. The recovery surfaces
+  `* { display: none !important }` hid the settings panel along with the page and measured 0px
+  wide. Because the setting is saved, reloading brought the same page back. The recovery surfaces
   are now re-asserted after the user's rules at a specificity their scoped selectors can reach,
   and safe mode drops custom CSS entirely. It is reachable from two places page CSS cannot touch:
   the userscript manager's menu, and the extension popup, which is a separate document.
@@ -165,7 +192,7 @@ blanket rule and measuring the panel, reloading with safe mode on because that i
 locked-out reader tries first, serving `429 Retry-After: 7` to the thread the watcher polls, and
 restoring a banked payload to see a pre-upgrade value come back.
 
-## 3.4.0 — 2026-08-07
+## 3.4.0 (2026-08-07)
 
 Three drift items closed, and four defects the new gates turned up on their first run.
 
@@ -177,7 +204,7 @@ Three drift items closed, and four defects the new gates turned up on their firs
   to inherit and success, warning and error toasts, danger buttons and every state chip painted
   in the surrounding text colour. Nothing errored, which is why it shipped.
 - **The settings footer was clipped off the bottom of the panel.** At 900x700 it sat 207px below
-  the panel's edge, and the panel clips its overflow — so Reset, Recovery, Diagnostics, Export,
+  the panel's edge, and the panel clips its overflow. So Reset, Recovery, Diagnostics, Export,
   Import, Close and Save were all off screen with no scrollbar to reach them. The body reserved a
   hardcoded `88vh - 184px` for chrome whose real height depends on whether the footer and search
   bar wrap. The panel is a flex column now, and the body takes what is left.
@@ -199,25 +226,25 @@ Three drift items closed, and four defects the new gates turned up on their firs
   on `#4a4a6a`, so it sat as a blue-purple box on all ten palettes. The ghost control every small
   button uses is named once and tinted with the accent, so a toolbar button belongs to its theme
   at rest rather than only on hover.
-- **The settings footer is grouped by job** — destroy | inspect | move data — with a rule between
-  each and daylight around Reset, which used to sit shoulder to shoulder with Export. Every
+- **The settings footer is grouped by job.** Rules separate destructive controls from inspection
+  and data transfer. Reset gets daylight too; it used to sit shoulder to shoulder with Export. Every
   button now says what it does.
 
 ### Added
 
 - **The theme sweep is a gate.** `npm run shots` rendered every surface in every theme and
-  nothing ever read the result, which is how five surfaces stayed blue. The harness now paints
+  nothing ever read the result, which is how five surfaces stayed blue. The test runner now paints
   each surface under two opposite palettes, requires it to move, and checks its text clears 4.5:1
   on both.
 - **The build rejects a custom property that references itself**, in both the bare and the
-  `var(--x, fallback)` form — the latter is equally a cycle.
+  `var(--x, fallback)` form. The latter is equally a cycle.
 - Thirteen assertions on the settings panel, which previously had two: the section rail, the
   changed-state dots, the only-changed filter, the empty state, per-section reset, and the
   footer's geometry at a width that wraps it.
 - A download that never arrives is one failed check rather than an uncaught throw. Two runs died
   on a slow export and took the ~40 later checks with them, reporting nothing about any of them.
 
-## 3.3.0 — 2026-08-06
+## 3.3.0 (2026-08-06)
 
 A design-system pass over every surface, and the layout defects looking properly at each one
 turned up.
@@ -226,8 +253,8 @@ turned up.
 
 - **One design-token layer, derived from the chosen theme.** The palette exposed eight values
   while the interface it was meant to theme carried 87 hardcoded literals, so picking Alien Green
-  or Blood recoloured the forum and left every control the script owns — settings panel, toasts,
-  diagnostics, recovery, chips — the same blue. Tokens for surfaces, text, borders, semantic
+  or Blood recoloured the forum while every extension control stayed blue, including settings,
+  toasts, recovery, and diagnostic surfaces. Tokens for surfaces, text, borders, semantic
   colour, radius, elevation, and the focus ring are now emitted first and unconditionally. The
   accent is also published as an RGB channel so existing `rgba()` rules could be repointed at it
   without altering a single alpha. Semantic colours stay fixed: success is green on Blood too.
@@ -244,7 +271,7 @@ turned up.
 
 - **The thread toolbar rendered as a 92px vertical stack of nine wrapped buttons pinned to the
   right edge.** `.msgtitle` is a div parented straight to a `<tr>`, so inserting after it made the
-  toolbar a child of that `<tr>` as well — and a div is not table content. Anchored outside the
+  toolbar a child of that `<tr>` as well, but a div is not valid table content. Anchored outside the
   table, it is the horizontal toolbar it was always meant to be.
 - **About 450px of dead space** above the first post, most of it rows the ad removal had emptied.
   `:empty` cannot match a row holding whitespace, so those are marked as they are emptied.
@@ -262,40 +289,40 @@ turned up.
 - `npm run shots` captures every surface in every theme into `dist/ui-shots/`, so a polish pass
   cannot quietly become a one-screen-one-theme pass.
 
-## 3.2.0 — 2026-08-06
+## 3.2.0 (2026-08-06)
 
 ### Added
 
-- **Optional settings sync** (extension only, off by default). Turning it on keeps the settings — not mutes, blocks, tags, or history — on the browser account so another signed-in device picks them up. Most recent change wins, arbitrated by a stamp so a device that merely opened a tab cannot overwrite one that changed a setting. Only the settings payload is synced because `chrome.storage.sync` caps an item at 8KB and the user lists are unbounded; an oversized payload stays local and says so.
-- **Shareable packs.** A pack is one slice of a profile rather than a whole backup: a theme pack carries the look, a filter pack carries mutes, blocks, and keyword rules. Importing a filter pack *adds* — lists are unioned and keyword rules merged — so a pack someone else wrote can never delete your mutes. Under Presets.
-- **Noise budget.** A toolbar chip counts what GLP Ultra is keeping off the page — ads removed, posts from muted and blocked users, keyword hits, image-only replies, hidden and pinned threads, collapsed quotes — and opens a breakdown with a route straight to the recovery shelf. Every figure but the ad count is read off the live DOM, so it cannot drift from what is actually hidden.
+- **Optional settings sync** (extension only, off by default). Turning it on keeps settings on the browser account so another signed-in device picks them up. Mutes, blocks, tags, and history stay local. Most recent change wins, arbitrated by a stamp so a device that merely opened a tab cannot overwrite one that changed a setting. Only the settings payload is synced because `chrome.storage.sync` caps an item at 8KB and the user lists are unbounded; an oversized payload stays local and says so.
+- **Shareable packs.** A pack is one slice of a profile rather than a whole backup: a theme pack carries the look, while a filter pack carries mutes, blocks, and keyword rules. Importing a filter pack *adds* by unioning lists and merging keyword rules, so a pack someone else wrote can never delete your mutes. Packs live under Presets.
+- **Noise budget.** A toolbar chip counts what GLP Ultra is keeping off the page, including ads, muted or blocked posts, keyword hits, hidden threads, and collapsed quotes. It opens a breakdown with a route straight to the recovery shelf. Every figure but the ad count is read from the live DOM, so it cannot drift from what is actually hidden.
 - **Save / Open / Copy link buttons on post images.** Saving fetches the blob so the file keeps its real name; a hotlinked third-party image cannot be fetched from a content script, so it falls back to opening the image and says why.
-- **Accessibility controls.** A new panel section: *Reduce Motion* stops every animation and transition the script adds (the OS `prefers-reduced-motion` setting is still always honoured, this forces it on regardless), *High Contrast* lifts injected text and borders and stops muted text fading below a readable level, and *Larger Click Targets* grows the script's own buttons and chips to a 32px minimum without reflowing the site's tables. They are emitted last in the stylesheet on purpose — a theme that beats the motion or contrast setting is a bug.
-- **Quote backlinks.** GLP marks each post with its own `reply<id>` permalink and each quote block with a "Quoting:" footer naming the quoted author and linking the quoted post — enough to reconstruct who answered whom. A post now lists the replies that quoted it, each chip naming the answering post and author, hovering one shows an excerpt of that reply, and clicking scrolls to it and flashes it. Quotes that name a post on the same page gain an in-page jump beside the site's own link, which always left the page.
+- **Accessibility controls.** A new panel section: *Reduce Motion* stops every animation and transition the script adds (the OS `prefers-reduced-motion` setting is still always honoured, this forces it on regardless), *High Contrast* lifts injected text and borders and stops muted text fading below a readable level, and *Larger Click Targets* grows the script's own buttons and chips to a 32px minimum without reflowing the site's tables. They are emitted last in the stylesheet on purpose. A theme that beats the motion or contrast setting is a bug.
+- **Quote backlinks.** GLP marks each post with its own `reply<id>` permalink and each quote block with a "Quoting:" footer naming the quoted author and linking the quoted post, which is enough to reconstruct who answered whom. A post now lists the replies that quoted it. Each chip names the answering post and author; hovering shows an excerpt, and clicking scrolls to it. Quotes that name a post on the same page gain an in-page jump beside the site's own link, which always left the page.
 
 ### Fixed
 
 - **Seven settings did nothing until the next page load.** Back-to-top, both infinite scrolls, the scroll progress bar, thread previews, quick search, and auto-refresh had no apply handler, because their `init` appended a fresh element or listener on every call and would have stacked duplicates. Each now guards re-entry, so switching one on takes effect immediately and repeated applies leave exactly one of it. Thread previews additionally read the setting inside their document-level listeners, so switching them off stops them firing rather than only removing the last card.
 - **Auto-refresh kept counting down in a background tab.** The fetch queue already deferred the request, but the countdown completed anyway and refreshes stacked up against the moment the tab came back. It now holds while `document.hidden`.
-- **Turning auto-refresh on did nothing until the next page load.** Its registry entry had no apply handler, because `initAutoRefresh` was not idempotent and would have stacked a second interval. It now tears its own timer and bar down first, so enabling it — or changing its interval — takes effect immediately.
-- **An extension tab could come up with the theme applied and not one feature running.** The shim's `chrome.storage` read lands at `document_start`; when the mirrored copy differed from localStorage it pushed the difference straight into the engine, which started the feature run against a body that had no posts in it yet and marked the run done. The real page was then never touched — CSS injected, body flagged active, no post numbers, no toolbar, no error. Feature startup now waits for the document when a settings push beats it.
-- **Unmuting your last muted user left their posts hidden until a reload.** `applyMuteList()` returned early when the list was empty, skipping the pass that takes the class back off. Switching the mute feature off entirely had the same effect — its `destroy` removed the buttons but never unhid the posts. Found by the noise budget disagreeing with itself.
+- **Turning auto-refresh on did nothing until the next page load.** Its registry entry had no apply handler, because `initAutoRefresh` was not idempotent and would have stacked a second interval. It now tears its own timer and bar down first, so enabling it or changing its interval takes effect immediately.
+- **An extension tab could come up with the theme applied and not one feature running.** The shim's `chrome.storage` read lands at `document_start`; when the mirrored copy differed from localStorage it pushed the difference straight into the engine, which started the feature run against a body that had no posts in it yet and marked the run done. The real page was then never touched. CSS injected, body flagged active, no post numbers, no toolbar, no error. Feature startup now waits for the document when a settings push beats it.
+- **Unmuting your last muted user left their posts hidden until a reload.** `applyMuteList()` returned early when the list was empty, skipping the pass that takes the class back off. Switching the mute feature off entirely had the same effect because its `destroy` removed the buttons but never unhid the posts. The noise budget exposed the mismatch.
 - Images still loading were silently treated as chrome and skipped by the lightbox, the gallery, and the new media actions: `naturalWidth` is 0 until an image loads, and the shared predicate measured it during a document-idle pass. It now falls back to the declared `width`/`height`, and re-checks on load.
 
-## 3.1.0 — 2026-08-06
+## 3.1.0 (2026-08-06)
 
 ### Added
 
 - **Thread watcher.** Watch a thread and it is polled through the shared rate-limited fetch queue, walking to its last page before counting posts so an unread delta means new replies rather than a new page. The digest lists every watched thread with its unread count, last-checked age, and failed-check state, and each row can be marked read, opened, or unwatched. Hidden tabs pause background checks by default. In the extension, the toolbar badge shows the unread total instead of a plain "on".
-- **Recovery shelf.** One surface listing hidden threads, muted users, blocked users, and the filters currently hiding things — each restorable on its own, from any route. Hidden threads now remember their titles, so the shelf names what it is about to restore. Older backups without titles still restore their ids.
-- **Diagnostics panel.** The settings footer opens an in-page report: route, active features, settings changed from defaults, per-feature worst-run timings, fetch queue state, recorded feature errors, and selector health — with a Copy button. Selector health names, per registry entry, whether the page is being carried by the primary selector or a fallback, which is the self-healing warning for site drift.
+- **Recovery shelf.** One surface lists hidden threads, muted users, blocked users, and the filters currently hiding things. Each item can be restored on its own from any route. Hidden threads now remember their titles, so the shelf names what it is about to restore. Older backups without titles still restore their ids.
+- **Diagnostics panel.** The settings footer opens an in-page report with a Copy button. It covers the route, active features, changed settings, worst-run timings, fetch queue state, recorded feature errors, and selector health. Each registry entry says whether the page is using its primary selector or a fallback, which warns about site drift.
 - **Context-menu actions.** Right-click on GLP offers Hide this thread, Mute this user, Tag this user, Preview this image, and Export this thread. Each reports why nothing happened rather than failing quietly.
 - **Update notices.** After a version change, GLP Ultra names the settings the new build added, computed by diffing the stored payload against the defaults. Switch off with *Announce New Settings After An Update*.
 - **Firefox build.** `npm run build:firefox` generates the Gecko variant (event-page background, extension id, `strict_min_version`) into `dist/extension-firefox/`, and `npm run package:firefox` zips it. Everything but the manifest is identical to the Chrome build.
 
 ### Fixed
 
-- **Every setting, mute, block, tag, and hidden thread reset to defaults on reload in the extension build.** The engine is written against Tampermonkey semantics — serialize before every `GM_setValue`, `JSON.parse` after every `GM_getValue` — but the MV3 shim also parsed on read, so the engine parsed an already-parsed object, threw, and fell back to defaults inside its own try/catch. Silent data loss on every page load.
+- **Every setting, mute, block, tag, and hidden thread reset to defaults on reload in the extension build.** The engine follows Tampermonkey semantics: it serializes before every `GM_setValue` and parses after every `GM_getValue`. The MV3 shim also parsed on read, so the engine parsed an already-parsed object, threw, and fell back to defaults inside its own try/catch. Silent data loss followed on every page load.
 - `mainNav`'s primary selector `.topnav.topnav_main` matches neither capture, so that surface had been resolving through fallbacks; `.mainpagenavlinks` is now the primary. The thread route no longer expects a site-wide main nav it does not have.
 - The image lightbox added a document click listener on every `init` and never removed it, so disabling the feature left the handler live and re-enabling it stacked another copy. It now binds once and unbinds in `destroy`.
 
@@ -304,14 +331,14 @@ turned up.
 - **Thread export.** Thread pages get Export MD / Export HTML / Export JSON / Copy Link buttons in the tools bar. Markdown preserves quote nesting as `>` depth, HTML is a standalone dark document with the original post markup, and JSON is a structured record of every post (author, member/user id, OP flag, date, quote depth, links, media). Every export carries the source URL, thread id, page number, and an export timestamp, and an optional media manifest listing each image, embed, and outbound link.
 - **Mute match modes**: a muted entry can now match the exact name, any name containing it, or a regular expression. An invalid pattern is skipped rather than taking the whole mute list down.
 - **Private notes on tagged users**: the tag editor gained a note field, kept beside the label and colour and shown on hover. Editing a tag now pre-fills what is already there instead of starting blank.
-- **Local trust overlay** (off by default): counts how many posts you have actually seen from each poster and shows it beside their name, with thread count and first-seen date on hover. Derived only from pages this browser rendered — no scoring service, no network calls, and the history is capped and prunable.
+- **Local trust overlay** (off by default): counts how many posts you have actually seen from each poster and shows it beside their name, with thread count and first-seen date on hover. The result comes only from pages this browser rendered. There is no scoring service or network call, and the history is capped and prunable.
 - **Full backup, not just settings**: export now bundles mutes, blocks, tags, notes, hidden threads, and the poster history alongside the settings, and import restores all of them. A new panel section clears the poster history with an undo toast.
 - **Media privacy mode** (on by default): third-party embeds inside posts are replaced by a labelled click-to-load placeholder, so YouTube and X never see the page until the reader asks. YouTube auto-embedding builds the placeholder directly rather than loading and then unloading a player.
-- **X / Twitter embed normalization**: widgets get a labelled frame and, where the page still carries the post id, a direct link to the post — a dead widget is now recognisable instead of an unexplained gap.
+- **X / Twitter embed normalization**: widgets get a labelled frame and, where the page still carries the post id, a direct link to the post. A dead widget is now recognisable instead of an unexplained gap.
 - **Hover preview for images** (off by default): hovering a shrunken thumbnail or an image link shows the full-size image, capped to a configurable share of the viewport.
-- **Runtime verification harness** (`npm run verify:runtime`): loads the unpacked extension in Playwright's Chromium and replays the real GLP captures at their live URLs, then asserts the feed and thread surfaces, the messaging path, and the export outputs. Wired into `npm run verify`; 83 checks at this release.
+- **Runtime verification** (`npm run verify:runtime`): loads the unpacked extension in Playwright's Chromium and replays the real GLP captures at their live URLs, then asserts the feed and thread surfaces, the messaging path, and the export outputs. Wired into `npm run verify`; 83 checks at this release.
 
-## 3.0.0 — 2026-08-06
+## 3.0.0 (2026-08-06)
 
 Merged the two separate userscripts into a single MV3 extension, "GLP Ultra".
 
@@ -320,7 +347,7 @@ Merged the two separate userscripts into a single MV3 extension, "GLP Ultra".
 - `GodLikeProductions_Enhanced_Suite.user.js` (v9.0.0) has been absorbed and removed. Its jQuery dependency (loaded over plain HTTP from a CDN) and its key-driven surfaces are gone; every feature it contributed is now vanilla JS inside the shared engine.
 - `GLP_Enhanced_-_Godlike_Productions_Declutter.user.js` (v2.1.0) became `src/glp-ultra.user.js`, the single source for both the extension and the userscript.
 
-### Added — from the Suite
+### Added from the Suite
 
 - Sort controls toolbar: updated / posted / rating / views / replies, ascending and descending, plus hide-pinned and reset-sort actions.
 - Newest-first default ordering for forum pages.
@@ -333,7 +360,7 @@ Merged the two separate userscripts into a single MV3 extension, "GLP Ultra".
 - Corner style control (site default / rounded / square).
 - Lean reading preset with an undo toast.
 
-### Added — extension shell
+### Added in the extension shell
 
 - Popup with master switch, theme picker, six quick toggles, and a network ad-blocking switch.
 - Options page covering all 114 settings, generated at build time from the engine so the two can never drift; includes export, import, reset with undo, and management of muted users, blocked users, and hidden threads.
@@ -352,7 +379,7 @@ Merged the two separate userscripts into a single MV3 extension, "GLP Ultra".
 - Product name is now GLP Ultra throughout the UI. Storage keys are unchanged, so existing settings carry over.
 - Captures moved to `captures/` with stable names.
 
-## Roadmap archive — 2026-08-10 — ROADMAP.md
+## Roadmap archive (2026-08-10, ROADMAP.md)
 
 <details>
 <summary>Original roadmap snapshot</summary>
@@ -360,20 +387,20 @@ Merged the two separate userscripts into a single MV3 extension, "GLP Ultra".
 ````markdown
 # GLP Ultra Roadmap
 
-## Status — v3.1.0 (2026-08-06)
+## Status: v3.1.0 (2026-08-06)
 
 The two userscripts are merged and the MV3 extension is the primary vehicle, exactly as the delivery table below prescribes.
 
 - Shipped: single engine at `src/glp-ultra.user.js` (133 settings / 22 sections), MV3 extension with popup, options page, service worker, and `declarativeNetRequest` ad blocking, plus the userscript build and the generated Firefox variant from the same source.
 - Absorbed from `GodLikeProductions Enhanced Suite` v9.0.0 (now deleted): sort toolbar, newest-first default, pinned-thread hiding, user blocking by ID, image-only reply filter, reaction-GIF filter, country-club nag bypass, collapse-quotes-by-default, corner style, lean reading preset.
 - Dropped deliberately: jQuery CDN dependency, key-driven surfaces (house rule), the Suite autopager (superseded by the engine's infinite scroll).
-- Verification: `npm run verify` (gates + captures + both builds + structure) and a Playwright run that loads the unpacked extension and replays the real GLP captures — 83/83 checks.
+- Verification: `npm run verify` (gates + captures + both builds + structure) and a Playwright run that loads the unpacked extension and replays the real GLP captures. 83/83 checks.
 
 ### v3.1.0 closes the remaining phase work
 
-- **v0.7.0 — Watcher, automation, recovery:** complete. Watch/unwatch, digest with unread delta, last-checked age and failed-check state, hidden-tab pause, and a recovery shelf covering hidden threads, muted users, blocked users, and active filters, each restorable on its own. Local history cleanup keeps its undo toast.
-- **v0.8.0 — MV3 extension build:** complete. Context-menu actions (hide thread, mute user, tag user, preview image, export thread), watcher-count toolbar badge, and the Firefox-compatible manifest variant generated into `dist/extension-firefox/`.
-- **v0.9.0 — Reliability and distribution:** diagnostics panel now reports settings version, enabled features, selector health, route, fetch queue status, and per-feature worst-run timings; self-healing selector warnings flag fallback hits and missing required surfaces; settings changes are announced per version bump.
+- **v0.7.0: Watcher, automation, and recovery.** Complete. Watch/unwatch, digest with unread delta, last-checked age and failed-check state, hidden-tab pause, and a recovery shelf covering hidden threads, muted users, blocked users, and active filters, each restorable on its own. Local history cleanup keeps its undo toast.
+- **v0.8.0: MV3 extension build.** Complete. Context-menu actions (hide thread, mute user, tag user, preview image, export thread), watcher-count toolbar badge, and the Firefox-compatible manifest variant generated into `dist/extension-firefox/`.
+- **v0.9.0: Reliability and distribution.** Diagnostics now report settings version, enabled features, selector health, route, fetch queue status, and per-feature worst-run timings. Self-healing selector warnings flag fallback hits and missing required surfaces; settings changes are announced per version bump.
 
 Items blocked on input from outside the codebase live in `Roadmap_Blocked.md`.
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLP Ultra
 // @namespace    https://github.com/SysAdminDoc/GLP_Userscript
-// @version      3.8.1
+// @version      3.8.2
 // @description  Declutter, theming, filtering, blocking, and reading tools for Godlike Productions
 // @author       Matthew Parker
 // @updateURL    https://raw.githubusercontent.com/SysAdminDoc/GLP_Userscript/main/dist/glp-ultra.meta.js
@@ -25,7 +25,7 @@
     // even if a manager ignores or predates the metadata directive.
     if (window.top !== window.self) return;
 
-    const SCRIPT_VERSION = '3.8.1';
+    const SCRIPT_VERSION = '3.8.2';
 
     // ============================================
     // DEFAULT SETTINGS
@@ -1279,7 +1279,7 @@
     // the diagnostics and recovery surfaces, the toasts - reads the tokens derived from this, so
     // choosing Alien Green does not leave a blue control panel sitting on a green page.
     const THEME_PALETTES = Object.freeze({
-            midnight: { bg: '#0d0d1a', accent: '#4a90d9', link: '#6ab0f3', linkHover: '#8ac4f7', hover: 'rgba(74,144,217,0.08)', headerBg: 'rgba(30,30,60,0.8)', titleBg: 'rgba(30,30,60,0.5)', border: '#333' },
+            midnight: { bg: '#070b13', accent: '#4f9cf9', link: '#78b7ff', linkHover: '#a4ceff', hover: 'rgba(79,156,249,0.10)', headerBg: 'rgba(15,24,42,0.94)', titleBg: 'rgba(11,19,34,0.88)', border: '#243248' },
             catppuccin: { bg: '#1e1e2e', accent: '#cba6f7', link: '#89b4fa', linkHover: '#b4d0fb', hover: 'rgba(203,166,247,0.08)', headerBg: 'rgba(49,50,68,0.9)', titleBg: 'rgba(49,50,68,0.6)', border: '#45475a' },
             dracula: { bg: '#282a36', accent: '#bd93f9', link: '#8be9fd', linkHover: '#a8f0ff', hover: 'rgba(189,147,249,0.08)', headerBg: 'rgba(68,71,90,0.9)', titleBg: 'rgba(68,71,90,0.6)', border: '#44475a' },
             nord: { bg: '#2e3440', accent: '#88c0d0', link: '#81a1c1', linkHover: '#8fbcbb', hover: 'rgba(136,192,208,0.08)', headerBg: 'rgba(59,66,82,0.9)', titleBg: 'rgba(59,66,82,0.6)', border: '#4c566a' },
@@ -1326,12 +1326,16 @@ body.glp-enhanced-active,
     --glpx-surface: ${t.titleBg};
     --glpx-surface-2: ${t.headerBg};
     --glpx-elevated: color-mix(in srgb, ${t.bg} 86%, #ffffff 14%);
+    --glpx-canvas: color-mix(in srgb, ${t.bg} 94%, #000000 6%);
+    --glpx-surface-low: color-mix(in srgb, ${t.bg} 94%, #ffffff 6%);
+    --glpx-surface-mid: color-mix(in srgb, ${t.bg} 90%, #ffffff 10%);
+    --glpx-surface-high: color-mix(in srgb, ${t.bg} 84%, #ffffff 16%);
     --glpx-scrim: rgba(2, 5, 13, 0.84);
 
     /* Text. */
     --glpx-text: #eef3ff;
-    --glpx-muted: #9aa8c7;
-    --glpx-subtle: #71809f;
+    --glpx-muted: #a9b6cf;
+    --glpx-subtle: #8190ad;
     --glpx-on-accent: #05070f;
 
     /* Lines. */
@@ -2540,8 +2544,8 @@ body.glpx-reader-active .glp-reader-byline {
     left: 0;
     right: 0;
     height: 30px;
-    background: linear-gradient(transparent, rgba(30,30,50,0.95));
-    color: #888;
+    background: linear-gradient(transparent, var(--glpx-surface-2));
+    color: var(--glpx-muted);
     font-size: 11px;
     text-align: center;
     line-height: 30px;
@@ -2656,9 +2660,9 @@ body.glpx-reader-active .glp-reader-byline {
 #glp-backlink-card {
     position: absolute; z-index: 2147483645; pointer-events: none;
     max-width: 340px; padding: 8px 10px;
-    background: #0d1220; color: #e6ecf7;
-    border: 1px solid rgba(147,168,211,0.26); border-radius: 8px;
-    box-shadow: 0 14px 36px rgba(0,0,0,0.5);
+    background: var(--glpx-elevated); color: var(--glpx-text);
+    border: 1px solid var(--glpx-border); border-radius: var(--glpx-r-md);
+    box-shadow: var(--glpx-shadow-2);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 12px; line-height: 1.45;
     opacity: 0; transition: opacity 0.12s ease;
@@ -2776,6 +2780,575 @@ td.nav { border-color: ${t.border} !important; }
     border-color: rgba(var(--glpx-accent-rgb),0.38); transform: translateY(-1px);
 }
 
+/* Thread reading surface. GLP's native table is kept intact, but each row gets enough visual
+   structure to read as a post instead of one uninterrupted sheet of tiny text. */
+html { background: var(--glpx-canvas) !important; }
+body.glp-enhanced-active {
+    background:
+        radial-gradient(circle at 84% -10%, rgba(var(--glpx-accent-rgb), 0.14), transparent 34rem),
+        linear-gradient(180deg, color-mix(in srgb, var(--glpx-bg) 92%, var(--glpx-accent) 8%) 0, var(--glpx-canvas) 30rem)
+        !important;
+    color: var(--glpx-text) !important;
+    font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif !important;
+    font-kerning: normal;
+    text-rendering: optimizeLegibility;
+}
+body.glp-enhanced-active :where(button, input, select, textarea) { font-family: inherit !important; }
+body.glp-enhanced-active #wrap,
+body.glp-enhanced-active #wrap_in {
+    width: calc(100% - 24px) !important;
+    margin-inline: auto !important;
+    box-sizing: border-box !important;
+}
+body.glp-enhanced-active .msg,
+body.glp-enhanced-active .msg :where(td, div, span, a, button, input, select),
+body.glp-enhanced-active .post_main {
+    font-family: inherit !important;
+}
+
+body.glp-enhanced-active .threads-wrapper > .title {
+    min-height: 0 !important;
+    margin: 0 0 6px !important;
+    padding: 8px 11px !important;
+    background: var(--glpx-surface-low) !important;
+    border: 1px solid var(--glpx-border-soft) !important;
+    border-radius: var(--glpx-r-md) !important;
+    box-shadow: var(--glpx-shadow-1);
+    color: var(--glpx-muted) !important;
+    font-size: 12px !important;
+}
+body.glp-enhanced-active .threads-wrapper > .title .navpages {
+    float: none !important;
+    color: var(--glpx-muted) !important;
+}
+body.glp-enhanced-active table.threads {
+    width: 100% !important;
+    border-collapse: separate !important;
+    border-spacing: 0 5px !important;
+    background: transparent !important;
+}
+body.glp-enhanced-active .threads tr:not(.threads_header_row) > td {
+    padding: 8px 9px !important;
+    background: var(--glpx-surface-low) !important;
+    border-top: 1px solid var(--glpx-border-soft) !important;
+    border-bottom: 1px solid var(--glpx-border-soft) !important;
+    color: var(--glpx-text) !important;
+    vertical-align: middle !important;
+    transition: background var(--glpx-ease), border-color var(--glpx-ease);
+}
+body.glp-enhanced-active .threads tr:not(.threads_header_row) > td:first-child {
+    border-left: 1px solid var(--glpx-border-soft) !important;
+    border-radius: var(--glpx-r-sm) 0 0 var(--glpx-r-sm) !important;
+}
+body.glp-enhanced-active .threads tr:not(.threads_header_row) > td:last-child {
+    border-right: 1px solid var(--glpx-border-soft) !important;
+    border-radius: 0 var(--glpx-r-sm) var(--glpx-r-sm) 0 !important;
+}
+body.glp-enhanced-active .threads tr:not(.threads_header_row):hover > td {
+    background: color-mix(in srgb, var(--glpx-surface-mid) 88%, var(--glpx-accent) 12%) !important;
+    border-color: var(--glpx-border) !important;
+}
+body.glp-enhanced-active .threads .sfr {
+    line-height: 1.35 !important;
+}
+body.glp-enhanced-active .threads .sfr > a {
+    color: var(--glpx-link-hover) !important;
+    font-weight: 630;
+    text-decoration: none !important;
+}
+body.glp-enhanced-active .threads .sfr > a:hover {
+    color: var(--glpx-text) !important;
+    text-decoration: underline !important;
+    text-decoration-color: rgba(var(--glpx-link-rgb), 0.48) !important;
+    text-underline-offset: 3px;
+}
+body.glp-enhanced-active .threads :where(.hfr, .rfr, .vifr, .pfr, .mfr) {
+    color: var(--glpx-muted) !important;
+    font-size: 12px !important;
+}
+body.glp-enhanced-active .threads :where(.rfr, .vifr) {
+    color: var(--glpx-text) !important;
+    font-variant-numeric: tabular-nums;
+}
+body.glp-enhanced-active .threads tr:has(.ifr span[title="Pinned Thread"]) > td:first-child,
+body.glp-enhanced-active .threads tr:has(.ifr span[title="Karma Pin"]) > td:first-child {
+    border-left: 3px solid var(--glpx-accent) !important;
+}
+body.glp-enhanced-active .threads :where(.glp-mute-btn, .glp-tag-btn) {
+    min-height: 22px;
+    margin: 3px 2px 0 0 !important;
+    padding: 2px 6px !important;
+    font-size: 9px !important;
+    opacity: 0.72;
+}
+body.glp-enhanced-active .threads :where(.glp-mute-btn, .glp-tag-btn):hover,
+body.glp-enhanced-active .threads :where(.glp-mute-btn, .glp-tag-btn):focus-visible { opacity: 1; }
+
+body.glp-enhanced-active table.msg {
+    width: 100% !important;
+    table-layout: auto !important;
+    border-collapse: separate !important;
+    border-spacing: 0 10px !important;
+    background: transparent !important;
+}
+body.glp-enhanced-active .msg colgroup col.msgcol_author {
+    width: ${settings.widerContent ? '140px' : '180px'} !important;
+}
+
+body.glp-enhanced-active .msg td.nav {
+    padding: 8px 10px !important;
+    background: linear-gradient(180deg, rgba(var(--glpx-accent-rgb), 0.08), transparent), var(--glpx-surface-low) !important;
+    border: 1px solid var(--glpx-border-soft) !important;
+    border-radius: var(--glpx-r-lg) !important;
+    box-shadow: var(--glpx-shadow-1);
+    color: var(--glpx-muted) !important;
+}
+body.glp-enhanced-active .msg td.nav > .navctrl,
+body.glp-enhanced-active .msg td.nav > .navpages,
+body.glp-enhanced-active .msg td.nav > form > .navctrl,
+body.glp-enhanced-active .msg td.nav > form > .navpages {
+    float: none !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    min-height: 32px;
+    margin: 0 5px 0 0 !important;
+    padding: 0 !important;
+    vertical-align: middle;
+    color: var(--glpx-muted) !important;
+}
+body.glp-enhanced-active .msg td.nav > form {
+    display: flex !important;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+}
+body.glp-enhanced-active .msg td.nav .navctrl > a,
+body.glp-enhanced-active .msg td.nav .navdisabled {
+    display: inline-flex !important;
+    align-items: center;
+    min-height: 32px;
+    box-sizing: border-box;
+    padding: 6px 10px !important;
+    background: var(--glpx-ghost) !important;
+    border: 1px solid var(--glpx-ghost-border) !important;
+    border-radius: var(--glpx-r-sm) !important;
+    color: var(--glpx-text) !important;
+    font-size: 12px !important;
+    font-weight: 650;
+    line-height: 1.2;
+    text-decoration: none !important;
+}
+body.glp-enhanced-active .msg td.nav .navctrl > a:hover {
+    background: var(--glpx-ghost-hover) !important;
+    border-color: var(--glpx-border-strong) !important;
+}
+body.glp-enhanced-active .msg td.nav .navdisabled {
+    color: var(--glpx-subtle) !important;
+    opacity: 0.62;
+}
+body.glp-enhanced-active .msg td.nav .navpages {
+    margin-left: 4px !important;
+    padding: 0 8px !important;
+    font-size: 12px !important;
+    white-space: nowrap;
+}
+body.glp-enhanced-active .msg td.nav :where(input[type="text"], input[type="submit"]) {
+    min-height: 32px;
+    box-sizing: border-box;
+    border: 1px solid var(--glpx-border) !important;
+    border-radius: var(--glpx-r-sm) !important;
+}
+body.glp-enhanced-active .msg td.nav input[type="text"] {
+    background: var(--glpx-canvas) !important;
+    color: var(--glpx-text) !important;
+    padding: 6px 9px !important;
+}
+body.glp-enhanced-active .msg td.nav input[type="submit"] {
+    background: var(--glpx-accent) !important;
+    color: var(--glpx-on-accent) !important;
+    padding: 6px 11px !important;
+    font-weight: 750;
+}
+
+body.glp-enhanced-active #glp-theme-select {
+    min-width: 138px;
+    min-height: 32px;
+    box-sizing: border-box;
+    background: var(--glpx-surface-mid) !important;
+    color: var(--glpx-text) !important;
+    border: 1px solid var(--glpx-border) !important;
+    border-radius: var(--glpx-r-sm) !important;
+    padding: 5px 28px 5px 9px !important;
+}
+
+body.glp-enhanced-active .msgtitle {
+    display: table-cell !important;
+    vertical-align: middle !important;
+    padding: ${settings.compactPostTitle ? '14px 18px' : '18px 22px'} !important;
+    background:
+        linear-gradient(120deg, rgba(var(--glpx-accent-rgb), 0.17), rgba(var(--glpx-link-rgb), 0.05) 48%, transparent 72%),
+        var(--glpx-surface-low) !important;
+    border: 1px solid var(--glpx-border) !important;
+    border-left: 4px solid var(--glpx-accent) !important;
+    border-radius: var(--glpx-r-lg) !important;
+    box-shadow: var(--glpx-shadow-1);
+}
+body.glp-enhanced-active .msgtitle h1 {
+    margin: 0 !important;
+    color: var(--glpx-text) !important;
+    font-family: inherit !important;
+    font-size: ${settings.compactPostTitle ? '20px' : '24px'} !important;
+    font-weight: 760 !important;
+    line-height: 1.22 !important;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+}
+body.glp-enhanced-active .msg td.nav .navpages b { margin-left: 4px; }
+
+body.glp-enhanced-active .msg tr[id^="post_"] > .messageauthor,
+body.glp-enhanced-active .msg tr[id^="post_"] > .replyauthor {
+    width: ${settings.widerContent ? '168px' : '208px'} !important;
+    min-width: ${settings.widerContent ? '168px' : '208px'} !important;
+    max-width: ${settings.widerContent ? '168px' : '208px'} !important;
+    box-sizing: border-box;
+    padding: ${settings.compactPosts ? '11px 12px' : '16px 15px'} !important;
+    background:
+        linear-gradient(180deg, rgba(var(--glpx-accent-rgb), 0.09), transparent 9rem),
+        var(--glpx-surface-mid) !important;
+    border: 1px solid var(--glpx-border-soft) !important;
+    border-right-color: rgba(var(--glpx-accent-rgb), 0.13) !important;
+    border-radius: var(--glpx-r-lg) 0 0 var(--glpx-r-lg) !important;
+    box-shadow: -6px 10px 24px -18px rgba(0, 0, 0, 0.86);
+    color: var(--glpx-muted) !important;
+    vertical-align: top !important;
+}
+body.glp-enhanced-active .msg tr[id^="post_"] > .messagecontent,
+body.glp-enhanced-active .msg tr[id^="post_"] > .replycontent {
+    padding: ${settings.compactPosts ? '12px 16px' : '18px 22px'} !important;
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.025), transparent 32rem),
+        var(--glpx-surface-low) !important;
+    border: 1px solid var(--glpx-border-soft) !important;
+    border-left: 0 !important;
+    border-radius: 0 var(--glpx-r-lg) var(--glpx-r-lg) 0 !important;
+    box-shadow: 8px 10px 28px -20px rgba(0, 0, 0, 0.9);
+    color: var(--glpx-text) !important;
+    vertical-align: top !important;
+}
+body.glp-enhanced-active .msg tr[id^="post_"]:hover > .messageauthor,
+body.glp-enhanced-active .msg tr[id^="post_"]:hover > .replyauthor {
+    background:
+        linear-gradient(180deg, rgba(var(--glpx-accent-rgb), 0.14), transparent 10rem),
+        var(--glpx-surface-mid) !important;
+    border-color: var(--glpx-border) !important;
+}
+body.glp-enhanced-active .msg tr[id^="post_"]:hover > .messagecontent,
+body.glp-enhanced-active .msg tr[id^="post_"]:hover > .replycontent {
+    background:
+        linear-gradient(145deg, rgba(var(--glpx-accent-rgb), 0.055), transparent 34rem),
+        var(--glpx-surface-low) !important;
+    border-color: var(--glpx-border) !important;
+    border-left: 0 !important;
+}
+
+body.glp-enhanced-active .author_header {
+    margin: 0 0 8px !important;
+    padding: 0 0 8px;
+    border-bottom: 1px solid var(--glpx-border-soft);
+    color: var(--glpx-text) !important;
+    font-size: 13px !important;
+    font-weight: 720;
+    line-height: 1.35 !important;
+}
+body.glp-enhanced-active .author_header a {
+    color: var(--glpx-link-hover) !important;
+    text-decoration: none !important;
+}
+body.glp-enhanced-active :where(.author_meta_pre, .author_meta_post) {
+    margin-top: 7px !important;
+    color: var(--glpx-muted) !important;
+    font-size: 11px !important;
+    line-height: 1.5 !important;
+}
+body.glp-enhanced-active .author_uid { color: var(--glpx-subtle) !important; }
+body.glp-enhanced-active .author_avatar { margin-top: 10px !important; }
+body.glp-enhanced-active .author_avatar img {
+    display: block;
+    margin: 0 auto;
+    border: 1px solid var(--glpx-border) !important;
+    border-radius: var(--glpx-r-md) !important;
+    box-shadow: var(--glpx-shadow-1);
+}
+body.glp-enhanced-active .msg :where(.glp-mute-btn, .glp-tag-btn, .glp-block-btn) {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    min-height: 26px;
+    box-sizing: border-box;
+    margin: 7px 4px 0 0 !important;
+    padding: 4px 7px !important;
+    border-radius: var(--glpx-r-sm) !important;
+    font-size: 10px !important;
+    font-weight: 720;
+    line-height: 1.2 !important;
+    opacity: 0.78;
+}
+body.glp-enhanced-active .msg :where(.glp-mute-btn, .glp-tag-btn, .glp-block-btn):hover,
+body.glp-enhanced-active .msg :where(.glp-mute-btn, .glp-tag-btn, .glp-block-btn):focus-visible { opacity: 1; }
+
+body.glp-enhanced-active .post_hdr {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    margin: 0 0 11px !important;
+    padding: 0 0 9px !important;
+    border-bottom: 1px solid var(--glpx-border-soft) !important;
+    color: var(--glpx-muted) !important;
+}
+body.glp-enhanced-active .post_hdr > b {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--glpx-muted) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+body.glp-enhanced-active .post_actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+}
+body.glp-enhanced-active .glp-post-number {
+    padding: 3px 7px !important;
+    background: var(--glpx-ghost) !important;
+    border: 1px solid var(--glpx-ghost-border);
+    border-radius: var(--glpx-r-xs) !important;
+    color: var(--glpx-link-hover) !important;
+    font-size: 11px !important;
+    font-weight: 760 !important;
+    line-height: 1.2;
+}
+body.glp-enhanced-active .post_main {
+    color: var(--glpx-text) !important;
+    font-size: ${settings.fontSize}px !important;
+    line-height: ${settings.lineHeight} !important;
+    overflow-wrap: anywhere;
+}
+body.glp-enhanced-active .post_main > a:not(:has(img)) {
+    text-decoration-line: underline !important;
+    text-decoration-color: rgba(var(--glpx-link-rgb), 0.42) !important;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+}
+body.glp-enhanced-active .post_main img { max-width: 100% !important; height: auto; }
+
+body.glp-enhanced-active .quoteo {
+    margin: 10px 0 !important;
+    padding: 10px 12px !important;
+    background:
+        linear-gradient(135deg, rgba(var(--glpx-accent-rgb), 0.07), transparent 22rem),
+        var(--glpx-surface-mid) !important;
+    border: 1px solid var(--glpx-border-soft) !important;
+    border-left: 3px solid var(--glpx-accent) !important;
+    border-radius: var(--glpx-r-md) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+    color: color-mix(in srgb, var(--glpx-text) 90%, var(--glpx-muted) 10%) !important;
+}
+body.glp-enhanced-active .quoteo .quoteo {
+    margin: 8px 0 !important;
+    background: color-mix(in srgb, var(--glpx-surface-high) 76%, var(--glpx-canvas) 24%) !important;
+}
+body.glp-enhanced-active .quotei { line-height: 1.55 !important; }
+body.glp-enhanced-active .quoteo font[size="1"] {
+    display: block;
+    margin-top: 7px;
+    padding-top: 7px;
+    border-top: 1px solid var(--glpx-border-soft);
+    color: var(--glpx-muted) !important;
+    font-size: 11px !important;
+    line-height: 1.45;
+}
+body.glp-enhanced-active .glp-backlinks {
+    margin-top: 12px;
+    padding-top: 9px;
+    border-top-color: var(--glpx-border-soft);
+}
+
+body.glp-enhanced-active .glp-op-post > .messageauthor,
+body.glp-enhanced-active .glp-op-post > .replyauthor {
+    background:
+        linear-gradient(180deg, rgba(var(--glpx-warning-rgb), 0.14), transparent 10rem),
+        var(--glpx-surface-mid) !important;
+    border-left: 3px solid var(--glpx-warning) !important;
+}
+body.glp-enhanced-active .glp-op-post > .messagecontent,
+body.glp-enhanced-active .glp-op-post > .replycontent {
+    border-top-color: rgba(var(--glpx-warning-rgb), 0.38) !important;
+    border-right-color: rgba(var(--glpx-warning-rgb), 0.28) !important;
+    border-bottom-color: rgba(var(--glpx-warning-rgb), 0.28) !important;
+}
+body.glp-enhanced-active .glp-op-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    margin-left: 4px;
+    padding: 2px 5px;
+    background: rgba(var(--glpx-warning-rgb), 0.13);
+    border: 1px solid rgba(var(--glpx-warning-rgb), 0.36);
+    border-radius: var(--glpx-r-xs);
+    color: var(--glpx-warning) !important;
+    font-size: 9px;
+    line-height: 1;
+}
+
+body.glp-enhanced-active #glp-thread-tools-bar,
+body.glp-enhanced-active #glp-collapse-all-bar {
+    gap: 6px;
+    padding: 10px;
+    margin: 10px 0 4px;
+    background:
+        linear-gradient(110deg, rgba(var(--glpx-accent-rgb), 0.13), transparent 36rem),
+        var(--glpx-surface-low);
+    border-color: var(--glpx-border);
+    box-shadow: 0 10px 30px -20px rgba(0, 0, 0, 0.92), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+body.glp-enhanced-active #glp-thread-tools-bar button,
+body.glp-enhanced-active #glp-collapse-all-bar button {
+    min-height: 32px;
+    padding: 6px 10px;
+    line-height: 1.2;
+}
+body.glp-enhanced-active #glp-noise-chip {
+    background: rgba(var(--glpx-accent-rgb), 0.20);
+    border-color: var(--glpx-border-strong);
+    color: var(--glpx-link-hover);
+}
+
+@media (max-width: 760px) {
+    body.glp-enhanced-active #wrap,
+    body.glp-enhanced-active #wrap_in { width: calc(100% - 12px) !important; }
+    body.glp-enhanced-active #glp-forum-toolbar {
+        display: grid !important;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 8px !important;
+        padding: 10px !important;
+    }
+    body.glp-enhanced-active #glp-forum-toolbar > .glp-toolbar-label { grid-column: 1; grid-row: 1; }
+    body.glp-enhanced-active #glp-forum-toolbar > #glp-theme-select {
+        grid-column: 2;
+        grid-row: 1;
+        min-width: 0;
+        width: 100%;
+    }
+    body.glp-enhanced-active #glp-forum-toolbar > .glp-toolbar-spacer { display: none !important; }
+    body.glp-enhanced-active #glp-forum-toolbar > #glp-open-settings-btn {
+        grid-column: 3;
+        grid-row: 1;
+        min-height: 32px;
+    }
+    body.glp-enhanced-active #glp-forum-toolbar > .glp-sort-group {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        width: 100%;
+    }
+    body.glp-enhanced-active #glp-forum-toolbar .glp-sort-item {
+        justify-content: space-between;
+        min-width: 0;
+    }
+    body.glp-enhanced-active #glp-forum-toolbar .glp-toolbar-btn { min-height: 30px; }
+
+    body.glp-enhanced-active .threads-wrapper { min-width: 0 !important; overflow: hidden !important; }
+    body.glp-enhanced-active table.threads,
+    body.glp-enhanced-active table.threads > tbody { display: block !important; width: 100% !important; }
+    body.glp-enhanced-active .threads tr.threads_header_row { display: none !important; }
+    body.glp-enhanced-active .threads tr:not(.threads_header_row) {
+        display: flex !important;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 5px 10px;
+        width: 100%;
+        margin: 0 0 6px;
+        padding: 10px;
+        box-sizing: border-box;
+        overflow: hidden;
+        background: var(--glpx-surface-low) !important;
+        border: 1px solid var(--glpx-border-soft) !important;
+        border-radius: var(--glpx-r-md) !important;
+    }
+    body.glp-enhanced-active .threads tr:has(.ifr span[title="Pinned Thread"]),
+    body.glp-enhanced-active .threads tr:has(.ifr span[title="Karma Pin"]) {
+        border-left: 3px solid var(--glpx-accent) !important;
+    }
+    body.glp-enhanced-active .threads tr:not(.threads_header_row) > td {
+        flex: 0 0 auto;
+        width: auto !important;
+        max-width: 100%;
+        padding: 2px 4px !important;
+        background: transparent !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+    }
+    body.glp-enhanced-active .threads tr:not(.threads_header_row) > .sfr {
+        order: 1;
+        flex: 1 1 calc(100% - 34px);
+        min-width: 0;
+    }
+    body.glp-enhanced-active .threads tr:not(.threads_header_row) > .sfr > a {
+        display: -webkit-box !important;
+        overflow: hidden !important;
+        white-space: normal !important;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+    }
+    body.glp-enhanced-active .threads tr:not(.threads_header_row) > .ifr { order: 0; flex-basis: 20px; }
+    body.glp-enhanced-active .threads tr:not(.threads_header_row) > .glp-hide-col { order: 2; margin-left: auto; }
+    body.glp-enhanced-active .threads tr:not(.threads_header_row) > :where(.hfr, .ufr, .rfr, .vifr, .vfr, .pfr, .mfr) {
+        order: 3;
+        font-size: 11px !important;
+    }
+
+    body.glp-enhanced-active table.msg { table-layout: auto !important; border-spacing: 0 8px !important; }
+    body.glp-enhanced-active .msg colgroup { display: none !important; }
+    body.glp-enhanced-active .msg tr[id^="post_"] {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr);
+        width: 100%;
+    }
+    body.glp-enhanced-active .msg tr[id^="post_"] > .messageauthor,
+    body.glp-enhanced-active .msg tr[id^="post_"] > .replyauthor,
+    body.glp-enhanced-active .msg tr[id^="post_"] > .messagecontent,
+    body.glp-enhanced-active .msg tr[id^="post_"] > .replycontent {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        box-sizing: border-box;
+    }
+    body.glp-enhanced-active .msg tr[id^="post_"] > .messageauthor,
+    body.glp-enhanced-active .msg tr[id^="post_"] > .replyauthor {
+        border-right: 1px solid var(--glpx-border-soft) !important;
+        border-bottom: 0 !important;
+        border-radius: var(--glpx-r-lg) var(--glpx-r-lg) 0 0 !important;
+    }
+    body.glp-enhanced-active .msg tr[id^="post_"] > .messagecontent,
+    body.glp-enhanced-active .msg tr[id^="post_"] > .replycontent {
+        border-left: 1px solid var(--glpx-border-soft) !important;
+        border-radius: 0 0 var(--glpx-r-lg) var(--glpx-r-lg) !important;
+    }
+    body.glp-enhanced-active .author_avatar img { margin-inline: 0; }
+    body.glp-enhanced-active .msgtitle h1 { font-size: 18px !important; }
+    body.glp-enhanced-active .msg td.nav .navpages { display: block !important; margin: 6px 0 0 !important; }
+    body.glp-enhanced-active .glp-op-nav { width: 100%; margin-left: 0; }
+    body.glp-enhanced-active .glp-op-nav button { flex: 1; min-width: 0; height: 30px; }
+}
+
 `;
         }
 
@@ -2828,7 +3401,16 @@ body.glp-enhanced-active table.msg,
 body.glp-enhanced-active .post_wrap,
 body.glp-enhanced-active .quoteo,
 body.glp-enhanced-active .threads-wrapper,
-body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
+body.glp-enhanced-active .author_avatar img,
+body.glp-enhanced-active .msgtitle,
+body.glp-enhanced-active .msg td.nav,
+body.glp-enhanced-active #glp-thread-tools-bar,
+body.glp-enhanced-active #glp-collapse-all-bar,
+body.glp-enhanced-active .threads tr:not(.threads_header_row) > td,
+body.glp-enhanced-active .msg tr[id^="post_"] > .messageauthor,
+body.glp-enhanced-active .msg tr[id^="post_"] > .replyauthor,
+body.glp-enhanced-active .msg tr[id^="post_"] > .messagecontent,
+body.glp-enhanced-active .msg tr[id^="post_"] > .replycontent { border-radius: 0 !important; }
 `;
         }
 
@@ -3159,14 +3741,15 @@ body.glp-enhanced-active .author_avatar img { border-radius: 0 !important; }
 
         if (settings.opPostNav) {
             css += `
-/* Docked bottom-left, clear of the author column it used to sit on top of. */
+/* Keep OP navigation with the rest of the thread tools instead of covering a post. */
 .glp-op-nav {
-    position: fixed; left: 14px; bottom: 16px;
+    position: static;
     display: flex; flex-direction: row; gap: 6px; z-index: 99997;
-    padding: 6px; border-radius: var(--glpx-r-lg);
-    background: var(--glpx-surface-2);
-    border: 1px solid var(--glpx-border);
-    box-shadow: var(--glpx-shadow-2);
+    margin-left: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
 }
 .glp-op-nav button {
     background: rgba(var(--glpx-accent-rgb), 0.14);
@@ -7916,6 +8499,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     function initOPPostNav() {
         if (!settings.opPostNav) return;
         if (!document.querySelector('.msg')) return;
+        if (document.getElementById('glp-op-nav')) return;
 
         const opPost = document.querySelector('.msg tr[id="post_1"]');
         if (!opPost) return;
@@ -7926,6 +8510,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         const getOPPosts = () => Array.from(document.querySelectorAll(opSelector));
 
         const nav = document.createElement('div');
+        nav.id = 'glp-op-nav';
         nav.className = 'glp-op-nav';
 
         const prevBtn = document.createElement('button');
@@ -7942,7 +8527,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
         nav.appendChild(prevBtn);
         nav.appendChild(nextBtn);
-        document.body.appendChild(nav);
+        getThreadToolsBar().appendChild(nav);
     }
 
     function navigateOP(dir, posts) {

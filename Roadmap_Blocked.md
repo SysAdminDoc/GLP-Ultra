@@ -31,7 +31,7 @@ Unblocks with: save-as-MHTML of those pages while logged in, dropped into `captu
 
 - **Store listing prep (Chrome Web Store / AMO).** The project deliberately ships unsigned
   artifacts from GitHub Releases; both stores require a signed, reviewed submission and a
-  developer account. Packaging itself is done — `npm run package` and `npm run package:firefox`
+  developer account. Packaging itself is done. `npm run package` and `npm run package:firefox`
   produce deterministic zips.
 - **CRX packaging.** A self-signed CRX is rejected on install by current Chrome, so the zip is
   the primary artifact by design.
@@ -39,13 +39,13 @@ Unblocks with: save-as-MHTML of those pages while logged in, dropped into `captu
 ## Cannot be machine-verified here
 
 - **Hidden-tab timer behaviour.** Auto-refresh and the thread watcher both pause while
-  `document.hidden`, but the harness cannot observe it: headless Chromium reports background tabs
+  `document.hidden`, but the test runner cannot observe it: headless Chromium reports background tabs
   as visible, so activating another tab does not set `document.hidden`, and the content script's
   isolated world cannot be patched from `page.evaluate`. An assertion written anyway passed for
   the wrong reason (both readings were -1 because no countdown bar existed at all), which is
   worse than not asserting. Unblocks with a headed run or an isolated-world CDP evaluate.
 
-- **Firefox runtime verification.** The runtime harness drives Playwright's Chromium. Firefox
+- **Firefox runtime verification.** The runtime test runner drives Playwright's Chromium. Firefox
   will not load a temporary MV3 add-on from the command line without additional tooling
   (`web-ext` or a Remote Debugging session), so the Gecko variant is gated structurally by
   `npm run verify:extension` and never behaviourally. Stated in the README rather than implied

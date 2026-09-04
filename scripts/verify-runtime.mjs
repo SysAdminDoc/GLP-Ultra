@@ -229,6 +229,26 @@ try {
     await page.locator('a.ads').evaluateAll(nodes => nodes.length > 0
       && nodes.every(node => getComputedStyle(node).display !== 'none')));
 
+  const feedSurface = await page.locator('.threads tr:not(.threads_header_row)').first().evaluate(row => {
+    const titleCell = row.querySelector('.sfr');
+    const titleStyle = getComputedStyle(titleCell);
+    return {
+      fontFamily: titleStyle.fontFamily,
+      background: titleStyle.backgroundColor,
+      borderTop: titleStyle.borderTopWidth,
+      borderSpacing: getComputedStyle(row.closest('table.threads')).borderSpacing
+    };
+  });
+  const feedGap = Number((feedSurface.borderSpacing.match(/[\d.]+/g) || []).at(-1) || 0);
+  check('feed: thread rows use the shared system UI typography',
+    !/times new roman/i.test(feedSurface.fontFamily), feedSurface.fontFamily);
+  check('feed: thread rows have separated themed surfaces',
+    feedSurface.background !== 'transparent'
+      && feedSurface.background !== 'rgba(0, 0, 0, 0)'
+      && parseFloat(feedSurface.borderTop) >= 1
+      && feedGap >= 4,
+    JSON.stringify(feedSurface));
+
   const feedDiag = await workerDiagnostics(worker, page);
   check('feed: route classified as feed', feedDiag?.route === 'feed', JSON.stringify(feedDiag));
   check('feed: no feature errors', (feedDiag?.errors || []).length === 0, JSON.stringify(feedDiag?.errors));
@@ -327,7 +347,57 @@ try {
   check('thread: block buttons rendered', await page.locator('.glp-block-btn').count() > 0);
   check('thread: quote depth badges rendered', await page.locator('.glp-quote-depth').count() > 0);
   check('thread: tools bar rendered', await page.locator('#glp-thread-tools-bar').count() === 1);
-  check('thread: OP navigation rendered', await page.locator('.glp-op-nav').count() > 0);
+  check('thread: OP navigation rendered once', await page.locator('.glp-op-nav').count() === 1);
+
+  const threadSurface = await page.locator('.msg tr[id^="post_"]').first().evaluate(row => {
+    const author = row.querySelector('.messageauthor, .replyauthor');
+    const content = row.querySelector('.messagecontent, .replycontent');
+    const quote = document.querySelector('.quoteo');
+    const table = row.closest('table.msg');
+    const authorStyle = getComputedStyle(author);
+    const contentStyle = getComputedStyle(content);
+    const quoteStyle = quote ? getComputedStyle(quote) : null;
+    return {
+      fontFamily: contentStyle.fontFamily,
+      tableBorderSpacing: getComputedStyle(table).borderSpacing,
+      authorBackground: authorStyle.backgroundColor,
+      contentBackground: contentStyle.backgroundColor,
+      authorWidth: author.getBoundingClientRect().width,
+      contentWidth: content.getBoundingClientRect().width,
+      authorBorderLeft: authorStyle.borderLeftWidth,
+      contentBorderRight: contentStyle.borderRightWidth,
+      authorRadius: authorStyle.borderTopLeftRadius,
+      contentRadius: contentStyle.borderTopRightRadius,
+      quoteBackground: quoteStyle?.backgroundColor || ''
+    };
+  });
+  const visiblePaint = value => value && value !== 'transparent' && value !== 'rgba(0, 0, 0, 0)';
+  const rowGap = Number((threadSurface.tableBorderSpacing.match(/[\d.]+/g) || []).at(-1) || 0);
+  check('thread: reading surface uses system UI typography',
+    !/times new roman/i.test(threadSurface.fontFamily), threadSurface.fontFamily);
+  check('thread: posts have distinct author and message surfaces',
+    visiblePaint(threadSurface.authorBackground)
+      && visiblePaint(threadSurface.contentBackground)
+      && threadSurface.authorBackground !== threadSurface.contentBackground,
+    JSON.stringify(threadSurface));
+  check('thread: posts read as separated cards',
+    rowGap >= 8
+      && parseFloat(threadSurface.authorBorderLeft) >= 1
+      && parseFloat(threadSurface.contentBorderRight) >= 1
+      && parseFloat(threadSurface.authorRadius) >= 8
+      && parseFloat(threadSurface.contentRadius) >= 8,
+    JSON.stringify(threadSurface));
+  check('thread: the author rail leaves the post as the primary reading surface',
+    threadSurface.authorWidth <= 220 && threadSurface.contentWidth >= threadSurface.authorWidth * 2,
+    JSON.stringify(threadSurface));
+  check('thread: quotes have their own readable surface',
+    visiblePaint(threadSurface.quoteBackground), threadSurface.quoteBackground);
+
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { opPostNav: true } });
+  await page.waitForTimeout(250);
+  check('thread: reapplying OP navigation remains idempotent',
+    await page.locator('.glp-op-nav').count() === 1,
+    String(await page.locator('.glp-op-nav').count()));
 
   // Quote graph: inferred from the site's own "Quoting:" links, so it must find real edges in
   // the capture rather than merely rendering an empty bar.

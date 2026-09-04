@@ -20,8 +20,8 @@ current public site would not expose without a legal agreement is explicitly unv
 | Surface | URL/state observed on 2026-08-13 | Result | Navigation and project coverage |
 | --- | --- | --- | --- |
 | Public root | `https://www.godlikeproductions.com/`, 1440x900, signed out | Cloudflare interstitial first, then `Godlike Productions - Membership Contract` | Hard document load; covered by both extension matches and userscript `@match`. |
-| Forum feed | `https://www.godlikeproductions.com/forum1/pg1`, 1440x900, signed out | Membership contract instead of the feed | Hard document load; feed DOM and live features are `UNVERIFIED — legal agreement required`. |
-| Thread | `https://www.godlikeproductions.com/forum1/message6170474/pg1`, 1440x900, signed out | Membership contract instead of the thread | Hard document load; thread DOM and live features are `UNVERIFIED — legal agreement required`. |
+| Forum feed | `https://www.godlikeproductions.com/forum1/pg1`, 1440x900, signed out | Membership contract instead of the feed | Hard document load; feed DOM and live features are `UNVERIFIED. Legal agreement required`. |
+| Thread | `https://www.godlikeproductions.com/forum1/message6170474/pg1`, 1440x900, signed out | Membership contract instead of the thread | Hard document load; thread DOM and live features are `UNVERIFIED. Legal agreement required`. |
 
 The accessible contract is server-rendered HTML. It exposes two unchecked consent/age controls
 and a submit control named `disclaimer`; no script or extension may accept those terms for the
@@ -90,7 +90,7 @@ family is bounded and sanitized before use or persistence.
 The generic `.ads` selector was removed after it was shown to hide first-party navigation/support
 links. A runtime regression asserts an `a.ads` native link survives while confirmed MGID hooks are
 removed. The extension therefore has request-level and rendered-DOM proof in an isolated real
-extension context, but not a truthful live cold-load claim: **UNVERIFIED — the current feed and
+extension context, but not a truthful live cold-load claim: **UNVERIFIED. The current feed and
 thread require a person to accept a legal membership contract before their network activity can
 be observed.** The standalone userscript can suppress DOM at `document-start`, but it cannot
 promise that an ad request initiated by the parser before userscript execution never starts;
@@ -98,8 +98,8 @@ request-level zero-ad behavior is extension-only.
 
 ## Settings-page matrix
 
-The pre-redesign pages were captured at 1440x900 under `dist/ui-pages-current/`. ImageGen produced
-one selected, high-fidelity dark desktop direction per destination in `design/mockups/`. The
+The pre-redesign pages were captured at 1440x900 under `dist/ui-pages-current/`. Design exploration
+produced one selected, high-fidelity dark desktop direction per destination in `design/mockups/`. The
 code-native implementation was then rendered at 1440x900, 1920x1080, and the generator's exact
 1586x992 output size. Exact-size side-by-side comparisons cover representative sparse, dense,
 visual, data, and preset archetypes; every page also passed the automated geometry and functional
@@ -161,7 +161,7 @@ not a separate light shell, so parity was performed in Midnight plus the existin
   metadata points to this repository's raw `main` artifacts. `@noframes` plus a runtime top-frame
   guard matches the extension's explicit `all_frames: false` execution policy.
 - Firefox receives a generated MV3-compatible event-page manifest and passes structural gates.
-  Its runtime behavior is unverified because the local harness drives Chromium.
+  Its runtime behavior is unverified because the local test runner drives Chromium.
 - The removed auto-contract behavior restores a legal/authentication boundary and the removed
   `.ads` rule restores first-party navigation/support links.
 
@@ -176,11 +176,11 @@ settings friction rather than speculative feature accumulation.
 
 | Candidate | Evidence / concrete hook | Impact | Effort | Risk | Disposition |
 | --- | --- | ---: | --- | --- | --- |
-| Preserve consent and native links | Live contract form plus live/captured `a.ads` links | 5 | S | Low | **Now — shipped:** removed auto-submit and generic selector. |
-| Precise zero-ad extension path | Captured MGID/AMP hooks plus scoped MV3 DNR | 5 | M | Medium | **Now — shipped:** request and DOM regressions added. |
-| Complete operational settings control center | 23 pre-redesign screenshots and verified inert/unclear states | 5 | L | Low | **Now — shipped:** ImageGen-led redesign and journey gate. |
-| Refresh signed-in/current page contracts and cold-load trace | Current feed/thread are hidden behind the legal agreement | 4 | M | External | **Next — blocked:** needs a person to accept the contract and provide fresh captures/read-only trace. |
-| Firefox behavioral parity | Generated Firefox manifest exists; no Gecko runtime driver is installed | 3 | M | Medium | **Next — blocked:** add `web-ext` or a controlled Remote Debugging harness. |
+| Preserve consent and native links | Live contract form plus live/captured `a.ads` links | 5 | S | Low | **Now. Shipped:** removed auto-submit and generic selector. |
+| Precise zero-ad extension path | Captured MGID/AMP hooks plus scoped MV3 DNR | 5 | M | Medium | **Now. Shipped:** request and DOM regressions added. |
+| Complete operational settings control center | 23 pre-redesign screenshots and verified inert/unclear states | 5 | L | Low | **Now. Shipped:** reference-led redesign and journey gate. |
+| Refresh signed-in/current page contracts and cold-load trace | Current feed/thread are hidden behind the legal agreement | 4 | M | External | **Next. Blocked:** needs a person to accept the contract and provide fresh captures/read-only trace. |
+| Firefox behavioral parity | Generated Firefox manifest exists; no Gecko runtime driver is installed | 3 | M | Medium | **Next. Blocked:** add `web-ext` or a controlled Remote Debugging test runner. |
 | Add speculative ad domains or broad cosmetic selectors | No current observed hook | 1 | S | High | **Rejected:** likely to hide native functionality or overclaim coverage. |
 | Add another feature without a current page hook | Live content templates unavailable | 1 | L | High | **Rejected for this pass:** capture evidence must come first. |
 

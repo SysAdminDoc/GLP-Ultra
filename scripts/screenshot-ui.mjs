@@ -115,15 +115,13 @@ try {
     await page.waitForTimeout(400);
     await shoot(`${theme}-02-settings`);
 
-    await page.locator('#glp-diagnostics-btn').click();
+    await send(worker, { type: 'glp:open-diagnostics' });
     await page.waitForTimeout(350);
     await shoot(`${theme}-03-diagnostics`);
     await page.locator('#glp-diagnostics [data-glp-close]').click();
 
-    // Opening an inspector hands the screen over, so come back for the next one.
-    await send(worker, { type: 'glp:open-settings' });
-    await page.waitForTimeout(350);
-    await page.locator('#glp-recovery-btn').click();
+    // Direct shell messages keep narrow captures independent of footer visibility.
+    await send(worker, { type: 'glp:open-recovery' });
     await page.waitForTimeout(350);
     await shoot(`${theme}-04-recovery`);
     await closeOverlays();

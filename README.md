@@ -1,11 +1,11 @@
 # GLP Ultra
 
-[![version](https://img.shields.io/badge/version-3.8.1-4a90d9)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-3.8.2-4a90d9)](CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Firefox%20%7C%20userscript-1f6feb)](#install)
 [![manifest](https://img.shields.io/badge/manifest-v3-8957e5)](extension/manifest.json)
 
-Declutter, theming, filtering, blocking, and reading tools for [Godlike Productions](https://www.godlikeproductions.com/) on desktop browsers — one MV3 browser extension, built from one source file that also ships as a standalone userscript.
+Declutter, theming, filtering, blocking, and reading tools for [Godlike Productions](https://www.godlikeproductions.com/) on desktop browsers. The MV3 browser extension and standalone userscript are built from the same source.
 
 v3.0.0 merged the two previously separate projects (the *GLP Enhanced Declutter* userscript and the *GodLikeProductions Enhanced Suite* userscript) into a single engine. Nothing is loaded from the network: no jQuery CDN, no remote fonts, no remote code of any kind.
 
@@ -25,13 +25,21 @@ v3.0.0 merged the two previously separate projects (the *GLP Enhanced Declutter*
 | Export | thread to Markdown / HTML / JSON with a media manifest, copy thread link, full data backup and restore |
 | Recovery | one shelf listing hidden threads, muted and blocked users, and active filters, each restorable on its own |
 | Diagnostics | route, active features, per-feature worst-run timings, fetch queue state, selector health with drift warnings, and a local issue-bundle export |
-| Quote graph | who answered a post, inferred from the site's own "Quoting:" links — backlink chips with hover excerpts and in-page jumps |
+| Quote graph | who answered a post, inferred from the site's own "Quoting:" links. Backlink chips add hover excerpts and in-page jumps |
 | Noise budget | a running count of what is being kept off the page, with a breakdown and a route to restore any of it |
 | Media | Save / Open / Copy link on post images, click-to-load third-party embeds, lightbox and gallery |
-| Accessibility | reduce motion, high contrast, larger click targets — emitted last so they beat the theme |
+| Accessibility | reduce motion, high contrast, and larger click targets. These rules are emitted last so they beat the theme |
 | Portability | validated format-3 backup and restore for every local store, safe theme/filter packs, optional settings sync across devices |
 
 Every feature exposes `init`/`apply`/`destroy`, tracks its owned listeners and observers, and unwinds itself completely when switched off. Errors in one feature can no longer take the rest of the page down with them.
+
+## Forum reading surface
+
+Thread pages use a wide message column, a compact author rail, and individual post cards with
+clear quote layers. The forum feed uses matching card rows with readable metadata. Toolbars wrap
+into touch-friendly rows on narrow screens instead of covering posts or forcing horizontal scroll.
+
+![Midnight thread theme at 1440x900](design/screenshots/thread-midnight-1440x900.png)
 
 ## Settings control center
 
@@ -52,7 +60,7 @@ mute, block, tag, and hidden-thread data.
 
 ### Extension (recommended)
 
-The `extension/` folder is ready to load as-is — nothing to build first.
+The `extension/` folder is ready to load as-is. There's nothing to build first.
 
 ```bash
 npm run load    # copies the folder path and opens chrome://extensions
@@ -64,7 +72,7 @@ npm run load    # copies the folder path and opens chrome://extensions
 4. Paste the path into the folder picker: `<repo>/extension`
 
 Chrome 137+ ignores `--load-extension`, and as of Chrome 151 the
-`--disable-features=DisableLoadExtensionCommandLineSwitch` workaround is gone too — loading
+`--disable-features=DisableLoadExtensionCommandLineSwitch` workaround is gone too. Loading
 unpacked is a deliberate manual action now, which is why `npm run load` only removes the typing.
 
 The build is unsigned by design; Chrome/Edge will show the usual unpacked-extension notice.
@@ -73,13 +81,13 @@ and hit **Reload** on the extension card.
 
 ```bash
 npm run verify      # gates + build + structure checks
-npm run package     # dist/glp-ultra-v3.8.1.zip
+npm run package     # dist/glp-ultra-v3.8.2.zip
 ```
 
 ### Firefox
 
 ```bash
-npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.8.1.zip
+npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.8.2.zip
 ```
 
 Everything but the manifest is identical to the Chrome build. The Gecko variant swaps the
@@ -89,8 +97,8 @@ Firefox requires. Load `dist/extension-firefox/manifest.json` through `about:deb
 
 Firefox treats host permissions as opt-in: the content scripts register regardless, but the
 network-level ad blocking stays inert until the host permission is granted from the add-on's
-permissions tab. The variant is gated structurally by `npm run verify:extension` — the runtime
-harness drives Chromium only, so Firefox behaviour is not machine-verified.
+permissions tab. The variant is gated structurally by `npm run verify:extension`. The runtime
+test runner drives Chromium only, so Firefox behaviour is not machine-verified.
 
 ### Userscript
 
@@ -108,7 +116,7 @@ Tampermonkey or Violentmonkey can check for updates from the `main` build. The s
 ## Layout
 
 ```
-src/glp-ultra.user.js        Engine — the single source of truth
+src/glp-ultra.user.js        Engine. This is the single source of truth
 extension/
   manifest.json              MV3, document_start content scripts
   content/gm-shim.js         GM_* -> localStorage, mirrored to chrome.storage
@@ -145,4 +153,4 @@ The build fails if a setting exists without a home in the panel, so the options 
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

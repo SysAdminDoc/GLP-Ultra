@@ -6,7 +6,7 @@ current public site would not expose without a legal agreement is explicitly unv
 ## Scope and release context
 
 - Target: `https://www.godlikeproductions.com/*` and the equivalent apex-host routes.
-- Project: `C:\Users\--\repos\GLP_Userscript`, branch `main`, MV3 extension plus a generated
+- Project: `C:\repos\GLP Ultra`, branch `main`, MV3 extension plus a generated
   standalone userscript from `src/glp-ultra.user.js`.
 - Desktop scope: 1440x900 primary and 1920x1080 secondary. Mobile behavior was not assessed.
 - Live state on 2026-08-13: signed out. No authentication handoff was performed because the

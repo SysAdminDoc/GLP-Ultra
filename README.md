@@ -1,13 +1,15 @@
 # GLP Ultra
 
-[![version](https://img.shields.io/badge/version-3.8.2-4a90d9)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-3.8.3-4f9cf9)](https://github.com/SysAdminDoc/GLP-Ultra/releases/tag/v3.8.3)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Firefox%20%7C%20userscript-1f6feb)](#install)
 [![manifest](https://img.shields.io/badge/manifest-v3-8957e5)](extension/manifest.json)
 
-Declutter, theming, filtering, blocking, and reading tools for [Godlike Productions](https://www.godlikeproductions.com/) on desktop browsers. The MV3 browser extension and standalone userscript are built from the same source.
+GLP Ultra turns [Godlike Productions](https://www.godlikeproductions.com/) into a clearer reading experience. It adds responsive dark themes, structured thread cards, local filtering and moderation controls, plus portable thread exports. Chrome, Edge, Firefox, and userscript builds all come from the same source.
 
-v3.0.0 merged the two previously separate projects (the *GLP Enhanced Declutter* userscript and the *GodLikeProductions Enhanced Suite* userscript) into a single engine. Nothing is loaded from the network: no jQuery CDN, no remote fonts, no remote code of any kind.
+Everything runs locally. GLP Ultra loads no remote code, analytics, fonts, or JavaScript libraries.
+
+[Download the latest release](https://github.com/SysAdminDoc/GLP-Ultra/releases/latest)
 
 ## What it does
 
@@ -58,42 +60,24 @@ mute, block, tag, and hidden-thread data.
 
 ## Install
 
-### Extension (recommended)
+### Chrome, Edge, and Brave
 
-The `extension/` folder is ready to load as-is. There's nothing to build first.
+1. Download [glp-ultra-v3.8.3.zip](https://github.com/SysAdminDoc/GLP-Ultra/releases/download/v3.8.3/glp-ultra-v3.8.3.zip).
+2. Extract it to a permanent folder.
+3. Open the browser's extensions page and turn on **Developer mode**.
+4. Choose **Load unpacked**, then select the extracted folder.
 
-```bash
-npm run load    # copies the folder path and opens chrome://extensions
-```
-
-1. `chrome://extensions`
-2. Turn on **Developer mode** (top right)
-3. **Load unpacked**
-4. Paste the path into the folder picker: `<repo>/extension`
-
-Chrome 137+ ignores `--load-extension`, and as of Chrome 151 the
-`--disable-features=DisableLoadExtensionCommandLineSwitch` workaround is gone too. Loading
-unpacked is a deliberate manual action now, which is why `npm run load` only removes the typing.
-
-The build is unsigned by design; Chrome/Edge will show the usual unpacked-extension notice.
-Edge and Brave use the same flow. After editing `src/glp-ultra.user.js`, run `npm run build`
-and hit **Reload** on the extension card.
-
-```bash
-npm run verify      # gates + build + structure checks
-npm run package     # dist/glp-ultra-v3.8.2.zip
-```
+The source checkout is also ready to load from `extension/`. Run `npm run load` to copy that path
+and open `chrome://extensions`. After changing `src/glp-ultra.user.js`, run `npm run build` and
+reload the extension card.
 
 ### Firefox
 
-```bash
-npm run package:firefox   # dist/extension-firefox/ + dist/glp-ultra-firefox-v3.8.2.zip
-```
+Download [glp-ultra-firefox-v3.8.3.zip](https://github.com/SysAdminDoc/GLP-Ultra/releases/download/v3.8.3/glp-ultra-firefox-v3.8.3.zip), extract it, then load `manifest.json` through `about:debugging` > **This Firefox** > **Load Temporary Add-on**.
 
 Everything but the manifest is identical to the Chrome build. The Gecko variant swaps the
 service-worker background for an event page, and adds the extension id and `strict_min_version`
-Firefox requires. Load `dist/extension-firefox/manifest.json` through `about:debugging` >
-**This Firefox** > **Load Temporary Add-on**.
+Firefox requires.
 
 Firefox treats host permissions as opt-in: the content scripts register regardless, but the
 network-level ad blocking stays inert until the host permission is granted from the add-on's
@@ -102,7 +86,7 @@ test runner drives Chromium only, so Firefox behaviour is not machine-verified.
 
 ### Userscript
 
-Install `dist/glp-ultra.user.js` in Tampermonkey or Violentmonkey. Same engine, same settings panel; the popup, options page, and network-level ad blocking are extension-only.
+Install [glp-ultra.user.js](https://github.com/SysAdminDoc/GLP-Ultra/releases/download/v3.8.3/glp-ultra.user.js) in Tampermonkey or Violentmonkey. It uses the same engine and settings panel. The popup, options page, and network-level ad blocking remain extension-only.
 
 Both distributions run only in the top-level page. The userscript declares `@noframes` and also
 checks the runtime frame, matching the extension's explicit top-frame-only content-script policy.

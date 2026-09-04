@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         GLP Ultra
-// @namespace    https://github.com/SysAdminDoc/GLP_Userscript
-// @version      3.8.2
-// @description  Declutter, theming, filtering, blocking, and reading tools for Godlike Productions
+// @namespace    https://github.com/SysAdminDoc/GLP-Ultra
+// @version      3.8.3
+// @description  Responsive dark themes, cleaner threads, filtering, moderation, and exports for Godlike Productions.
 // @author       Matthew Parker
-// @updateURL    https://raw.githubusercontent.com/SysAdminDoc/GLP_Userscript/main/dist/glp-ultra.meta.js
-// @downloadURL  https://raw.githubusercontent.com/SysAdminDoc/GLP_Userscript/main/dist/glp-ultra.user.js
+// @updateURL    https://raw.githubusercontent.com/SysAdminDoc/GLP-Ultra/main/dist/glp-ultra.meta.js
+// @downloadURL  https://raw.githubusercontent.com/SysAdminDoc/GLP-Ultra/main/dist/glp-ultra.user.js
 // @match        *://www.godlikeproductions.com/*
 // @match        *://godlikeproductions.com/*
 // @icon         https://www.godlikeproductions.com/favicon.ico
@@ -25,7 +25,7 @@
     // even if a manager ignores or predates the metadata directive.
     if (window.top !== window.self) return;
 
-    const SCRIPT_VERSION = '3.8.2';
+    const SCRIPT_VERSION = '3.8.3';
 
     // ============================================
     // DEFAULT SETTINGS

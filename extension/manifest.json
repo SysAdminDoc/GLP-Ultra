@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "GLP Ultra",
-  "version": "3.8.2",
-  "description": "Declutter, theming, filtering, blocking, and reading tools for Godlike Productions.",
+  "version": "3.8.3",
+  "description": "Responsive dark themes, cleaner threads, filtering, moderation, and exports for Godlike Productions.",
   "permissions": [
     "storage",
     "contextMenus",

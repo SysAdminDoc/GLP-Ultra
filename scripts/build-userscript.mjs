@@ -49,7 +49,7 @@ if (!versionMatch) {
 
 const updateURL = source.match(/\/\/ @updateURL\s+([^\s]+)/)?.[1] || '';
 const downloadURL = source.match(/\/\/ @downloadURL\s+([^\s]+)/)?.[1] || '';
-const expectedRawBase = 'https://raw.githubusercontent.com/SysAdminDoc/GLP_Userscript/main/dist/';
+const expectedRawBase = 'https://raw.githubusercontent.com/SysAdminDoc/GLP-Ultra/main/dist/';
 if (updateURL !== `${expectedRawBase}glp-ultra.meta.js`) {
   fail(`@updateURL must point to ${expectedRawBase}glp-ultra.meta.js`);
 }

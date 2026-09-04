@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.8.3 (2026-09-03)
+
+### Changed
+
+- **The GitHub project is now named `GLP-Ultra`.** Repository metadata, userscript update URLs,
+  package links, and the build gate all point to the new address.
+- **The README now starts with the product and the install path.** It describes the current reading
+  experience, links each release build directly, and separates end-user installation from source work.
+- **Project descriptions now match.** GitHub, the extension manifest, the userscript header, and
+  package metadata use the same concise summary.
+
+### Verified
+
+- The complete extension gate passes after the identity and URL migration. Both browser packages
+  were rebuilt from a clean output directory and checked as readable ZIP archives.
+
 ## 3.8.2 (2026-09-03)
 
 ### Redesigned
@@ -441,7 +457,7 @@ House style:
 Full repo tree:
 
 ```text
-C:\Users\--\repos\GLP_Userscript
+C:\repos\GLP Ultra
 |-- dist
 |   |-- glp-enhanced.meta.js
 |   `-- glp-enhanced.user.js
@@ -892,7 +908,7 @@ Shared code should not depend on extension-only APIs. Use adapters:
 Future file layout:
 
 ```text
-GLP_Userscript/
+GLP-Ultra/
 |-- README.md
 |-- CHANGELOG.md
 |-- LICENSE
@@ -1256,7 +1272,7 @@ Features:
 
 Dependencies:
 
-- [x] Source control initialized: the repository is `SysAdminDoc/GLP_Userscript` and every change since v3.0.0 has been committed and pushed to `main`.
+- [x] Source control initialized: the repository is `SysAdminDoc/GLP-Ultra` and every change since v3.0.0 has been committed and pushed to `main`.
 - [x] Build script for single-file userscript.
 
 Acceptance criteria:

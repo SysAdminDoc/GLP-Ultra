@@ -4,6 +4,15 @@
 
 ### Fixed
 
+- **A full local store no longer looks like lost data.** Browsers give a site about 5 MB and throw
+  once it is full. Every save now catches that, keeps your change in memory, and tells you which
+  list could not be written instead of quietly reverting to defaults on the next page load. The
+  Diagnostics report lists any store that failed to save.
+- **The import limits now add up to something that fits.** Each list had its own ceiling, picked on
+  its own, and together they allowed far more than a browser will store. They are sized against one
+  shared budget that leaves room to spare, and the hidden-thread-title list is capped at all, which
+  it was not before. Poster history now tops out at 1,000 people rather than 5,000.
+
 - **The offline verification captures are back.** Both MHTML files were removed from the project on
   2026-09-04, which left the selector registry and the whole runtime replay with nothing to check
   against. They are restored byte for byte, and a missing or empty capture now stops

@@ -439,6 +439,8 @@
         observer: null,
         settingsApplyTimer: null,
         featureErrors: [],
+        storageFailures: [],
+        storageFailuresReported: new Set(),
         featureTimings: {},
         quoteGraphBound: false,
         mediaActionsBound: false,
@@ -853,7 +855,7 @@
         autoRefreshInterval: { min: 15, max: 600 },
         watcherIntervalMinutes: { min: 5, max: 240 },
         userMuteMatchMode: { values: ['exact', 'contains', 'regex'] },
-        userHistoryCap: { min: 50, max: 5000 },
+        userHistoryCap: { min: 50, max: 1000 },
         mediaHoverPreviewSize: { min: 30, max: 95 }
     });
 
@@ -917,7 +919,38 @@
         return String(value).trim().slice(0, maxLength);
     }
 
-    function sanitizeStringList(value, { numeric = false, maxItems = 5000, maxLength = 160 } = {}) {
+    // localStorage gives an origin about 5 MiB and throws QuotaExceededError past it, so the
+    // sanitizer ceilings have to be chosen against that number rather than each on their own.
+    // Worst case with every store full, JSON punctuation included:
+    //
+    //   glpMutedUsers          2000 x  170 =  340 KB
+    //   glpBlockedUsers        2000 x  220 =  440 KB
+    //   glpHiddenThreads       5000 x   45 =  225 KB
+    //   glpHiddenThreadTitles  2000 x  175 =  350 KB
+    //   glpUserTags            1000 x  840 =  840 KB
+    //   glpWatchedThreads        25 x  600 =   15 KB
+    //   glpUserStats           1000 x 1010 = 1010 KB
+    //   glpUserStatsPages       200 x  250 =   50 KB
+    //                                        -------
+    //                                        3.27 MB, plus the settings blob and its pre-upgrade
+    //                                        backup (~8 KB each), leaving roughly 1.9 MB of head
+    //                                        room under the 5 MiB limit.
+    //
+    // Changing any number here changes that sum. STORE_LIMITS.userStats is also the ceiling the
+    // `userHistoryCap` setting is allowed to reach, so the two cannot drift apart.
+    const STORE_LIMITS = Object.freeze({
+        mutedUsers: 2000,
+        blockedUsers: 2000,
+        hiddenThreads: 5000,
+        hiddenThreadTitles: 2000,
+        userTags: 1000,
+        tagNoteLength: 500,
+        userStats: 1000,
+        userStatsThreads: 10,
+        userStatsPages: 200
+    });
+
+    function sanitizeStringList(value, { numeric = false, maxItems = STORE_LIMITS.mutedUsers, maxLength = 160 } = {}) {
         if (!Array.isArray(value)) return undefined;
         const seen = new Set();
         const result = [];
@@ -941,7 +974,7 @@
         value.forEach(entry => {
             const source = isRecord(entry) ? entry : { id: entry, name: entry };
             const id = cleanImportText(source.id, 40);
-            if (!/^\d+$/.test(id) || seen.has(id) || result.length >= 5000) return;
+            if (!/^\d+$/.test(id) || seen.has(id) || result.length >= STORE_LIMITS.blockedUsers) return;
             seen.add(id);
             result.push({ id, name: cleanImportText(source.name, 160) || id });
         });
@@ -949,13 +982,13 @@
     }
 
     function sanitizeHiddenThreads(value) {
-        return sanitizeStringList(value, { numeric: true, maxItems: 5000, maxLength: 40 });
+        return sanitizeStringList(value, { numeric: true, maxItems: STORE_LIMITS.hiddenThreads, maxLength: 40 });
     }
 
     function sanitizeHiddenThreadTitles(value) {
         if (!isRecord(value)) return undefined;
         const result = Object.create(null);
-        Object.entries(value).forEach(([id, title]) => {
+        Object.entries(value).slice(0, STORE_LIMITS.hiddenThreadTitles).forEach(([id, title]) => {
             if (!/^\d+$/.test(id)) return;
             const text = cleanImportText(title, 160);
             if (text) result[id] = text;
@@ -973,7 +1006,7 @@
     function sanitizeUserTags(value) {
         if (!isRecord(value)) return undefined;
         const result = Object.create(null);
-        Object.entries(value).slice(0, 5000).forEach(([rawName, rawTag]) => {
+        Object.entries(value).slice(0, STORE_LIMITS.userTags).forEach(([rawName, rawTag]) => {
             const name = cleanImportText(rawName, 160);
             if (!name || ['__proto__', 'prototype', 'constructor'].includes(name) || !isRecord(rawTag)) return;
             const label = cleanImportText(rawTag.label, 80);
@@ -982,7 +1015,7 @@
                 bg: sanitizeTagColor(rawTag.bg, 'var(--glpx-accent)'),
                 fg: sanitizeTagColor(rawTag.fg, '#fff'),
                 label,
-                note: typeof rawTag.note === 'string' ? rawTag.note.trim().slice(0, 2000) : ''
+                note: typeof rawTag.note === 'string' ? rawTag.note.trim().slice(0, STORE_LIMITS.tagNoteLength) : ''
             };
         });
         return result;
@@ -1029,10 +1062,10 @@
     function sanitizeUserStats(value) {
         if (!isRecord(value)) return undefined;
         const result = Object.create(null);
-        Object.entries(value).slice(0, 5000).forEach(([rawName, rawEntry]) => {
+        Object.entries(value).slice(0, STORE_LIMITS.userStats).forEach(([rawName, rawEntry]) => {
             const name = cleanImportText(rawName, 160);
             if (!name || ['__proto__', 'prototype', 'constructor'].includes(name) || !isRecord(rawEntry)) return;
-            const threads = sanitizeStringList(rawEntry.threads, { maxItems: 50, maxLength: 80 }) || [];
+            const threads = sanitizeStringList(rawEntry.threads, { maxItems: STORE_LIMITS.userStatsThreads, maxLength: 80 }) || [];
             result[name] = {
                 posts: nonNegativeInteger(rawEntry.posts),
                 threads,
@@ -1044,7 +1077,7 @@
     }
 
     function sanitizeUserStatsPages(value) {
-        const pages = sanitizeStringList(value, { maxItems: 200, maxLength: 240 });
+        const pages = sanitizeStringList(value, { maxItems: STORE_LIMITS.userStatsPages, maxLength: 240 });
         return pages?.filter(page => /^\/forum\d+\/message\d+(?:\/pg\d+)?$/i.test(page));
     }
 
@@ -1068,8 +1101,71 @@
         return parseStoredJSON(readStoredValue(key, null), fallback);
     }
 
+    // What the reader sees when a store cannot be saved. Without a name the toast is useless:
+    // "storage is full" does not tell anyone which of their lists just stopped growing.
+    const STORE_LABELS = Object.freeze({
+        glpEnhancedSettings: 'settings',
+        glpMutedUsers: 'muted users',
+        glpBlockedUsers: 'blocked users',
+        glpHiddenThreads: 'hidden threads',
+        glpHiddenThreadTitles: 'hidden thread titles',
+        glpUserTags: 'user tags and notes',
+        glpWatchedThreads: 'watched threads',
+        glpUserStats: 'poster history',
+        glpUserStatsPages: 'poster history pages'
+    });
+
+    function isQuotaError(error) {
+        if (!error) return false;
+        const name = String(error.name || '');
+        const code = Number(error.code);
+        return name === 'QuotaExceededError'
+            || name === 'NS_ERROR_DOM_QUOTA_REACHED'
+            || code === 22
+            || code === 1014
+            || /quota/i.test(String(error.message || ''));
+    }
+
+    /**
+     * A storage write that throws must not look like a write that never happened. The engine
+     * parses on read and falls back to defaults on a throw, so a swallowed QuotaExceededError
+     * reads exactly like "nothing was ever saved" - the 2026-08-06 failure shape, arriving by a
+     * different route. Record it, name the store, and tell the reader once per store per load.
+     */
+    function recordStorageFailure(key, error) {
+        const quota = isQuotaError(error);
+        const label = STORE_LABELS[key] || key;
+        const entry = {
+            key,
+            label,
+            quota,
+            message: String(error && error.message ? error.message : error),
+            at: Date.now()
+        };
+        runtimeState.storageFailures.push(entry);
+        if (runtimeState.storageFailures.length > 20) runtimeState.storageFailures.shift();
+
+        if (runtimeState.storageFailuresReported.has(key)) return entry;
+        runtimeState.storageFailuresReported.add(key);
+        const message = quota
+            ? `Local storage is full, so your ${label} could not be saved. Clear some history or hidden threads from Recovery.`
+            : `Your ${label} could not be saved to local storage.`;
+        try {
+            showNotification(message, 'error');
+        } catch (notifyError) {
+            console.warn(`[GLP Ultra] ${message}`, notifyError);
+        }
+        return entry;
+    }
+
     function writeFeatureStore(key, value) {
-        GM_setValue(key, JSON.stringify(value));
+        try {
+            GM_setValue(key, JSON.stringify(value));
+            return true;
+        } catch (error) {
+            recordStorageFailure(key, error);
+            return false;
+        }
     }
 
     function normalizeThemeValue(value) {
@@ -1256,7 +1352,13 @@
     }
 
     function saveSettings() {
-        GM_setValue('glpEnhancedSettings', JSON.stringify(settings));
+        try {
+            GM_setValue('glpEnhancedSettings', JSON.stringify(settings));
+            return true;
+        } catch (error) {
+            recordStorageFailure('glpEnhancedSettings', error);
+            return false;
+        }
     }
 
     function resetSettings() {
@@ -4938,7 +5040,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                     { key: 'userMuteMatchMode', label: 'Mute Match Mode', type: 'select', options: {exact:'Exact name',contains:'Name contains',regex:'Regular expression'} },
                     { key: 'userNotes', label: 'Private Notes on Tagged Users' },
                     { key: 'userReputationOverlay', label: 'Local Trust Overlay (posts seen)' },
-                    { key: 'userHistoryCap', label: 'Posters Kept in Local History', type: 'number', min: 50, max: 5000 }
+                    { key: 'userHistoryCap', label: 'Posters Kept in Local History', type: 'number', min: 50, max: 1000 }
                 ])}
                 ${createSettingsSection('User Data', [], 'user-data')}
                 ${createSettingsSection('Media & Embeds', [
@@ -6870,7 +6972,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function saveUserStats() {
-        const cap = Math.max(50, Number(settings.userHistoryCap) || 400);
+        const cap = Math.min(STORE_LIMITS.userStats, Math.max(50, Number(settings.userHistoryCap) || 400));
         const names = Object.keys(userStats);
         if (names.length > cap) {
             // Drop the least recently seen posters first; the overlay is about people you keep meeting.
@@ -6880,7 +6982,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                 .forEach(name => delete userStats[name]);
         }
         writeFeatureStore('glpUserStats', userStats);
-        writeFeatureStore('glpUserStatsPages', userStatsPages.slice(-200));
+        writeFeatureStore('glpUserStatsPages', userStatsPages.slice(-STORE_LIMITS.userStatsPages));
     }
 
     function clearUserHistory() {
@@ -6906,7 +7008,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             entry.posts += 1;
             entry.last = now;
             if (!entry.threads.includes(threadId)) entry.threads.push(threadId);
-            if (entry.threads.length > 50) entry.threads = entry.threads.slice(-50);
+            if (entry.threads.length > STORE_LIMITS.userStatsThreads) entry.threads = entry.threads.slice(-STORE_LIMITS.userStatsThreads);
             userStats[name] = entry;
             touched = true;
         });
@@ -10381,6 +10483,7 @@ ${manifest}
                 .map(feature => feature.id),
             changedSettings: Object.keys(DEFAULT_SETTINGS).filter(key => settings[key] !== DEFAULT_SETTINGS[key]),
             errors: [...runtimeState.featureErrors],
+            storageFailures: [...runtimeState.storageFailures],
             selectorHealth: {
                 total: health.length,
                 primary: counts.primary || 0,

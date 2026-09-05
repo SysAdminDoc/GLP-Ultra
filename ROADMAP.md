@@ -13,13 +13,6 @@ the tracker had no prior scheme.
 
 ### P0
 
-- [ ] P0 — GU-001 Handle `QuotaExceededError` on every localStorage write and reconcile the sanitizer ceilings with the 5 MiB origin limit
-  Why: `writeLocal` has no try/catch, and the sanitizers accept more data than the store can hold, so a heavy reader eventually hits a throw that the engine's own catch turns into "everything reset to defaults".
-  Evidence: `extension/content/gm-shim.js:46-48` (no try/catch); `src/glp-ultra.user.js:920` (`maxItems = 5000`), `:976`/`:985` (5,000 tags x 2,000-char notes); MDN storage quotas, ~5 MiB per origin. The identical silent-reset failure shape is recorded in CLAUDE.md for 2026-08-06.
-  Touches: `extension/content/gm-shim.js`, `src/glp-ultra.user.js` (`sanitizeStringList`, `sanitizeUserTags`, `sanitizeHiddenThreadTitles`, `writeFeatureStore`), Recovery panel.
-  Acceptance: a test that fills the origin to the quota and then writes shows a visible warning naming the store that could not be saved, the engine keeps running with its in-memory state, and the sum of every sanitizer ceiling is documented to sit under 5 MiB. Reverting the try/catch makes the test fail.
-  Complexity: M
-
 - [ ] P0 — GU-002 Move the service worker's `watchCounts` map into `chrome.storage.session`
   Why: it is module-scope state in an MV3 worker that Chrome terminates after 30 seconds idle, so watched-thread unread badges silently revert to the plain "on" marker.
   Evidence: `extension/background/service-worker.js:137` (`const watchCounts = new Map()`), read at `:140`, written at `:154`; Chrome service worker lifecycle documents a 30-second idle timeout and names `chrome.storage.session` as the persistence answer.
@@ -35,6 +28,22 @@ the tracker had no prior scheme.
   Complexity: S
 
 ### P1
+
+- [ ] P1 — GU-032 Bound `customCSS`, the one settings string with no length limit
+  Why: every local-data family is sanitised and capped, and `customCSS` is not. It is a plain
+  string on the settings blob with no `maxLength` in `SETTING_CONSTRAINTS` and no slice in the
+  normaliser, so an imported backup can carry a multi-megabyte rule set that pushes the settings
+  blob past the localStorage quota on its own and gets injected into the page as CSS.
+  Evidence: `src/glp-ultra.user.js:171` (`customCSS: ''` default), no `customCSS` entry in
+  `SETTING_CONSTRAINTS`; the GU-001 runtime probe exhausts the quota by patching a 400 KB
+  `customCSS` through `glp:patch-settings` and the value is accepted whole
+  (`scripts/verify-runtime.mjs`, the storage quota block). Backup import reaches the same path.
+  Touches: `src/glp-ultra.user.js` (`SETTING_CONSTRAINTS`, `normalizeSettingValue`, the
+  `STORE_LIMITS` budget comment), `scripts/verify-runtime.mjs`.
+  Acceptance: `customCSS` carries an explicit character ceiling that fits inside the documented
+  `STORE_LIMITS` budget, an over-long value is truncated at every ingress rather than rejected,
+  the panel shows the limit, and a check proves a hostile oversized import is cut to the cap.
+  Complexity: S
 
 - [ ] P1 — GU-004 Ship a signed, permanently installable Firefox artifact
   Why: the README tells Firefox users to load the zip through `about:debugging` as a temporary add-on, which Firefox discards on restart, and an unsigned XPI cannot be installed on Release or Beta at all. Today the Firefox lane produces nothing a real user can keep.

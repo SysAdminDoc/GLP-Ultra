@@ -768,7 +768,7 @@ try {
       && hostilePatch?.settings?.autoRefreshInterval === 15
       && hostilePatch?.settings?.watcherIntervalMinutes === 240
       && hostilePatch?.settings?.userMuteMatchMode === 'exact'
-      && hostilePatch?.settings?.userHistoryCap === 5000
+      && hostilePatch?.settings?.userHistoryCap === 1000
       && hostilePatch?.settings?.mediaHoverPreviewSize === 30,
     JSON.stringify(hostilePatch?.settings));
 
@@ -1619,7 +1619,7 @@ try {
       && afterEngineImport?.settings?.autoRefreshInterval === 15
       && afterEngineImport?.settings?.watcherIntervalMinutes === 240
       && afterEngineImport?.settings?.userMuteMatchMode === 'exact'
-      && afterEngineImport?.settings?.userHistoryCap === 5000
+      && afterEngineImport?.settings?.userHistoryCap === 1000
       && afterEngineImport?.settings?.mediaHoverPreviewSize === 30,
     JSON.stringify(afterEngineImport?.settings));
 
@@ -1654,6 +1654,73 @@ try {
       && Object.keys(engineStats).length === 1
       && JSON.stringify(engineStatsPages) === JSON.stringify(['/forum1/message6170474/pg1']),
     JSON.stringify({ engineMuted, engineBlocked, engineHidden, engineTitles, engineTags, engineWatched, engineStats, engineStatsPages }));
+
+  // ---------------- Storage quota ----------------
+  // The engine parses on read and falls back to defaults on a throw, so a swallowed
+  // QuotaExceededError is indistinguishable from "nothing was ever saved". Fill the origin,
+  // then prove the write fails loudly and the running config survives it.
+  const filled = await page.evaluate(() => {
+    const blob = 'x'.repeat(256 * 1024);
+    let written = 0;
+    try {
+      for (let i = 0; i < 200; i += 1) {
+        window.localStorage.setItem(`glp-quota-ballast-${i}`, blob);
+        written += 1;
+      }
+    } catch (error) {
+      return { written, threw: error.name || String(error) };
+    }
+    return { written, threw: null };
+  });
+  check('quota: the test can actually exhaust the origin', !!filled.threw,
+    JSON.stringify(filled));
+
+  // Replacing a key with a same-sized value needs no new space, so the write has to actually
+  // grow the settings blob past the headroom one ballast block leaves behind.
+  const OVERSIZE_CSS = `/*${'q'.repeat(400 * 1024)}*/`;
+  const patchUnderQuota = await sendMessage(worker, page, {
+    type: 'glp:patch-settings',
+    patch: { customCSS: OVERSIZE_CSS }
+  });
+  const quotaDiag = await workerDiagnostics(worker, page);
+  const quotaFailures = quotaDiag?.storageFailures || [];
+  const settingsFailure = quotaFailures.find(entry => entry.key === 'glpEnhancedSettings');
+
+  check('quota: a full origin is recorded as a named storage failure',
+    !!settingsFailure && settingsFailure.quota === true && settingsFailure.label === 'settings',
+    JSON.stringify(quotaFailures.map(entry => ({ key: entry.key, quota: entry.quota }))));
+  check('quota: the failure names the store in a visible toast',
+    await page.locator('.glp-toast-error', { hasText: 'settings' }).count() > 0,
+    await page.locator('.glp-toast').allInnerTexts().then(texts => JSON.stringify(texts)));
+  check('quota: the engine keeps the change in memory instead of resetting',
+    patchUnderQuota?.ok === true
+      && patchUnderQuota?.settings?.customCSS?.length === OVERSIZE_CSS.length
+      && (quotaDiag?.enabledFeatures || []).length > 0,
+    JSON.stringify({
+      ok: patchUnderQuota?.ok,
+      cssLength: patchUnderQuota?.settings?.customCSS?.length,
+      features: (quotaDiag?.enabledFeatures || []).length
+    }));
+
+  await page.evaluate(() => {
+    Object.keys(window.localStorage)
+      .filter(key => key.startsWith('glp-quota-ballast-'))
+      .forEach(key => window.localStorage.removeItem(key));
+  });
+  const recovered = await sendMessage(worker, page, {
+    type: 'glp:patch-settings',
+    patch: { customCSS: '.recovered { color: red; }' }
+  });
+  const recoveredStored = await page.evaluate(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem('glpEnhanced.mv3.glpEnhancedSettings') || '{}').customCSS;
+    } catch (error) {
+      return `parse failed: ${error.message}`;
+    }
+  });
+  check('quota: writes resume once the origin has room again',
+    recovered?.ok === true && recoveredStored === '.recovered { color: red; }',
+    JSON.stringify({ ok: recovered?.ok, stored: String(recoveredStored).slice(0, 60) }));
 } finally {
   if (context) await context.close();
   await rm(userDataDir, { recursive: true, force: true }).catch(() => {});

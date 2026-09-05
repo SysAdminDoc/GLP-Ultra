@@ -245,7 +245,7 @@ try {
       && importedSettings.autoRefreshInterval === 15
       && importedSettings.watcherIntervalMinutes === 240
       && importedSettings.userMuteMatchMode === schema.defaults.userMuteMatchMode
-      && importedSettings.userHistoryCap === 5000
+      && importedSettings.userHistoryCap === 1000
       && importedSettings.mediaHoverPreviewSize === 30,
     JSON.stringify(importedSettings));
   const importedMuted = parseJSON(importedStores.glpMutedUsers, []);

@@ -181,7 +181,7 @@ window.GLP_SCHEMA = {
     },
     "userHistoryCap": {
       "min": 50,
-      "max": 5000
+      "max": 1000
     },
     "mediaHoverPreviewSize": {
       "min": 30,
@@ -913,7 +913,7 @@ window.GLP_SCHEMA = {
           "label": "Posters Kept in Local History",
           "type": "number",
           "min": 50,
-          "max": 5000
+          "max": 1000
         }
       ],
       "specialId": null

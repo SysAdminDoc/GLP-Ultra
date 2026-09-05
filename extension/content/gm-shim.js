@@ -64,7 +64,13 @@
 
         if (!suppressMirror && MIRRORED_KEYS.includes(key)) {
             try {
-                chrome.storage.local.set({ [key]: serialized });
+                // chrome.storage.local reports its own quota failure through lastError rather
+                // than by throwing, so an unread callback loses it silently. The engine cannot
+                // see this write, so warn here; localStorage stays authoritative either way.
+                chrome.storage.local.set({ [key]: serialized }, () => {
+                    const error = chrome.runtime.lastError;
+                    if (error) console.warn(`[GLP Ultra] could not mirror ${key} to extension storage: ${error.message}`);
+                });
             } catch (e) {
                 // Extension context invalidated (reload/update) — the local copy still holds.
             }

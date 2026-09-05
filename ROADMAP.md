@@ -57,13 +57,6 @@ the tracker had no prior scheme.
   Acceptance: an opt-in check compares `chrome.runtime.getManifest().version` against the latest GitHub release tag at most once a day and shows an "update available" row with a link in the popup and options page. It is off until the user grants the optional host permission, it fetches data and never code, and `npm run check`'s no-remote-code gate still passes.
   Complexity: M
 
-- [ ] P1 — GU-008 Give the three vacuous runtime assertions a positive control
-  Why: each is labelled as proving something it cannot fail to prove, and the project has already been burned twice by exactly this pattern.
-  Evidence: `scripts/verify-runtime.mjs:637` (asserts `chrome.storage.sync` is empty on a fresh temp profile, where it is empty regardless); `:254` and `:426` (`(diag?.errors || []).length === 0` passes when `diag` is undefined, unlike `:255`/`:436` which correctly use `?? -1`); `:1542-1543` (`parseFloat(...) || 0` with `.catch(() => -1)` asserted `>= 0`, which only proves the element exists).
-  Touches: `scripts/verify-runtime.mjs`.
-  Acceptance: the sync check turns sync on, writes, asserts the key is present, turns sync off, clears, then asserts absence. The error checks fail when diagnostics are unreachable. The countdown check asserts movement only. Each rewritten assertion is proven capable of failing by planting the defect it names.
-  Complexity: S
-
 - [ ] P1 — GU-010 Own the elements features guard on, instead of keying off a bare id
   Why: seven features skip creation when `document.getElementById('<their id>')` matches anything, and remove that same id on teardown. Page content carrying a colliding id kills the feature and lets teardown delete a site element. The correct primitive already exists and is used by only 7 of 41 features.
   Evidence: `src/glp-ultra.user.js:6202, 6676, 7401, 8304, 8502, 8635` (id guards); `markFeatureOwned` required by `scripts/verify-lifecycle.mjs:41` but present 7 times in the engine; OWASP browser-extension cheat sheet on treating host-page data as untrusted.

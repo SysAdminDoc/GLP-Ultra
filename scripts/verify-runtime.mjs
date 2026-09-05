@@ -262,7 +262,8 @@ try {
 
   const feedDiag = await workerDiagnostics(worker, page);
   check('feed: route classified as feed', feedDiag?.route === 'feed', JSON.stringify(feedDiag));
-  check('feed: no feature errors', (feedDiag?.errors || []).length === 0, JSON.stringify(feedDiag?.errors));
+  check('feed: no feature errors', (feedDiag?.errors?.length ?? -1) === 0,
+    feedDiag ? JSON.stringify(feedDiag.errors) : 'diagnostics unreachable');
   check('feed: no expected selector is missing', (feedDiag?.selectorHealth?.missing ?? -1) === 0,
     JSON.stringify(feedDiag?.selectorHealth?.warnings));
   check('feed: no feed-route surface has fallen back to an alternate selector',
@@ -434,7 +435,8 @@ try {
 
   const threadDiag = await workerDiagnostics(worker, page);
   check('thread: route classified as thread', threadDiag?.route === 'thread', JSON.stringify(threadDiag));
-  check('thread: no feature errors', (threadDiag?.errors || []).length === 0, JSON.stringify(threadDiag?.errors));
+  check('thread: no feature errors', (threadDiag?.errors?.length ?? -1) === 0,
+    threadDiag ? JSON.stringify(threadDiag.errors) : 'diagnostics unreachable');
 
   // Diagnostics have to answer the questions the roadmap promises they answer.
   check('thread: diagnostics report the running version', threadDiag?.version === manifestVersion, threadDiag?.version);
@@ -643,9 +645,9 @@ try {
   check('thread: Markdown export lists the media manifest', markdown.includes('## Media manifest'));
 
   // ---------------- Settings sync (opt-in) ----------------
-  const syncAfterOff = await worker.evaluate(() => chrome.storage.sync.get(null));
-  check('sync: nothing is written to chrome.storage.sync while the setting is off',
-    Object.keys(syncAfterOff).length === 0, JSON.stringify(Object.keys(syncAfterOff)));
+  // The off-state assertion lives at the end of this section, after sync has been proven to
+  // write. Asserting an empty sync area here would run against a fresh temp profile, where it
+  // is empty whatever the code does.
 
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { syncSettings: true } });
   await page.waitForTimeout(500);
@@ -693,6 +695,15 @@ try {
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { syncSettings: false, fontSize: 14 } });
   await worker.evaluate(() => chrome.storage.sync.clear());
   await page.waitForTimeout(400);
+
+  // Now the off-state means something: the checks above proved this area does receive writes
+  // when the setting is on, so an empty area after a real change is evidence rather than a
+  // property of the fresh profile.
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { fontSize: 15 } });
+  await page.waitForTimeout(600);
+  const syncAfterOff = await worker.evaluate(() => chrome.storage.sync.get(null));
+  check('sync: nothing is written to chrome.storage.sync while the setting is off',
+    Object.keys(syncAfterOff).length === 0, JSON.stringify(Object.keys(syncAfterOff)));
 
   // ---------------- Shareable packs ----------------
   // The property that matters is that a pack someone else wrote cannot delete what you have.
@@ -1549,9 +1560,15 @@ try {
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { autoRefresh: true, autoRefreshInterval: 600 } });
   await page.waitForTimeout(1500);
 
+  // null, not a numeric sentinel: a sentinel that satisfies the comparison is how the earlier
+  // version of this check passed for a bar that had never rendered.
   const barWidth = () => page.locator('#glp-auto-refresh-bar .bar')
-    .evaluate(node => parseFloat(node.style.width) || 0).catch(() => -1);
-  check('timers: the auto-refresh countdown is running while visible', await barWidth() >= 0);
+    .evaluate(node => {
+      const parsed = parseFloat(node.style.width);
+      return Number.isFinite(parsed) ? parsed : null;
+    }).catch(() => null);
+  check('timers: the auto-refresh countdown bar renders with a measurable width',
+    Number.isFinite(await barWidth()), String(await barWidth()));
 
   const visibleStart = await barWidth();
   await page.waitForTimeout(2500);

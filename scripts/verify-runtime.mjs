@@ -7,7 +7,7 @@
  * DOM assertions work because the DOM is shared; anything needing the engine object is driven
  * through the service worker with `chrome.tabs.sendMessage`.
  */
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -21,6 +21,17 @@ const CAPTURES = {
   feed: { file: 'captures/forum-feed.mhtml', url: 'https://www.godlikeproductions.com/forum1/pg1' },
   thread: { file: 'captures/thread-message.mhtml', url: 'https://www.godlikeproductions.com/forum1/message6170474/pg1' }
 };
+
+// Every assertion below replays one of these. A missing capture must stop the run rather than
+// leave a shorter suite reporting all-green: this whole harness is the capture substrate.
+for (const [key, capture] of Object.entries(CAPTURES)) {
+  const info = await stat(path.join(root, capture.file)).catch(() => null);
+  if (!info?.isFile() || info.size === 0) {
+    console.error(`verify-runtime: ${capture.file} is missing or empty, so the ${key} replay cannot run.`);
+    console.error('Restore the captures (see scripts/verify-captures.mjs) before running this gate.');
+    process.exit(1);
+  }
+}
 
 const CONTRACT_PROOF_URL = 'https://www.godlikeproductions.com/glp-contract-proof';
 const AD_PROOF_URL = 'https://www.godlikeproductions.com/glp-ad-proof';

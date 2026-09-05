@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.9.0 (unreleased)
+
+### Fixed
+
+- **The offline verification captures are back.** Both MHTML files were removed from the project on
+  2026-09-04, which left the selector registry and the whole runtime replay with nothing to check
+  against. They are restored byte for byte, and a missing or empty capture now stops
+  `npm run verify:captures` and `npm run verify:runtime` with an explanation instead of a stack
+  trace or a shorter suite that still reports success.
+
 ## 3.8.3 (2026-09-03)
 
 ### Changed

@@ -1,8 +1,38 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 
 const root = process.cwd();
+
+/**
+ * The captures are the only offline substrate this repo has: the live site answers automation
+ * with a Cloudflare challenge and then a membership contract, so a missing capture means the
+ * selector registry is unverifiable, not that there is less to check. Both were deleted from
+ * `main` on 2026-09-04 and restored on 2026-09-05; fail loudly rather than skipping the file.
+ */
+async function requireCaptures(files) {
+  const problems = [];
+  for (const file of files) {
+    const full = path.join(root, file);
+    let info;
+    try {
+      info = await stat(full);
+    } catch {
+      problems.push(`${file} is missing`);
+      continue;
+    }
+    if (!info.isFile()) problems.push(`${file} is not a file`);
+    else if (info.size === 0) problems.push(`${file} is empty`);
+  }
+  if (problems.length) {
+    console.error('verify-captures: the MHTML capture substrate is not usable.');
+    problems.forEach(problem => console.error(`  - ${problem}`));
+    console.error('Restore them from history, then re-run:');
+    console.error('  git show 3b2a45e^:captures/thread-message.mhtml > captures/thread-message.mhtml');
+    console.error('  git show c2a1e9d^:captures/forum-feed.mhtml > captures/forum-feed.mhtml');
+    process.exit(1);
+  }
+}
 
 const captures = [
   {
@@ -62,6 +92,8 @@ function assertAny(text, patterns, label, file) {
     throw new Error(`${file}: missing ${label}`);
   }
 }
+
+await requireCaptures(captures.map(capture => capture.file));
 
 let passed = 0;
 

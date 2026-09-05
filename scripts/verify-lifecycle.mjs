@@ -16,48 +16,179 @@ if (registryStart < 0 || registryEnd < 0) {
     fail('could not locate the feature registry');
 } else {
     const registry = source.slice(registryStart, registryEnd);
-    const entries = [...registry.matchAll(/\{\s*id:\s*'([^']+)'[^\n]*\}/g)]
-        .map(match => ({ id: match[1], text: match[0] }));
+
+    /**
+     * Walks the registry array and returns one balanced object literal per entry, with the keys
+     * that sit at the entry's own top level.
+     *
+     * This replaced a regex (`/\{\s*id:\s*'([^']+)'[^\n]*\}/`) that had three holes, all of which
+     * failed open: it required the whole entry on one line, so a reformatted entry silently left
+     * the gate; its greedy `[^\n]*` backtracked to the last `}` on the line, so an entry whose
+     * first field closed a brace (`init: () => {}`) matched truncated and lost its later handlers;
+     * and it only accepted single-quoted ids, so `id: "x"` matched nothing at all while the count
+     * anchor missed it identically and the two agreed on zero.
+     */
+    function scanEntries(text) {
+        const found = [];
+        let index = 0;
+        let depth = 0;
+        let quote = null;
+        let entryStart = -1;
+        const topLevelKeys = [];
+        let keyBuffer = [];
+
+        while (index < text.length) {
+            const char = text[index];
+            const previous = index > 0 ? text[index - 1] : '';
+
+            if (quote) {
+                if (char === quote && previous !== '\\') quote = null;
+                index += 1;
+                continue;
+            }
+            if (char === '\'' || char === '"' || char === '`') {
+                quote = char;
+                index += 1;
+                continue;
+            }
+            if (char === '{') {
+                depth += 1;
+                if (depth === 1) {
+                    entryStart = index;
+                    keyBuffer = [];
+                }
+                index += 1;
+                continue;
+            }
+            if (char === '}') {
+                depth -= 1;
+                if (depth === 0 && entryStart >= 0) {
+                    // Offsets are recorded against the full registry text; rebase them onto the
+                    // entry slice so topLevelValue can index into entry.text directly.
+                    const base = entryStart;
+                    found.push({
+                        text: text.slice(entryStart, index + 1),
+                        keys: keyBuffer.map(key => ({ ...key, offset: key.offset - base }))
+                    });
+                    entryStart = -1;
+                }
+                index += 1;
+                continue;
+            }
+            if (depth === 1) {
+                const key = /^([A-Za-z_$][\w$]*)\s*:/.exec(text.slice(index));
+                const boundary = index === 0 || /[\s,{]/.test(previous);
+                if (key && boundary) {
+                    keyBuffer.push({ name: key[1], offset: index, length: key[0].length });
+                    index += key[0].length;
+                    continue;
+                }
+            }
+            index += 1;
+        }
+        topLevelKeys.length = 0;
+        return found;
+    }
+
+    // The slice starts at `function getFeatureRegistry() {`, so the function body is the outer
+    // brace and the entries sit one level further in. Scan the array body itself.
+    const arrayStart = registry.indexOf('[', registry.indexOf('return'));
+    if (arrayStart < 0) fail('could not locate the registry array');
+    const scanned = arrayStart < 0 ? [] : scanEntries(registry.slice(arrayStart + 1));
+
+    /** The value text for a top-level key, or null when the entry does not declare it. */
+    function topLevelValue(entry, name) {
+        const key = entry.keys.find(candidate => candidate.name === name);
+        if (!key) return null;
+        const after = entry.text.slice(key.offset + key.length);
+        // The value runs to the next top-level comma, tracking nesting and strings.
+        let depth = 0;
+        let quote = null;
+        for (let i = 0; i < after.length; i += 1) {
+            const char = after[i];
+            const previous = i > 0 ? after[i - 1] : '';
+            if (quote) {
+                if (char === quote && previous !== '\\') quote = null;
+                continue;
+            }
+            if (char === '\'' || char === '"' || char === '`') { quote = char; continue; }
+            if ('{(['.includes(char)) { depth += 1; continue; }
+            if ('})]'.includes(char)) {
+                if (depth === 0) return after.slice(0, i).trim();
+                depth -= 1;
+                continue;
+            }
+            if (char === ',' && depth === 0) return after.slice(0, i).trim();
+        }
+        return after.trim();
+    }
+
+    const entries = scanned
+        .map(entry => {
+            const idValue = topLevelValue(entry, 'id');
+            const id = idValue && /^(['"])(.*)\1$/.test(idValue) ? idValue.slice(1, -1) : null;
+            return { id, text: entry.text, keys: entry.keys, raw: entry };
+        })
+        .filter(entry => entry.id !== null);
+
     const ids = entries.map(entry => entry.id);
     const duplicateIds = ids.filter((id, index) => ids.indexOf(id) !== index);
 
     if (!entries.length) fail('feature registry is empty');
     if (duplicateIds.length) fail(`duplicate feature ids: ${[...new Set(duplicateIds)].join(', ')}`);
 
-    // The entry pattern needs the whole object literal on one line. That is true today, but a
-    // reformatted entry would simply stop matching and leave the gate silently - a smaller
-    // registry, not a failure. Anchor the count to something the pattern cannot influence.
-    const declaredIds = (registry.match(/\bid:\s*'/g) || []).length;
+    // Anchor the count against something the scanner cannot influence, in either quote style.
+    const declaredIds = (registry.match(/\bid:\s*['"]/g) || []).length;
     if (declaredIds !== entries.length) {
-        fail(`registry declares ${declaredIds} ids but only ${entries.length} entries matched; `
-            + 'an entry is probably split across lines and is no longer being checked');
+        fail(`registry declares ${declaredIds} ids but ${entries.length} entries were scanned; `
+            + 'an entry is not being checked');
     }
 
     /**
-     * True when `name` is present but does nothing. Covers the arrow, function-expression, and
-     * method-shorthand spellings, with any whitespace inside the braces.
+     * True when the handler is declared but does nothing. Only the entry's own top-level value is
+     * examined, so a nested config object that happens to use `apply` as a field name does not
+     * trip it. Covers arrow, async arrow, function-expression and method-shorthand spellings with
+     * any interior whitespace.
      *
      * `apply: () => {}` was a real bug here on 2026-08-06: seven features needed a page reload
      * because whoever wrote the registry defused `apply` instead of making `init` idempotent.
-     * The gate written afterwards only checked that the string `apply:` appeared, so the exact
-     * defect it existed to catch would have sailed through it.
      */
-    function hasEmptyHandler(text, name) {
-        return [
-            new RegExp(`\\b${name}\\s*:\\s*(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*=>\\s*\\{\\s*\\}`),
-            new RegExp(`\\b${name}\\s*:\\s*function\\s*[A-Za-z_$\\w]*\\s*\\([^)]*\\)\\s*\\{\\s*\\}`),
-            new RegExp(`\\b${name}\\s*\\([^)]*\\)\\s*\\{\\s*\\}`)
-        ].some(pattern => pattern.test(text));
+    const EMPTY_BODY = [
+        /^(?:async\s+)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{\s*\}$/,
+        /^(?:async\s+)?function\s*[A-Za-z_$\w]*\s*\([^)]*\)\s*\{\s*\}$/
+    ];
+    function hasEmptyHandler(entry, name) {
+        // Method shorthand first: `apply() {}` declares no `apply:` key, so topLevelValue finds
+        // nothing and an early return here would skip the check entirely.
+        //
+        // String.raw, not a plain template literal: a template literal treats `\\s` as an identity
+        // escape and hands `new RegExp` the letter s, which quietly matches nothing useful.
+        const shorthand = new RegExp(
+            String.raw`(?:^|[\s,{])` + name + String.raw`\s*\([^)]*\)\s*\{\s*\}`
+        );
+        if (shorthand.test(entry.text)) return true;
+        const value = topLevelValue(entry, name);
+        if (value === null) return false;
+        return EMPTY_BODY.some(pattern => pattern.test(value));
     }
 
-    entries.filter(entry => !entry.text.includes('init:') || !entry.text.includes('apply:'))
-        .forEach(entry => fail(`${entry.id} must declare init and apply handlers`));
-    entries.filter(entry => !entry.text.includes('destroy:'))
-        .forEach(entry => fail(`${entry.id} must declare a destroy handler`));
-    ['init', 'apply', 'destroy'].forEach(name => {
-        entries.filter(entry => hasEmptyHandler(entry.text, name))
-            .forEach(entry => fail(`${entry.id} has an empty ${name} handler; `
-                + 'make the real handler idempotent instead of defusing it'));
+    entries.forEach(entry => {
+        const declared = new Set(entry.keys.map(key => key.name));
+        const shorthand = name => new RegExp(`(?:^|[\\s,{])${name}\\s*\\(`).test(entry.text);
+        ['init', 'apply'].forEach(name => {
+            if (!declared.has(name) && !shorthand(name)) {
+                fail(`${entry.id} must declare init and apply handlers`);
+            }
+        });
+        if (!declared.has('destroy') && !shorthand('destroy')) {
+            fail(`${entry.id} must declare a destroy handler`);
+        }
+        ['init', 'apply', 'destroy'].forEach(name => {
+            if (hasEmptyHandler(entry, name)) {
+                fail(`${entry.id} has an empty ${name} handler; `
+                    + 'make the real handler idempotent instead of defusing it');
+            }
+        });
     });
 
     const fragmentCount = entries.filter(entry => entry.text.includes('fragment: true')).length;
@@ -96,6 +227,16 @@ if (setValueCalls.length !== 1) {
     const guarded = /function safeSetValue\([^)]*\)\s*\{\s*try\s*\{\s*GM_setValue\s*\(/.test(source);
     if (!guarded) fail('the single GM_setValue call is not inside the safeSetValue try block');
 }
+
+// Counting call sites does not stop the write being reached another way, so close the routes an
+// alias would take. Not exhaustive, but it covers the spellings someone would actually reach for.
+[
+    [/\bwindow\.GM_setValue\s*\(/, 'window.GM_setValue(...) bypasses safeSetValue'],
+    [/\bunsafeWindow\.GM_setValue\s*\(/, 'unsafeWindow.GM_setValue(...) bypasses safeSetValue'],
+    [/(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*GM_setValue\b/, 'GM_setValue is aliased to another name']
+].forEach(([pattern, message]) => {
+    if (pattern.test(source)) fail(message);
+});
 if (/GM_(?:get|set)Value\(\s*['"]glp(?:MutedUsers|BlockedUsers|HiddenThreads|HiddenThreadTitles|UserTags|WatchedThreads|UserStats|UserStatsPages)['"]/.test(source)) {
     fail('feature code must not read or write its stores through GM_* directly');
 }

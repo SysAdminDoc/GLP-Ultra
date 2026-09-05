@@ -5558,17 +5558,23 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     function readSettingsFromPanel() {
         Object.keys(DEFAULT_SETTINGS).forEach(key => {
             const input = document.getElementById(`setting-${key}`);
-            if (input) {
-                if (input.type === 'checkbox') {
-                    settings[key] = input.checked;
-                } else if (input.type === 'number') {
-                    settings[key] = parseFloat(input.value);
-                } else if (input.type === 'color' && input.dataset.followsTheme) {
-                    settings[key] = input.dataset.followsTheme;
-                } else {
-                    settings[key] = input.value;
-                }
+            if (!input) return;
+            let raw;
+            if (input.type === 'checkbox') {
+                raw = input.checked;
+            } else if (input.type === 'number') {
+                raw = parseFloat(input.value);
+            } else if (input.type === 'color' && input.dataset.followsTheme) {
+                raw = input.dataset.followsTheme;
+            } else {
+                raw = input.value;
             }
+            // The panel is an ingress like any other. It used to assign straight through, so a
+            // free-text ceiling was enforced only by the HTML maxlength attribute - a DOM
+            // constraint, not a code one - and an emptied number box stored NaN, which
+            // JSON.stringify turns into null. normalizeSettingValue clamps, truncates and
+            // type-checks the same way every other ingress already did.
+            settings[key] = normalizeSettingValue(key, raw);
         });
     }
 

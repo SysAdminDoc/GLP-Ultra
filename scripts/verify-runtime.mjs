@@ -1716,6 +1716,32 @@ try {
     type: 'glp:patch-settings',
     patch: { customCSS: OVERSIZE_CSS }
   });
+  // The in-page panel is the surface a reader actually types into, and it used to assign
+  // input.value straight onto settings and save. The maxlength attribute stops typing, not a
+  // programmatic set, so the ceiling was a DOM constraint rather than a code one. Set the value
+  // the way script does and confirm the save path clamps it.
+  await sendMessage(worker, page, { type: 'glp:open-settings' });
+  await page.waitForTimeout(400);
+  const panelClamp = await page.evaluate(() => {
+    const field = document.getElementById('setting-customCSS');
+    if (!field) return { error: 'no customCSS control in the panel' };
+    const attribute = field.getAttribute('maxlength');
+    field.value = `/*${'z'.repeat(60000)}*/`;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    const typed = field.value.length;
+    document.getElementById('glp-save-btn')?.click();
+    return { attribute, typed, error: null };
+  });
+  await page.waitForTimeout(600);
+  const afterPanelSave = await sendMessage(worker, page, { type: 'glp:get-state' });
+  check('settings: the panel clamps an oversized value it was handed programmatically',
+    panelClamp.error === null
+      && panelClamp.attribute === '20000'
+      && afterPanelSave?.settings?.customCSS?.length === 20000,
+    JSON.stringify({ ...panelClamp, saved: afterPanelSave?.settings?.customCSS?.length }));
+  await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { customCSS: '' } });
+  await page.waitForTimeout(200);
+
   check('settings: an oversized customCSS is truncated to its declared ceiling, not rejected',
     patchUnderQuota?.settings?.customCSS?.length === CSS_CAP,
     String(patchUnderQuota?.settings?.customCSS?.length));

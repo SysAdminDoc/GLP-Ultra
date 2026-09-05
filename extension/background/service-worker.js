@@ -155,8 +155,12 @@ async function readWatchCounts() {
 let badgeQueue = Promise.resolve();
 
 function queueBadgeWork(work) {
-    badgeQueue = badgeQueue.then(work).catch(() => {});
-    return badgeQueue;
+    const result = badgeQueue.then(work);
+    // The queue must survive a failed step, but the caller has to be able to see that failure.
+    // Returning the already-caught chain made every rejection invisible and left the onMessage
+    // error branch unreachable, so a failed storage write still answered { ok: true }.
+    badgeQueue = result.catch(() => {});
+    return result;
 }
 
 function setWatchCount(tabId, count) {
@@ -186,6 +190,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     if (message && message.type === 'glp:watch-count' && sender.tab && sender.tab.id != null) {
         const tabId = sender.tab.id;
+        // A content script can still be running while its tab navigates away, and a count that
+        // lands after the tab-update handler has cleared it resurrects a stale badge for a page
+        // that is no longer GLP. The sender carries its own URL, and this extension only holds
+        // host permission for GLP, so an absent one means the report is no longer welcome.
+        if (!isGLPUrl(sender.tab.url)) {
+            sendResponse({ ok: false, reason: 'sender is no longer on GLP' });
+            return false;
+        }
         const count = Number(message.count) || 0;
         setWatchCount(tabId, count)
             .then(() => paintBadge(tabId, true))

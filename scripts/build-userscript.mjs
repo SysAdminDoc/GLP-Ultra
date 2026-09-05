@@ -219,6 +219,36 @@ try {
     }
   });
 
+  // A stray control character inside a regex literal turns a working check into one that can
+  // never match, and nothing else notices: the gate keeps printing "passed". Three patterns in
+  // verify-lifecycle.mjs were silently inert for exactly this reason, a `\b` that reached the
+  // file as a 0x08 byte. Only tab, newline and carriage return belong in this source.
+  const controlCharacterPattern = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/;
+  for (const relative of [
+    'src/glp-ultra.user.js',
+    'extension/content/gm-shim.js',
+    'extension/content/ext-bridge.js',
+    'extension/background/service-worker.js',
+    'extension/options/options.js',
+    'extension/popup/popup.js',
+    'scripts/build-userscript.mjs',
+    'scripts/build-firefox.mjs',
+    'scripts/verify-lifecycle.mjs',
+    'scripts/verify-captures.mjs',
+    'scripts/verify-extension.mjs',
+    'scripts/verify-options.mjs',
+    'scripts/verify-runtime.mjs',
+    'scripts/package-extension.mjs'
+  ]) {
+    const text = await readFile(path.join(root, relative), 'utf8');
+    text.split(/\r?\n/).forEach((line, index) => {
+      if (controlCharacterPattern.test(line)) {
+        fail(`${relative}:${index + 1} contains a control character; a mangled escape can leave a `
+          + 'regex permanently unmatchable while its gate still reports success');
+      }
+    });
+  }
+
   schemaPayload = { version: packageJson.version, defaults, constraints, settingDescriptions, sectionDescriptions, sections, palettes, storeLimits };
 } catch (error) {
   fail(error.message);

@@ -2337,6 +2337,104 @@ body.glp-enhanced-active { color-scheme: dark; }
 
 `;
 
+        // ---- Forced colors ----
+        // Windows High Contrast and its equivalents replace author colours with a small system
+        // palette, and while doing it the UA throws away `box-shadow` and every non-URL
+        // `background-image`. Anything this script signalled with a shadow, a gradient or a tinted
+        // background therefore disappears: buttons lose their edges, the active sort column looks
+        // like the inactive ones, and an unread badge reads as ordinary text.
+        //
+        // Not behind the highContrast setting on purpose. That setting is a preference someone
+        // turns on inside the product; this is the operating system telling us it has already
+        // taken the colours away. `forced-color-adjust` is left alone throughout, so the UA keeps
+        // choosing the colours and only the missing structure is put back.
+        css += `
+@media (forced-colors: active) {
+    /* Every control this script adds needs an edge of its own, or the whole toolbar reads as one
+       run of text once the tinted backgrounds are gone. */
+    .glp-btn,
+    .glp-toolbar-btn,
+    .glp-sort-btn,
+    .glp-backlink,
+    .glp-quote-jump,
+    .glp-mute-btn,
+    .glp-block-btn,
+    .glp-tag-btn,
+    .glp-hide-col-btn,
+    .glp-nested-toggle,
+    .glp-media-action,
+    .glp-recovery-row button,
+    #glp-hidden-threads-bar button,
+    #glp-watch-digest button,
+    [data-glp-thread-tool] {
+        border: 1px solid ButtonBorder !important;
+        forced-color-adjust: auto;
+    }
+
+    /* State that was carried by a background tint alone. Highlight is the system's own
+       "this one is selected" colour, so the choice stays the user's. */
+    .glp-sort-btn.glp-sort-active,
+    .glp-toggle-on,
+    .glp-nav-item.glp-nav-active,
+    .glp-section.glp-page-active,
+    .glp-btn-primary {
+        border: 2px solid Highlight !important;
+    }
+    .glp-search-current,
+    .glp-search-match,
+    .glp-keyword-highlight {
+        outline: 2px solid Highlight !important;
+        outline-offset: 1px;
+    }
+    .glp-watch-unread,
+    .glp-post-number,
+    .glp-quote-depth,
+    .glp-user-tag,
+    .glp-op-badge,
+    .glp-hot-badge,
+    #glp-noise-chip {
+        border: 1px solid CanvasText !important;
+    }
+
+    /* Panels float over the page on a shadow. Without one they merge into whatever is behind. */
+    #glp-enhanced-overlay,
+    #glp-enhanced-settings,
+    #glp-diagnostics,
+    #glp-recovery,
+    #glp-lightbox,
+    #glp-quick-search,
+    #glp-op-nav,
+    #glp-forum-toolbar,
+    #glp-tag-picker,
+    #glp-backlink-card,
+    #glp-noise-panel,
+    .glp-toast,
+    .glp-thread-preview {
+        border: 1px solid CanvasText !important;
+        background: Canvas !important;
+        color: CanvasText !important;
+    }
+
+    /* Progress and countdown bars are a coloured strip and nothing else, so in forced colours
+       they vanish entirely. Give the track an edge and paint the fill in a system colour. */
+    #glp-scroll-progress,
+    #glp-auto-refresh-bar {
+        border-bottom: 1px solid CanvasText !important;
+    }
+    #glp-scroll-progress .bar,
+    #glp-auto-refresh-bar .bar {
+        background: Highlight !important;
+    }
+
+    /* Rows this script dims or tints to mean something keep a marker that survives. */
+    .glp-op-post { outline: 2px solid Highlight !important; outline-offset: -2px; }
+    /* The new-post marker is an inset shadow, which forced colours discard outright. */
+    .msg tr.glp-new-post > td { border-left: 3px solid Highlight !important; }
+    .glp-muted-post,
+    .glp-user-blocked { opacity: 1 !important; text-decoration: line-through; }
+}
+`;
+
         if (!settings.enabled) {
             return css;
         }
@@ -4435,104 +4533,6 @@ body.glp-enhanced-active .msg tr.glp-first-new-post > td:first-child::before {
 }
 `;
 
-        // ---- Forced colors ----
-        // Windows High Contrast and its equivalents replace author colours with a small system
-        // palette, and while doing it the UA throws away `box-shadow` and every non-URL
-        // `background-image`. Anything this script signalled with a shadow, a gradient or a tinted
-        // background therefore disappears: buttons lose their edges, the active sort column looks
-        // like the inactive ones, and an unread badge reads as ordinary text.
-        //
-        // Not behind the highContrast setting on purpose. That setting is a preference someone
-        // turns on inside the product; this is the operating system telling us it has already
-        // taken the colours away. `forced-color-adjust` is left alone throughout, so the UA keeps
-        // choosing the colours and only the missing structure is put back.
-        css += `
-@media (forced-colors: active) {
-    /* Every control this script adds needs an edge of its own, or the whole toolbar reads as one
-       run of text once the tinted backgrounds are gone. */
-    .glp-btn,
-    .glp-toolbar-btn,
-    .glp-sort-btn,
-    .glp-backlink,
-    .glp-quote-jump,
-    .glp-mute-btn,
-    .glp-block-btn,
-    .glp-tag-btn,
-    .glp-hide-col-btn,
-    .glp-nested-toggle,
-    .glp-media-action,
-    .glp-recovery-row button,
-    #glp-hidden-threads-bar button,
-    #glp-watch-digest button,
-    [data-glp-thread-tool] {
-        border: 1px solid ButtonBorder !important;
-        forced-color-adjust: auto;
-    }
-
-    /* State that was carried by a background tint alone. Highlight is the system's own
-       "this one is selected" colour, so the choice stays the user's. */
-    .glp-sort-btn.glp-sort-active,
-    .glp-toggle-on,
-    .glp-nav-item.glp-nav-active,
-    .glp-section.glp-page-active,
-    .glp-btn-primary {
-        border: 2px solid Highlight !important;
-    }
-    .glp-search-current,
-    .glp-search-match,
-    .glp-keyword-highlight {
-        outline: 2px solid Highlight !important;
-        outline-offset: 1px;
-    }
-    .glp-watch-unread,
-    .glp-post-number,
-    .glp-quote-depth,
-    .glp-user-tag,
-    .glp-op-badge,
-    .glp-hot-badge,
-    #glp-noise-chip {
-        border: 1px solid CanvasText !important;
-    }
-
-    /* Panels float over the page on a shadow. Without one they merge into whatever is behind. */
-    #glp-enhanced-overlay,
-    #glp-enhanced-settings,
-    #glp-diagnostics,
-    #glp-recovery,
-    #glp-lightbox,
-    #glp-quick-search,
-    #glp-op-nav,
-    #glp-forum-toolbar,
-    #glp-tag-picker,
-    #glp-backlink-card,
-    #glp-noise-panel,
-    .glp-toast,
-    .glp-thread-preview {
-        border: 1px solid CanvasText !important;
-        background: Canvas !important;
-        color: CanvasText !important;
-    }
-
-    /* Progress and countdown bars are a coloured strip and nothing else, so in forced colours
-       they vanish entirely. Give the track an edge and paint the fill in a system colour. */
-    #glp-scroll-progress,
-    #glp-auto-refresh-bar {
-        border-bottom: 1px solid CanvasText !important;
-    }
-    #glp-scroll-progress .bar,
-    #glp-auto-refresh-bar .bar {
-        background: Highlight !important;
-    }
-
-    /* Rows this script dims or tints to mean something keep a marker that survives. */
-    .glp-op-post { outline: 2px solid Highlight !important; outline-offset: -2px; }
-    /* The new-post marker is an inset shadow, which forced colours discard outright. */
-    .msg tr.glp-new-post > td { border-left: 3px solid Highlight !important; }
-    .glp-muted-post,
-    .glp-user-blocked { opacity: 1 !important; text-decoration: line-through; }
-}
-`;
-
         /* The settings surface is a routed control center: one destination at a time, with the
            same rail, toolbar, page hierarchy, card rhythm, and persistent save state as the
            extension options page. This block intentionally comes after the legacy panel rules so
@@ -6005,7 +6005,8 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             userTags: source.userTags,
             watchedThreads: source.watchedThreads,
             userStats: source.userStats,
-            userStatsPages: source.userStatsPages
+            userStatsPages: source.userStatsPages,
+            readPositions: source.readPositions
         };
 
         const hasRecognizedData = Object.values(candidates).some(value => value !== undefined);
@@ -8896,6 +8897,10 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             // baseline was always 0 - nothing ever marked new - while a later save would have
             // written this thread over every other thread position.
             loadReadPositions();
+            // The watched list too, because the seed below reads it and this feature runs before
+            // thread.watcher in the registry - so without this the list is still empty here, the
+            // seed silently never fires, and a long-time watcher gets the whole thread marked new.
+            loadWatchedThreads();
             readPositionThreadId = meta.id;
             newPostBaseline = readPositionFor(meta.id);
             furthestPostSeen = 0;
@@ -8977,6 +8982,10 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function destroyNewPostMarkers() {
+        // clearFeatureResources removes the listeners this feature registered, so the guard has to
+        // come down with them or trackReadProgress early-returns forever and nothing is recorded
+        // again after a single off/on cycle.
+        runtimeState.readProgressBound = false;
         document.querySelectorAll('.glp-new-post').forEach(row => row.classList.remove('glp-new-post'));
         document.querySelectorAll('.glp-first-new-post').forEach(row => row.classList.remove('glp-first-new-post'));
         document.querySelectorAll('[data-glp-thread-tool="first-new"]').forEach(node => node.remove());
@@ -9219,15 +9228,19 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         readPositions = sanitizeReadPositions(readFeatureStore('glpReadPositions', {})) || Object.create(null);
     }
 
-    function saveReadPositions() {
-        // Oldest-first eviction is wrong here: a thread you read once and never returned to is
-        // exactly the one whose position you still want. Trim by lowest post number, which
-        // approximates "shortest thread, least to lose".
+    /**
+     * `protectedId` is the thread whose position is being written right now. Without it the
+     * eviction below would drop it immediately: it keeps the highest post numbers, and a thread
+     * just opened at post 3 is the lowest thing in the store.
+     */
+    function saveReadPositions(protectedId = '') {
         const ids = Object.keys(readPositions);
         if (ids.length > STORE_LIMITS.readPositions) {
             const keep = ids
+                .filter(id => id !== protectedId)
                 .sort((a, b) => (readPositions[b] || 0) - (readPositions[a] || 0))
-                .slice(0, STORE_LIMITS.readPositions);
+                .slice(0, STORE_LIMITS.readPositions - (protectedId && readPositions[protectedId] !== undefined ? 1 : 0));
+            if (protectedId && readPositions[protectedId] !== undefined) keep.push(protectedId);
             const trimmed = Object.create(null);
             keep.forEach(id => { trimmed[id] = readPositions[id]; });
             readPositions = trimmed;
@@ -9238,8 +9251,15 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     function readPositionFor(threadId) {
         const id = String(threadId || '');
         if (!id) return 0;
+        if (Object.prototype.hasOwnProperty.call(readPositions, id)) return readPositions[id];
+        // Never recorded here before. A watched thread already carries a coarse position the
+        // watcher maintains, so seed from it rather than declaring the whole thread unread to
+        // someone who has been getting notified about it for weeks. Taking the max of the two on
+        // every call instead - which this used to do - meant the watcher's "you opened it, so you
+        // have seen everything on this page" write raised the bar to the end of the thread and no
+        // post was ever marked new on a watched thread at all.
         const watched = watchedEntryFor(id);
-        return Math.max(readPositions[id] || 0, watched ? (watched.lastSeenPost || 0) : 0);
+        return watched ? (watched.lastSeenPost || 0) : 0;
     }
 
     function recordReadPosition(threadId, postNumber) {
@@ -9247,7 +9267,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         const post = nonNegativeInteger(postNumber, 0);
         if (!id || post <= (readPositions[id] || 0)) return false;
         readPositions[id] = post;
-        saveReadPositions();
+        saveReadPositions(id);
         return true;
     }
 

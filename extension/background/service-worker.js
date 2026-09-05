@@ -10,6 +10,80 @@ const WATCHER_SETTINGS_KEY = 'glpEnhancedSettings';
 
 const GLP_PAGES = ['*://*.godlikeproductions.com/*'];
 
+// Chrome never applies `update_url` to an extension loaded unpacked, and unpacked is the only way
+// this one is installed, so an extension user is frozen at whatever they extracted with nothing to
+// tell them otherwise. The userscript build has `@updateURL` and updates itself; this is the
+// equivalent for the extension lane.
+//
+// Data, never code: the response is a release tag, which is compared against the running version.
+// Nothing is downloaded or executed. The host permission is optional and unrequested until the
+// reader turns the check on, so an install that never opts in makes no network request at all.
+const RELEASES_API = 'https://api.github.com/repos/SysAdminDoc/GLP-Ultra/releases/latest';
+const RELEASE_HOST = { origins: ['https://api.github.com/*'] };
+const UPDATE_STATE_KEY = 'glpUpdateState';
+const UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+/** [3, 8, 3] from "v3.8.3" or "3.8.3". Anything unparseable becomes an empty list, which loses. */
+function versionParts(value) {
+    return String(value || '').trim().replace(/^v/i, '').split('.')
+        .map(part => Number.parseInt(part, 10))
+        .filter(part => Number.isFinite(part));
+}
+
+function isNewerVersion(candidate, current) {
+    const left = versionParts(candidate);
+    const right = versionParts(current);
+    if (!left.length) return false;
+    for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+        const a = left[i] || 0;
+        const b = right[i] || 0;
+        if (a !== b) return a > b;
+    }
+    return false;
+}
+
+async function readUpdateState() {
+    const stored = await chrome.storage.local.get(UPDATE_STATE_KEY);
+    const state = stored[UPDATE_STATE_KEY];
+    return state && typeof state === 'object' ? state : {};
+}
+
+/**
+ * Returns the current state without touching the network unless a check is actually due.
+ * `force` is the reader pressing the button; it still requires the permission.
+ */
+async function checkForUpdate({ force = false } = {}) {
+    const current = chrome.runtime.getManifest().version;
+    const granted = await chrome.permissions.contains(RELEASE_HOST);
+    const previous = await readUpdateState();
+
+    if (!granted) {
+        const state = { granted: false, current, checkedAt: previous.checkedAt || 0, latest: previous.latest || '' };
+        await chrome.storage.local.set({ [UPDATE_STATE_KEY]: state });
+        return { ...state, updateAvailable: false };
+    }
+
+    const due = force || !previous.checkedAt || (Date.now() - previous.checkedAt) > UPDATE_INTERVAL_MS;
+    if (!due) {
+        return { ...previous, granted: true, current, updateAvailable: isNewerVersion(previous.latest, current) };
+    }
+
+    let latest = previous.latest || '';
+    let error = '';
+    try {
+        const response = await fetch(RELEASES_API, { headers: { Accept: 'application/vnd.github+json' } });
+        if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
+        const payload = await response.json();
+        latest = String(payload.tag_name || '').trim();
+    } catch (failure) {
+        error = String(failure && failure.message ? failure.message : failure);
+    }
+
+    const state = { granted: true, current, latest, checkedAt: Date.now(), error };
+    await chrome.storage.local.set({ [UPDATE_STATE_KEY]: state });
+    return { ...state, updateAvailable: isNewerVersion(latest, current) };
+}
+
 // Each entry maps a menu item to the engine action it runs. The engine resolves what the
 // right-click landed on itself - MV3 hands the worker a URL at most, never the element.
 const CONTEXT_ACTIONS = [
@@ -184,6 +258,12 @@ function paintBadge(tabId, onGLP) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message && message.type === 'glp:update-state') {
+        checkForUpdate({ force: message.force === true })
+            .then(state => sendResponse({ ok: true, state }))
+            .catch(error => sendResponse({ ok: false, error: String(error) }));
+        return true;
+    }
     if (message && message.type === 'glp:network-block-state') {
         syncNetworkBlocking().then(enabled => sendResponse({ ok: true, enabled }));
         return true;

@@ -97,8 +97,10 @@ try {
   // The captures' subresources are dead links; only the documents themselves are served.
   // Page numbers are ignored when matching so the engine's own background fetches - the thread
   // watcher polls the thread's base URL, infinite scroll asks for /pgN - reach the capture too.
+  let releaseApiRequests = 0;
   await context.route('**/*', async route => {
     const url = route.request().url();
+    if (url.includes('api.github.com')) releaseApiRequests += 1;
     if (url === CONTRACT_PROOF_URL) {
       await route.fulfill({
         status: 200,
@@ -2209,6 +2211,172 @@ try {
 
   await freshPage.close();
 
+  // A watched thread carries its own coarse position: the watcher sets lastSeenPost to the last
+  // post on the page the moment its toolbar renders, meaning "you opened this", not "you read
+  // this". Answering the marker's baseline with the larger of the two raised the bar to the end of
+  // the thread on every visit, so a watched thread never showed a single new post.
+  //
+  // The watcher has to be ON for this to prove anything. `watchedThreads` is loaded into memory by
+  // the watcher feature, so with it off the list is empty, watchedEntryFor returns null, and the
+  // check passes whichever way readPositionFor is written - which is exactly what happened on the
+  // first two attempts at this.
+  const watchedEntry = [{
+    id: READ_THREAD_ID,
+    url: `https://www.godlikeproductions.com/forum1/message${READ_THREAD_ID}`,
+    title: 'Watched thread',
+    lastSeenPost: 7,
+    latestPost: 7,
+    unread: 0,
+    lastCheckedAt: Date.now(),
+    pages: 1,
+    error: ''
+  }];
+
+  const watchedPage = await context.newPage();
+  await watchedPage.goto('https://www.godlikeproductions.com/forum1/message6170474/pg4',
+    { waitUntil: 'domcontentloaded' });
+  await waitFor(
+    () => sendMessage(worker, watchedPage, { type: 'glp:diagnostics' }),
+    response => response?.diagnostics?.featuresStarted === true,
+    12000);
+  await sendMessage(worker, watchedPage, {
+    type: 'glp:patch-settings',
+    patch: { watcherEnabled: true, newPostMarkers: true }
+  });
+  await waitFor(() => watchedPage.locator('[data-glp-thread-tool="watch"]').count(),
+    value => value === 1, 8000);
+
+  await watchedPage.evaluate(({ key, id, watched }) => {
+    window.localStorage.setItem(key, JSON.stringify({ [id]: 2 }));
+    window.localStorage.setItem('glpEnhanced.mv3.glpWatchedThreads', JSON.stringify(watched));
+  }, { key: READ_POSITION_KEY, id: READ_THREAD_ID, watched: watchedEntry });
+  await worker.evaluate(async ({ id, watched }) => {
+    await chrome.storage.local.set({
+      glpReadPositions: JSON.stringify({ [id]: 2 }),
+      glpWatchedThreads: JSON.stringify(watched)
+    });
+  }, { id: READ_THREAD_ID, watched: watchedEntry });
+  await watchedPage.reload({ waitUntil: 'domcontentloaded' });
+  await waitFor(
+    () => sendMessage(worker, watchedPage, { type: 'glp:diagnostics' }),
+    response => response?.diagnostics?.featuresStarted === true,
+    12000);
+  await settled(() => watchedPage.locator('.msg tr[id^="post_"]').count());
+
+  const watchedState = await watchedPage.evaluate(({ baseline, id }) => {
+    const rows = [...document.querySelectorAll('.msg tr[id^="post_"]')];
+    const ordinal = row => parseInt(String(row.id).replace('post_', ''), 10) || 0;
+    let watching = null;
+    try {
+      const list = JSON.parse(window.localStorage.getItem('glpEnhanced.mv3.glpWatchedThreads') || '[]');
+      const entry = list.find(item => item.id === id);
+      watching = entry ? entry.lastSeenPost : null;
+    } catch (error) {
+      watching = `unparseable: ${error.message}`;
+    }
+    return {
+      watchButton: document.querySelectorAll('[data-glp-thread-tool="watch"]').length,
+      watching,
+      highestOrdinal: rows.reduce((max, row) => Math.max(max, ordinal(row)), 0),
+      expected: rows.filter(row => ordinal(row) > baseline).length,
+      actual: rows.filter(row => row.classList.contains('glp-new-post')).length
+    };
+  }, { baseline: 2, id: READ_THREAD_ID });
+
+  // Without these three the marking assertion cannot fail for the reason it names.
+  check('read position: the watched-thread case is actually set up (watched, and posts above the baseline)',
+    watchedState.watchButton === 1
+      && watchedState.watching === 7
+      && watchedState.highestOrdinal <= 7
+      && watchedState.expected > 0,
+    JSON.stringify(watchedState));
+  check('read position: a watched thread still marks posts the reader has not scrolled past',
+    watchedState.actual === watchedState.expected, JSON.stringify(watchedState));
+  await sendMessage(worker, watchedPage, { type: 'glp:patch-settings', patch: { watcherEnabled: false } });
+  await watchedPage.close();
+
+  // Export then import: the store was being written into the backup and dropped on the way back,
+  // because the import path built its candidate list without it. Export alone passed, so the bug
+  // survived a green suite.
+  // A live GLP tab, not the shared page: the badge block above navigates that one to about:blank,
+  // so messages sent to it reach no engine and every field comes back empty.
+  const backupPage = await context.newPage();
+  await backupPage.goto('https://www.godlikeproductions.com/forum1/message6170474/pg3',
+    { waitUntil: 'domcontentloaded' });
+  await waitFor(
+    () => sendMessage(worker, backupPage, { type: 'glp:diagnostics' }),
+    response => response?.diagnostics?.featuresStarted === true,
+    12000);
+  const roundTripBackup = (await sendMessage(worker, backupPage, { type: 'glp:build-backup' }))?.backup;
+  const backupCarriesPositions = !!roundTripBackup
+    && typeof roundTripBackup.readPositions === 'object';
+
+  await plantState({});
+  const restoreResult = await sendMessage(worker, backupPage, {
+    type: 'glp:apply-backup',
+    backup: { ...roundTripBackup, readPositions: { [READ_THREAD_ID]: 5 } }
+  });
+  const restoredPositions = await waitFor(
+    () => worker.evaluate(async () => {
+      const stored = await chrome.storage.local.get('glpReadPositions');
+      return stored.glpReadPositions ?? '';
+    }),
+    value => {
+      try {
+        return JSON.parse(value || '{}')['6170474'] === 5;
+      } catch (error) {
+        return false;
+      }
+    },
+    8000);
+
+  let restoredValue = null;
+  try {
+    restoredValue = JSON.parse(restoredPositions || '{}')[READ_THREAD_ID];
+  } catch (error) {
+    restoredValue = `unparseable: ${restoredPositions}`;
+  }
+  check('read position: a backup carries the store out and back in again',
+    backupCarriesPositions && restoreResult?.ok === true && restoredValue === 5,
+    JSON.stringify({ backupCarriesPositions, ok: restoreResult?.ok, restoredValue }));
+  await backupPage.close();
+
+  // ---------------- Update check ----------------
+  // Chrome never auto-updates an unpacked extension, so this is the only signal an extension user
+  // gets that a newer build exists. It must stay silent and offline until the reader opts in.
+  // Called directly rather than through chrome.runtime.sendMessage: a service worker's own
+  // onMessage listener does not receive messages the worker itself sends, so that route answers
+  // "Receiving end does not exist". The message path is exercised from the options page, which is
+  // a real extension page, in verify-options.
+  const updateState = await worker.evaluate(() => checkForUpdate());
+  check('update: with no permission granted the check reports nothing',
+    updateState && updateState.granted === false && updateState.updateAvailable === false,
+    JSON.stringify(updateState));
+  check('update: nothing is fetched from the releases API before the reader opts in',
+    releaseApiRequests === 0, String(releaseApiRequests));
+
+  // Forcing a check without the permission must also stay offline rather than throwing.
+  const forcedUpdate = await worker.evaluate(() => checkForUpdate({ force: true }));
+  check('update: forcing a check without permission still makes no request',
+    forcedUpdate && forcedUpdate.granted === false && releaseApiRequests === 0,
+    JSON.stringify({ forcedUpdate, releaseApiRequests }));
+
+  const comparison = await worker.evaluate(() => ({
+    newer: isNewerVersion('v3.9.0', '3.8.3'),
+    older: isNewerVersion('v3.8.2', '3.8.3'),
+    same: isNewerVersion('3.8.3', '3.8.3'),
+    shorter: isNewerVersion('v4', '3.8.3'),
+    longer: isNewerVersion('3.8.3.1', '3.8.3'),
+    junk: isNewerVersion('not-a-version', '3.8.3'),
+    empty: isNewerVersion('', '3.8.3')
+  }));
+  check('update: a newer tag is recognised and everything else is not',
+    comparison.newer === true && comparison.shorter === true && comparison.longer === true
+      && comparison.older === false && comparison.same === false
+      && comparison.junk === false && comparison.empty === false,
+    JSON.stringify(comparison));
+
+
 
 } catch (error) {
   // One Playwright timeout, or a browser the OS killed under memory pressure, used to propagate
@@ -2219,7 +2387,9 @@ try {
   check('harness: the suite ran to completion without an uncaught error',
     false, `${error && error.name ? error.name : 'Error'}: ${String(error && error.message ? error.message : error).split('\n')[0]}`);
 } finally {
-  if (context) await context.close();
+  // Closing an already-dead context throws, and a throw here would sail past the summary below -
+  // the same "the run reports nothing" failure the catch above exists to prevent, just moved.
+  if (context) await context.close().catch(() => {});
   await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
 }
 

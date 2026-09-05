@@ -29,6 +29,11 @@
 - **The Firefox build asks for a newer Firefox.** It claimed to support 128, a version that stopped
   getting security updates in September 2025. It now names 140, which is a supported release, and
   the build refuses to ship if that number ever drifts again.
+- **The extension can tell you when a new version is out.** Chrome never updates an extension you
+  loaded from a folder, so there was no way to know a newer build existed. The popup and the options
+  page can now check, and say so with a link to the release. It is off until you turn it on, it asks
+  for access to the releases page at that point and not before, and it reads a version number and
+  nothing else.
 - **Threads remember where you stopped reading.** Reopening a long thread now marks the posts added
   since you last scrolled through it and offers a jump straight to the first one. It works on any
   thread, not only ones you explicitly watch, and it follows how far you actually scrolled rather

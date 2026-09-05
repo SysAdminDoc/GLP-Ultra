@@ -13,6 +13,9 @@
     "https://www.godlikeproductions.com/*",
     "https://godlikeproductions.com/*"
   ],
+  "optional_host_permissions": [
+    "https://api.github.com/*"
+  ],
   "background": {
     "service_worker": "background/service-worker.js"
   },

@@ -22,6 +22,61 @@ function applyPageTheme(themeName) {
 
 /* GLP Ultra popup: quick control over the settings the engine reads from chrome.storage.local. */
 
+/**
+ * Shows whether a newer release exists, and offers to turn the check on.
+ *
+ * The host permission is optional and is requested from this click, because Chrome only grants one
+ * from a user gesture in an extension page. Until it is granted nothing is fetched, so an install
+ * that never presses this makes no network request at all.
+ */
+async function renderUpdateRow(row, text, link, button) {
+    if (!row) return null;
+    const response = await chrome.runtime.sendMessage({ type: 'glp:update-state' })
+        .catch(() => null);
+    const state = response && response.ok ? response.state : null;
+    if (!state) {
+        row.hidden = true;
+        return null;
+    }
+
+    if (state.updateAvailable) {
+        row.hidden = false;
+        text.textContent = `Version ${state.latest} is available. You are on ${state.current}.`;
+        link.href = 'https://github.com/SysAdminDoc/GLP-Ultra/releases/latest';
+        link.hidden = false;
+    } else if (state.granted && state.error) {
+        row.hidden = false;
+        text.textContent = `Could not check for updates: ${state.error}`;
+        link.hidden = true;
+    } else {
+        row.hidden = true;
+    }
+
+    if (button) {
+        button.textContent = state.granted ? 'Check for updates' : 'Turn on update checks';
+    }
+    return state;
+}
+
+async function requestUpdateCheck(row, text, link, button) {
+    const granted = await chrome.permissions.request({ origins: ['https://api.github.com/*'] })
+        .catch(() => false);
+    if (!granted) {
+        row.hidden = false;
+        text.textContent = 'Update checks stay off until access to the releases page is allowed.';
+        link.hidden = true;
+        return;
+    }
+    await chrome.runtime.sendMessage({ type: 'glp:update-state', force: true }).catch(() => null);
+    const state = await renderUpdateRow(row, text, link, button);
+    if (state && !state.updateAvailable && !state.error) {
+        row.hidden = false;
+        text.textContent = `You are on the latest version (${state.current}).`;
+        link.hidden = true;
+    }
+}
+
+
 const SETTINGS_KEY = 'glpEnhancedSettings';
 const NETWORK_BLOCK_KEY = 'glpNetworkAdBlock';
 
@@ -143,6 +198,16 @@ async function init() {
     const panelBtn = document.getElementById('open-panel');
     const tab = await activeGLPTab();
     const version = document.getElementById('version-line');
+
+    const updateRow = document.getElementById('update-row');
+    const updateText = document.getElementById('update-text');
+    const updateLink = document.getElementById('update-link');
+    const updateButton = document.getElementById('check-updates');
+    renderUpdateRow(updateRow, updateText, updateLink, updateButton);
+    if (updateButton) {
+        updateButton.addEventListener('click', () =>
+            requestUpdateCheck(updateRow, updateText, updateLink, updateButton));
+    }
 
     if (!tab) {
         panelBtn.disabled = true;

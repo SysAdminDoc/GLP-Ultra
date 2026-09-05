@@ -43,6 +43,23 @@ button:disabled, input:disabled, select:disabled, textarea:disabled { cursor: no
     box-shadow: var(--focus);
 }
 
+.update-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 16px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(var(--accent-rgb), 0.1);
+    color: var(--text);
+    font-size: 13px;
+}
+
+.update-row a { color: var(--link); }
+
+.update-row button { margin-left: auto; }
+
 .app-shell {
     display: grid;
     grid-template-columns: 272px minmax(0, 1fr);

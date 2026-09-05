@@ -22,6 +22,11 @@
 
     <div id="status" class="status" hidden></div>
 
+    <div id="update-row" class="status" hidden>
+        <span id="update-text"></span>
+        <a id="update-link" href="#" target="_blank" rel="noreferrer noopener">Open releases</a>
+    </div>
+
     <section class="block">
         <h2>Theme</h2>
         <select id="theme-select">
@@ -66,6 +71,7 @@
     <footer class="foot">
         <button type="button" id="open-panel" class="btn primary">Settings panel</button>
         <button type="button" id="open-options" class="btn">All options</button>
+        <button type="button" id="check-updates" class="btn">Check for updates</button>
     </footer>
 
     <script src="../generated/settings-schema.js"></script>

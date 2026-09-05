@@ -20,13 +20,6 @@ the tracker had no prior scheme.
   Acceptance: a Puppeteer run installs `dist/extension-firefox/`, replays both MHTML captures, and asserts at least the smoke set the Chromium harness covers: engine present, route classified, no feature errors, settings survive a reload. The Firefox entry leaves `Roadmap_Blocked.md`.
   Complexity: L
 
-- [ ] P1 — GU-007 Give the extension build an update path
-  Why: Chrome never applies `update_url` to an unpacked extension, so every extension user is frozen at whatever version they extracted, with no signal that a newer one exists. The userscript lane has `@updateURL`; the extension lane has nothing.
-  Evidence: Chrome autoupdate docs and the chromium-extensions guidance thread both state unpacked developer-mode installs do not auto-update; `README.md` install steps; `extension/manifest.json` has no `update_url`.
-  Touches: `extension/background/service-worker.js`, `extension/popup/`, `extension/options/`, `extension/manifest.json` (`optional_permissions` for the release host).
-  Acceptance: an opt-in check compares `chrome.runtime.getManifest().version` against the latest GitHub release tag at most once a day and shows an "update available" row with a link in the popup and options page. It is off until the user grants the optional host permission, it fetches data and never code, and `npm run check`'s no-remote-code gate still passes.
-  Complexity: M
-
 ### P2
 
 - [ ] P2 — GU-034 Make the last three racy runtime checks wait on engine state instead of the clock

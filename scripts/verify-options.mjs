@@ -285,6 +285,36 @@ try {
   check('options: all preset cards remain visible at secondary desktop width',
     await page.locator('.preset-card').count() === 3
       && await page.locator('.preset-card').last().isVisible());
+  // The update row is the only signal an extension user gets that a newer build exists, because
+  // Chrome never auto-updates an unpacked install. It must stay hidden and offline until the reader
+  // grants the optional host permission, and this page is a real extension page so the round trip
+  // through the worker's onMessage handler is genuinely exercised here.
+  const updateRow = await page.evaluate(async () => {
+    const row = document.getElementById('update-row');
+    const button = document.getElementById('check-updates');
+    const response = await chrome.runtime.sendMessage({ type: 'glp:update-state' }).catch(error => ({
+      ok: false,
+      error: String(error && error.message ? error.message : error)
+    }));
+    return {
+      rowPresent: !!row,
+      rowHidden: row ? row.hidden : null,
+      buttonPresent: !!button,
+      buttonLabel: button ? button.textContent.trim() : '',
+      ok: response ? response.ok : false,
+      granted: response && response.state ? response.state.granted : null,
+      updateAvailable: response && response.state ? response.state.updateAvailable : null,
+      error: response ? response.error : 'no response'
+    };
+  });
+  check('options: the worker answers an update-state request from a real extension page',
+    updateRow.ok === true && updateRow.granted === false && updateRow.updateAvailable === false,
+    JSON.stringify(updateRow));
+  check('options: the update row stays hidden and offers to turn checks on',
+    updateRow.rowPresent && updateRow.rowHidden === true && updateRow.buttonPresent
+      && updateRow.buttonLabel === 'Turn on update checks',
+    JSON.stringify(updateRow));
+
   check('options: no uncaught page errors', pageErrors.length === 0, pageErrors.join(' | '));
 } finally {
   if (context) await context.close();

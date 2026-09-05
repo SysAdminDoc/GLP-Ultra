@@ -30,6 +30,18 @@ const packageJson = JSON.parse(await readFile(path.join(root, 'package.json'), '
 const serviceWorker = await readFile(path.join(extensionDir, 'background', 'service-worker.js'), 'utf8');
 
 if (manifest.manifest_version !== 3) fail('manifest_version must be 3');
+
+// The update check reads a release tag and nothing else, so its host access is optional and must
+// stay that way: promoting it to `host_permissions` would make every install ask for network
+// access it does not need, and widening it past the releases API would hand the extension reach it
+// has no reason to have.
+const optionalHosts = manifest.optional_host_permissions || [];
+if (JSON.stringify(optionalHosts) !== JSON.stringify(['https://api.github.com/*'])) {
+  fail(`optional_host_permissions must be exactly ["https://api.github.com/*"], found ${JSON.stringify(optionalHosts)}`);
+}
+if ((manifest.host_permissions || []).some(pattern => pattern.includes('api.github.com'))) {
+  fail('the releases API must stay an optional permission, not a required host permission');
+}
 if (manifest.version !== packageJson.version) fail(`manifest ${manifest.version} != package ${packageJson.version}`);
 if (/^\d+\.\d+\.\d+$/.test(manifest.version) === false) fail(`manifest version "${manifest.version}" is not a 3-part version`);
 if (manifest.commands) fail('command shortcuts are not allowed');

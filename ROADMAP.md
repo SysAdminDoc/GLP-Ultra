@@ -13,13 +13,6 @@ the tracker had no prior scheme.
 
 ### P1
 
-- [ ] P1 — GU-004 Ship a signed, permanently installable Firefox artifact
-  Why: the README tells Firefox users to load the zip through `about:debugging` as a temporary add-on, which Firefox discards on restart, and an unsigned XPI cannot be installed on Release or Beta at all. Today the Firefox lane produces nothing a real user can keep.
-  Evidence: Mozilla Extension Workshop signing overview ("unsigned extensions cannot be installed on release or beta Firefox versions"; self-distributed signing is free and automated, up to 24 hours to sign); `README.md` Firefox section; `scripts/build-firefox.mjs`.
-  Touches: `scripts/build-firefox.mjs`, `package.json` (a `sign:firefox` script wrapping `web-ext sign --channel=unlisted`), `README.md`, release process.
-  Acceptance: `npm run package:firefox` produces an `.xpi` that installs on current Firefox Release from the local filesystem and survives a browser restart. Keep the existing `glp-ultra@sysadmindoc.github.io` gecko id so any current install keeps its profile data.
-  Complexity: M
-
 - [ ] P1 — GU-006 Add a Firefox runtime lane with Puppeteer, and update Roadmap_Blocked.md
   Why: `Roadmap_Blocked.md` records Firefox behavioural verification as blocked on tooling. That is no longer true. The Gecko variant is currently gated structurally only, so a Firefox-only regression cannot be caught anywhere.
   Evidence: Puppeteer PR #13810 adds `Browser.installExtension` over WebDriver BiDi `webExtension.install`; Firefox support stable since Puppeteer 23. Playwright still cannot load Firefox extensions.

@@ -27,6 +27,23 @@ registry has nothing to validate them with.
 Unblocks with: save-as-MHTML of those pages while logged in, dropped into `captures/`, then
 `npm run verify:captures` to bind them to the selector registry.
 
+## Needs an addons.mozilla.org account and API credentials
+
+- **GU-004 Ship a signed, permanently installable Firefox artifact.** Firefox Release and Beta
+  refuse an unsigned extension outright, with no preference to override it, so the zip the README
+  points Firefox users at can only be side-loaded through `about:debugging` as a temporary add-on
+  and the browser drops it on the next restart. The Firefox lane therefore produces nothing a
+  reader can keep.
+
+  The fix is not a code problem. `web-ext sign --channel=unlisted` signs a self-distributed add-on
+  for free with automated review, but it needs an AMO account plus a JWT issuer and secret from
+  https://addons.mozilla.org/developers/addon/api/key/, which this machine does not have. Keep the
+  existing `glp-ultra@sysadmindoc.github.io` gecko id when it is done, or every current install
+  loses its stored data.
+
+  Unblocks with: an AMO account, its API key and secret available to the build, and a decision on
+  whether the signed `.xpi` becomes a release asset alongside the zip.
+
 ## Blocked on a distribution decision, not on code
 
 - **Store listing prep (Chrome Web Store / AMO).** The project deliberately ships unsigned

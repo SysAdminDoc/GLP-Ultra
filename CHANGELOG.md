@@ -8,6 +8,13 @@
   once it is full. Every save now catches that, keeps your change in memory, and tells you which
   list could not be written instead of quietly reverting to defaults on the next page load. The
   Diagnostics report lists any store that failed to save.
+- **Watched-thread counts stay on the toolbar button.** Chrome shuts the extension's background
+  worker down after half a minute of quiet, and the unread counts were being kept somewhere that
+  did not survive it, so the badge quietly dropped back to the plain marker. They are stored
+  properly now.
+- **The badge clears when you leave the forum.** A tab that had a watched-thread count kept showing
+  it on every other site you visited in that tab. Chrome hides the address of pages the extension
+  has no access to, and the old check read that as "unknown" instead of "not the forum".
 - **The import limits now add up to something that fits.** Each list had its own ceiling, picked on
   its own, and together they allowed far more than a browser will store. They are sized against one
   shared budget that leaves room to spare, and the hidden-thread-title list is capped at all, which

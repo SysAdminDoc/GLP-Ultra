@@ -1721,6 +1721,68 @@ try {
   check('quota: writes resume once the origin has room again',
     recovered?.ok === true && recoveredStored === '.recovered { color: red; }',
     JSON.stringify({ ok: recovered?.ok, stored: String(recoveredStored).slice(0, 60) }));
+
+  // ---------------- Toolbar badge across a worker restart ----------------
+  // MV3 kills the worker after 30s idle. Anything the badge needs has to outlive that, so the
+  // unread counts live in chrome.storage.session rather than a module-scope Map.
+  const glpTabId = await worker.evaluate(async () => {
+    const tabs = await chrome.tabs.query({ url: '*://*.godlikeproductions.com/*' });
+    return tabs.length ? tabs[tabs.length - 1].id : null;
+  });
+  check('badge: a GLP tab is available to paint', typeof glpTabId === 'number', String(glpTabId));
+
+  const paintedBefore = await worker.evaluate(async tabId => {
+    await setWatchCount(tabId, 7);
+    await paintBadge(tabId, true);
+    return chrome.action.getBadgeText({ tabId });
+  }, glpTabId);
+  check('badge: a reported unread count reaches the toolbar', paintedBefore === '7', paintedBefore);
+
+  // What actually has to be true for the badge to survive the 30s idle kill is that the count
+  // lives in chrome.storage.session rather than in worker module state. Assert that directly:
+  // read the raw storage area, not the accessor, so a module-scope Map cannot satisfy it.
+  // (Stopping the worker through CDP `ServiceWorker.stopAllWorkers` was tried first and hangs
+  // the run - the harness never gets a replacement worker back.)
+  const survived = await worker.evaluate(async tabId => {
+    const raw = await chrome.storage.session.get('glpWatchCounts');
+    return {
+      persisted: raw?.glpWatchCounts?.[tabId] ?? null,
+      viaAccessor: (await readWatchCounts())[tabId] ?? null
+    };
+  }, glpTabId);
+  check('badge: the unread count is held in chrome.storage.session, not worker module state',
+    survived.persisted === 7 && survived.viaAccessor === 7, JSON.stringify(survived));
+
+  const revived = worker;
+
+  // GU-003: `tab.url` is absent off-origin because the extension holds no host permission there,
+  // so the handler has to read that absence as "not GLP" rather than skipping the paint.
+  const offGlpTab = await revived.evaluate(async () => {
+    const tab = await chrome.tabs.create({ url: 'about:blank' });
+    await new Promise(resolve => setTimeout(resolve, 400));
+    const seen = await chrome.tabs.get(tab.id);
+    return { id: tab.id, url: seen.url ?? null, hasUrl: Object.prototype.hasOwnProperty.call(seen, 'url') };
+  });
+  check('badge: an off-GLP tab really does hide its URL from this extension',
+    offGlpTab.url === null || offGlpTab.url === '' || offGlpTab.url === undefined,
+    JSON.stringify(offGlpTab));
+
+  const clearedAfterNavigation = await revived.evaluate(async ({ tabId, blankId }) => {
+    await setWatchCount(tabId, 4);
+    await paintBadge(tabId, true);
+    const before = await chrome.action.getBadgeText({ tabId });
+    await chrome.tabs.update(tabId, { url: 'about:blank' });
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    const after = await chrome.action.getBadgeText({ tabId });
+    const counts = await readWatchCounts();
+    await chrome.tabs.remove(blankId).catch(() => {});
+    return { before, after, stillCounted: counts[tabId] ?? null };
+  }, { tabId: glpTabId, blankId: offGlpTab.id });
+  check('badge: navigating away from GLP clears the stale unread count',
+    clearedAfterNavigation.before === '4'
+      && clearedAfterNavigation.after === ''
+      && clearedAfterNavigation.stillCounted === null,
+    JSON.stringify(clearedAfterNavigation));
 } finally {
   if (context) await context.close();
   await rm(userDataDir, { recursive: true, force: true }).catch(() => {});

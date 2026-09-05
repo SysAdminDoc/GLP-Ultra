@@ -11,22 +11,6 @@ No current actionable items.
 Added 2026-09-05 from the research pass recorded in RESEARCH.md. Item ids start a new `GU-` series;
 the tracker had no prior scheme.
 
-### P0
-
-- [ ] P0 — GU-002 Move the service worker's `watchCounts` map into `chrome.storage.session`
-  Why: it is module-scope state in an MV3 worker that Chrome terminates after 30 seconds idle, so watched-thread unread badges silently revert to the plain "on" marker.
-  Evidence: `extension/background/service-worker.js:137` (`const watchCounts = new Map()`), read at `:140`, written at `:154`; Chrome service worker lifecycle documents a 30-second idle timeout and names `chrome.storage.session` as the persistence answer.
-  Touches: `extension/background/service-worker.js`, `scripts/verify-runtime.mjs`.
-  Acceptance: a runtime check sets a watch count, forces the worker to terminate (`chrome.processes` or an idle wait), wakes it with a tab update, and reads the same badge text back. The check fails against the current `Map` implementation.
-  Complexity: S
-
-- [ ] P0 — GU-003 Clear the toolbar badge when a tab navigates away from GLP
-  Why: without the `tabs` permission `tab.url` is omitted for non-GLP URLs, so `chrome.tabs.onUpdated` returns early and the stale unread count stays on the toolbar for every other site in that tab, which is the opposite of the handler's stated intent.
-  Evidence: `extension/background/service-worker.js:164-168`, comment on `:163` reads "Keep the toolbar button quiet on unrelated sites"; `chrome.tabs` docs gate `Tab.url` on host permission for that tab.
-  Touches: `extension/background/service-worker.js`, `scripts/verify-runtime.mjs`.
-  Acceptance: navigating a tab from a GLP capture to `about:blank` leaves the action badge empty. Confirm the cause before fixing (log whether `tab.url` is actually undefined off-origin), then treat `tab.url === undefined` as off-GLP rather than as unknown.
-  Complexity: S
-
 ### P1
 
 - [ ] P1 — GU-032 Bound `customCSS`, the one settings string with no length limit

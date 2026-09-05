@@ -134,10 +134,28 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 // Tabs that reported a watched-thread unread count keep it on the badge; the plain
 // "on" marker is only for GLP tabs that have nothing to report.
-const watchCounts = new Map();
+//
+// This lives in chrome.storage.session rather than a module-scope Map because MV3 terminates the
+// worker after 30 seconds idle and takes module state with it. A Map here loses every unread
+// count the first time the user pauses, and the badge silently drops back to "on".
+const WATCH_COUNTS_KEY = 'glpWatchCounts';
 
-function paintBadge(tabId, onGLP) {
-    const unread = watchCounts.get(tabId) || 0;
+async function readWatchCounts() {
+    const stored = await chrome.storage.session.get(WATCH_COUNTS_KEY);
+    const counts = stored[WATCH_COUNTS_KEY];
+    return counts && typeof counts === 'object' ? counts : {};
+}
+
+async function setWatchCount(tabId, count) {
+    const counts = await readWatchCounts();
+    if (count > 0) counts[tabId] = count;
+    else delete counts[tabId];
+    await chrome.storage.session.set({ [WATCH_COUNTS_KEY]: counts });
+}
+
+async function paintBadge(tabId, onGLP) {
+    const counts = await readWatchCounts();
+    const unread = counts[tabId] || 0;
     const text = unread > 0 ? String(unread) : (onGLP ? 'on' : '');
     chrome.action.setBadgeText({ tabId, text }, () => void chrome.runtime.lastError);
     chrome.action.setBadgeBackgroundColor({ tabId, color: unread > 0 ? '#e6a820' : '#4a90d9' },
@@ -150,22 +168,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
     if (message && message.type === 'glp:watch-count' && sender.tab && sender.tab.id != null) {
+        const tabId = sender.tab.id;
         const count = Number(message.count) || 0;
-        if (count > 0) watchCounts.set(sender.tab.id, count);
-        else watchCounts.delete(sender.tab.id);
-        paintBadge(sender.tab.id, true);
-        sendResponse({ ok: true });
-        return false;
+        setWatchCount(tabId, count)
+            .then(() => paintBadge(tabId, true))
+            .then(() => sendResponse({ ok: true }))
+            .catch(error => sendResponse({ ok: false, error: String(error) }));
+        return true;
     }
     return false;
 });
 
+function isGLPUrl(url) {
+    return typeof url === 'string' && url.includes('godlikeproductions.com');
+}
+
 // Keep the toolbar button quiet on unrelated sites.
+//
+// `tab.url` is only populated for URLs this extension holds host permission for, and the only
+// hosts it asks for are the two GLP ones. So off-GLP the field is absent, and the old
+// `if (!tab.url) return` treated "not our site" as "unknown" and left the previous tab's unread
+// count sitting on the toolbar for every other site the user visited in that tab. An absent URL
+// is the definitive off-GLP signal here, not a reason to skip.
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
-    if (!info.status || !tab.url) return;
-    const onGLP = tab.url.includes('godlikeproductions.com');
-    if (!onGLP) watchCounts.delete(tabId);
-    paintBadge(tabId, onGLP);
+    if (!info.status) return;
+    const onGLP = isGLPUrl(tab && tab.url);
+    const done = onGLP ? Promise.resolve() : setWatchCount(tabId, 0);
+    done.then(() => paintBadge(tabId, onGLP)).catch(() => {});
 });
 
-chrome.tabs.onRemoved.addListener(tabId => watchCounts.delete(tabId));
+chrome.tabs.onRemoved.addListener(tabId => { setWatchCount(tabId, 0).catch(() => {}); });

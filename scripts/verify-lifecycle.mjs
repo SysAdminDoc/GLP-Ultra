@@ -23,15 +23,49 @@ if (registryStart < 0 || registryEnd < 0) {
 
     if (!entries.length) fail('feature registry is empty');
     if (duplicateIds.length) fail(`duplicate feature ids: ${[...new Set(duplicateIds)].join(', ')}`);
+
+    // The entry pattern needs the whole object literal on one line. That is true today, but a
+    // reformatted entry would simply stop matching and leave the gate silently - a smaller
+    // registry, not a failure. Anchor the count to something the pattern cannot influence.
+    const declaredIds = (registry.match(/\bid:\s*'/g) || []).length;
+    if (declaredIds !== entries.length) {
+        fail(`registry declares ${declaredIds} ids but only ${entries.length} entries matched; `
+            + 'an entry is probably split across lines and is no longer being checked');
+    }
+
+    /**
+     * True when `name` is present but does nothing. Covers the arrow, function-expression, and
+     * method-shorthand spellings, with any whitespace inside the braces.
+     *
+     * `apply: () => {}` was a real bug here on 2026-08-06: seven features needed a page reload
+     * because whoever wrote the registry defused `apply` instead of making `init` idempotent.
+     * The gate written afterwards only checked that the string `apply:` appeared, so the exact
+     * defect it existed to catch would have sailed through it.
+     */
+    function hasEmptyHandler(text, name) {
+        return [
+            new RegExp(`\\b${name}\\s*:\\s*(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*=>\\s*\\{\\s*\\}`),
+            new RegExp(`\\b${name}\\s*:\\s*function\\s*[A-Za-z_$\\w]*\\s*\\([^)]*\\)\\s*\\{\\s*\\}`),
+            new RegExp(`\\b${name}\\s*\\([^)]*\\)\\s*\\{\\s*\\}`)
+        ].some(pattern => pattern.test(text));
+    }
+
     entries.filter(entry => !entry.text.includes('init:') || !entry.text.includes('apply:'))
         .forEach(entry => fail(`${entry.id} must declare init and apply handlers`));
     entries.filter(entry => !entry.text.includes('destroy:'))
         .forEach(entry => fail(`${entry.id} must declare a destroy handler`));
-    entries.filter(entry => entry.text.includes('destroy: () => {}'))
-        .forEach(entry => fail(`${entry.id} has an empty destroy handler`));
+    ['init', 'apply', 'destroy'].forEach(name => {
+        entries.filter(entry => hasEmptyHandler(entry.text, name))
+            .forEach(entry => fail(`${entry.id} has an empty ${name} handler; `
+                + 'make the real handler idempotent instead of defusing it'));
+    });
 
     const fragmentCount = entries.filter(entry => entry.text.includes('fragment: true')).length;
-    console.log(`Lifecycle registry checks passed (${entries.length} features, ${fragmentCount} fragment-safe).`);
+    // Only claim a pass if nothing failed. This line used to print unconditionally, so a run
+    // with real failures still ended with "checks passed" on the last line.
+    if (!process.exitCode) {
+        console.log(`Lifecycle registry checks passed (${entries.length} features, ${fragmentCount} fragment-safe).`);
+    }
 }
 
 const requiredHelpers = [

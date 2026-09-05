@@ -64,13 +64,6 @@ the tracker had no prior scheme.
   Acceptance: the sync check turns sync on, writes, asserts the key is present, turns sync off, clears, then asserts absence. The error checks fail when diagnostics are unreachable. The countdown check asserts movement only. Each rewritten assertion is proven capable of failing by planting the defect it names.
   Complexity: S
 
-- [ ] P1 — GU-009 Gate the `apply: () => {}` bug class and assert the registry entry count
-  Why: the lifecycle gate was written after a bug where seven features needed a page reload because their `apply` was defused, and it still does not check for it. Its entry regex also requires a one-line object literal, so a reformatted entry leaves the gate silently instead of failing it.
-  Evidence: `scripts/verify-lifecycle.mjs:26` (checks only that `apply:` appears), `:30` (matches the single exact spelling `destroy: () => {}`), `:19` (`[^\n]*\}` requires one line), no expected-count assertion anywhere.
-  Touches: `scripts/verify-lifecycle.mjs`.
-  Acceptance: the gate fails on `apply: () => {}` and on the whitespace and method-shorthand variants of an empty handler, and it fails when the number of matched entries differs from the number of `id:` occurrences inside the registry slice. Planting each defect in turn makes it exit non-zero.
-  Complexity: S
-
 - [ ] P1 — GU-010 Own the elements features guard on, instead of keying off a bare id
   Why: seven features skip creation when `document.getElementById('<their id>')` matches anything, and remove that same id on teardown. Page content carrying a colliding id kills the feature and lets teardown delete a site element. The correct primitive already exists and is used by only 7 of 41 features.
   Evidence: `src/glp-ultra.user.js:6202, 6676, 7401, 8304, 8502, 8635` (id guards); `markFeatureOwned` required by `scripts/verify-lifecycle.mjs:41` but present 7 times in the engine; OWASP browser-extension cheat sheet on treating host-page data as untrusted.

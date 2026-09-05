@@ -13,35 +13,12 @@ the tracker had no prior scheme.
 
 ### P1
 
-- [ ] P1 — GU-032 Bound `customCSS`, the one settings string with no length limit
-  Why: every local-data family is sanitised and capped, and `customCSS` is not. It is a plain
-  string on the settings blob with no `maxLength` in `SETTING_CONSTRAINTS` and no slice in the
-  normaliser, so an imported backup can carry a multi-megabyte rule set that pushes the settings
-  blob past the localStorage quota on its own and gets injected into the page as CSS.
-  Evidence: `src/glp-ultra.user.js:171` (`customCSS: ''` default), no `customCSS` entry in
-  `SETTING_CONSTRAINTS`; the GU-001 runtime probe exhausts the quota by patching a 400 KB
-  `customCSS` through `glp:patch-settings` and the value is accepted whole
-  (`scripts/verify-runtime.mjs`, the storage quota block). Backup import reaches the same path.
-  Touches: `src/glp-ultra.user.js` (`SETTING_CONSTRAINTS`, `normalizeSettingValue`, the
-  `STORE_LIMITS` budget comment), `scripts/verify-runtime.mjs`.
-  Acceptance: `customCSS` carries an explicit character ceiling that fits inside the documented
-  `STORE_LIMITS` budget, an over-long value is truncated at every ingress rather than rejected,
-  the panel shows the limit, and a check proves a hostile oversized import is cut to the cap.
-  Complexity: S
-
 - [ ] P1 — GU-004 Ship a signed, permanently installable Firefox artifact
   Why: the README tells Firefox users to load the zip through `about:debugging` as a temporary add-on, which Firefox discards on restart, and an unsigned XPI cannot be installed on Release or Beta at all. Today the Firefox lane produces nothing a real user can keep.
   Evidence: Mozilla Extension Workshop signing overview ("unsigned extensions cannot be installed on release or beta Firefox versions"; self-distributed signing is free and automated, up to 24 hours to sign); `README.md` Firefox section; `scripts/build-firefox.mjs`.
   Touches: `scripts/build-firefox.mjs`, `package.json` (a `sign:firefox` script wrapping `web-ext sign --channel=unlisted`), `README.md`, release process.
   Acceptance: `npm run package:firefox` produces an `.xpi` that installs on current Firefox Release from the local filesystem and survives a browser restart. Keep the existing `glp-ultra@sysadmindoc.github.io` gecko id so any current install keeps its profile data.
   Complexity: M
-
-- [ ] P1 — GU-005 Raise `strict_min_version` off the unsupported ESR 128 line and record the reason
-  Why: 128 is a dead ESR line, so the floor excludes nobody on a supported browser while still forcing feature detection around `<dialog>`, `popover`, `:has()`, and `content-visibility`. `verify-extension.mjs` only checks that the key exists, so the stale value sails through.
-  Evidence: `scripts/build-firefox.mjs` (`MIN_FIREFOX = '128.0'`); `scripts/verify-extension.mjs:101` (existence check only); https://endoflife.date/firefox.
-  Touches: `scripts/build-firefox.mjs`, `scripts/verify-extension.mjs`, `CLAUDE.md`.
-  Acceptance: the floor names a currently supported ESR line, the gate asserts the exact expected value rather than mere presence, and a one-line comment in `build-firefox.mjs` states which ESR line it tracks and where to re-check it.
-  Complexity: S
 
 - [ ] P1 — GU-006 Add a Firefox runtime lane with Puppeteer, and update Roadmap_Blocked.md
   Why: `Roadmap_Blocked.md` records Firefox behavioural verification as blocked on tooling. That is no longer true. The Gecko variant is currently gated structurally only, so a Firefox-only regression cannot be caught anywhere.

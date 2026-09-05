@@ -98,7 +98,14 @@ try {
   if (firefox.background?.service_worker) fail('firefox manifest still declares a service_worker background');
   if (!firefox.background?.scripts?.length) fail('firefox manifest has no background scripts');
   if (!firefox.browser_specific_settings?.gecko?.id) fail('firefox manifest has no gecko extension id');
-  if (!firefox.browser_specific_settings?.gecko?.strict_min_version) fail('firefox manifest has no strict_min_version');
+  // Assert the exact floor, not merely that a floor exists: the stale 128 sailed through a
+  // presence check for a year after that ESR line stopped receiving security updates.
+  const expectedMinFirefox = '140.0';
+  const declaredMinFirefox = firefox.browser_specific_settings?.gecko?.strict_min_version;
+  if (declaredMinFirefox !== expectedMinFirefox) {
+    fail(`firefox strict_min_version is ${declaredMinFirefox || 'missing'}, expected ${expectedMinFirefox}; `
+      + 'if this is a deliberate change, move the floor in scripts/build-firefox.mjs and here together');
+  }
   if (firefox.commands) fail('command shortcuts are not allowed');
 
   for (const relative of referencedFiles(firefox)) {

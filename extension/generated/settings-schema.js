@@ -183,6 +183,15 @@ window.GLP_SCHEMA = {
       "min": 50,
       "max": 1000
     },
+    "customCSS": {
+      "maxLength": 20000
+    },
+    "keywordHighlight": {
+      "maxLength": 2000
+    },
+    "keywordHide": {
+      "maxLength": 2000
+    },
     "mediaHoverPreviewSize": {
       "min": 30,
       "max": 95
@@ -843,17 +852,20 @@ window.GLP_SCHEMA = {
         {
           "key": "keywordHighlight",
           "label": "Highlight Keywords (comma-sep)",
-          "type": "text"
+          "type": "text",
+          "maxLength": 2000
         },
         {
           "key": "keywordHide",
           "label": "Hide Keywords (comma-sep)",
-          "type": "text"
+          "type": "text",
+          "maxLength": 2000
         },
         {
           "key": "customCSS",
           "label": "Custom CSS",
-          "type": "textarea"
+          "type": "textarea",
+          "maxLength": 20000
         }
       ],
       "specialId": null

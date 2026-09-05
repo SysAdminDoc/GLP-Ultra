@@ -22,6 +22,13 @@
   rather than 5,000, and the list of recent threads kept per poster holds 10 rather than 50. The
   options page had its own copy of these limits and was still using the old ones; it reads the
   shared set now, so the two cannot drift apart again.
+- **Custom CSS and the keyword filters now have a length limit.** They were the only settings with
+  no ceiling, so a shared or imported backup could carry a stylesheet big enough to fill the
+  browser's storage on its own. Custom CSS holds 20,000 characters and each keyword field 2,000,
+  the boxes show it, and anything longer is trimmed rather than thrown away.
+- **The Firefox build asks for a newer Firefox.** It claimed to support 128, a version that stopped
+  getting security updates in September 2025. It now names 140, which is a supported release, and
+  the build refuses to ship if that number ever drifts again.
 - **A full store can no longer stop the script from starting.** The version and schema stamps
   written during startup were not covered by the new error handling, so a browser that was already
   out of room would abort before any styling ran and the page came up untouched. Every write goes

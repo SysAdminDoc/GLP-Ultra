@@ -856,6 +856,9 @@
         watcherIntervalMinutes: { min: 5, max: 240 },
         userMuteMatchMode: { values: ['exact', 'contains', 'regex'] },
         userHistoryCap: { min: 50, max: 1000 },
+        customCSS: { maxLength: 20000 },
+        keywordHighlight: { maxLength: 2000 },
+        keywordHide: { maxLength: 2000 },
         mediaHoverPreviewSize: { min: 30, max: 95 }
     });
 
@@ -933,11 +936,12 @@
     //   glpUserStatsPages       200 x  250 =   50 KB
     //                                        -------
     //                                        3.34 MB, leaving roughly 1.8 MB of head room under
-    //                                        the 5 MiB limit for the settings blob and its
-    //                                        pre-upgrade backup. Those are ~8 KB each in normal
-    //                                        use but are NOT fixed size: `customCSS` is free text
-    //                                        with no ceiling yet, so the head room is real only
-    //                                        until someone pastes a stylesheet into it.
+    //                                        the 5 MiB limit. The settings blob and its
+    //                                        pre-upgrade backup live in that head room: ~8 KB
+    //                                        each in normal use, and bounded above by the free
+    //                                        text ceilings in SETTING_CONSTRAINTS (customCSS
+    //                                        20,000 chars, the two keyword fields 2,000 each),
+    //                                        so the worst case is ~50 KB per copy.
     //
     // Changing any number here changes that sum. STORE_LIMITS.userStats is also the ceiling the
     // `userHistoryCap` setting is allowed to reach, so the two cannot drift apart.
@@ -1216,7 +1220,10 @@
             if (!Number.isFinite(number)) return fallback;
             return Math.min(constraint.max ?? number, Math.max(constraint.min ?? number, number));
         }
-        if (typeof fallback === 'string') return typeof value === 'string' ? value : fallback;
+        if (typeof fallback === 'string') {
+            if (typeof value !== 'string') return fallback;
+            return constraint.maxLength ? value.slice(0, constraint.maxLength) : value;
+        }
         return value;
     }
 
@@ -5035,9 +5042,9 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                     { key: 'userBlockList', label: 'User Block Buttons (by User ID)' },
                     { key: 'hideMemeReplies', label: 'Hide Image-Only Replies' },
                     { key: 'hideBoomerGifs', label: 'Hide Reaction GIFs (/sm/)' },
-                    { key: 'keywordHighlight', label: 'Highlight Keywords (comma-sep)', type: 'text' },
-                    { key: 'keywordHide', label: 'Hide Keywords (comma-sep)', type: 'text' },
-                    { key: 'customCSS', label: 'Custom CSS', type: 'textarea' }
+                    { key: 'keywordHighlight', label: 'Highlight Keywords (comma-sep)', type: 'text', maxLength: 2000 },
+                    { key: 'keywordHide', label: 'Hide Keywords (comma-sep)', type: 'text', maxLength: 2000 },
+                    { key: 'customCSS', label: 'Custom CSS', type: 'textarea', maxLength: 20000 }
                 ])}
                 ${createSettingsSection('Thread Watcher', [
                     { key: 'watcherEnabled', label: 'Enable Thread Watcher' },
@@ -5288,9 +5295,9 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                     ).join('');
                     input = `<select id="setting-${key}">${opts}</select>`;
                 } else if (item.type === 'text') {
-                    input = `<input type="text" id="setting-${key}" value="${escapeAttribute(value || '')}">`;
+                    input = `<input type="text" id="setting-${key}" value="${escapeAttribute(value || '')}"${item.maxLength ? ` maxlength="${item.maxLength}"` : ''}>`;
                 } else if (item.type === 'textarea') {
-                    input = `<textarea id="setting-${key}" rows="4">${escapeHTML(value || '')}</textarea>`;
+                    input = `<textarea id="setting-${key}" rows="4"${item.maxLength ? ` maxlength="${item.maxLength}"` : ''}>${escapeHTML(value || '')}</textarea>`;
                 } else {
                     input = `<input type="checkbox" id="setting-${key}" ${value ? 'checked' : ''}>`;
                 }

@@ -210,6 +210,13 @@ try {
         fail(`constraint range for ${key} does not match its number control`);
       }
     }
+    // Same rule as the numeric range: a free-text ceiling the control does not advertise is a
+    // silent truncation, so the control has to carry it too.
+    if (constraint.maxLength !== undefined) {
+      if (!['text', 'textarea'].includes(item.type) || item.maxLength !== constraint.maxLength) {
+        fail(`constraint maxLength for ${key} does not match its text control`);
+      }
+    }
   });
 
   schemaPayload = { version: packageJson.version, defaults, constraints, settingDescriptions, sectionDescriptions, sections, palettes, storeLimits };

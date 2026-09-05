@@ -454,7 +454,10 @@ function normalizeSettingValue(key, value) {
         if (!Number.isFinite(number)) return fallback;
         return Math.min(constraint.max ?? number, Math.max(constraint.min ?? number, number));
     }
-    if (typeof fallback === 'string') return typeof value === 'string' ? value : fallback;
+    if (typeof fallback === 'string') {
+        if (typeof value !== 'string') return fallback;
+        return constraint.maxLength ? value.slice(0, constraint.maxLength) : value;
+    }
     return fallback;
 }
 
@@ -602,6 +605,7 @@ function buildInput(item) {
     } else if (item.type === 'textarea') {
         input.value = value || '';
         input.rows = 5;
+        if (item.maxLength !== undefined) input.maxLength = item.maxLength;
         attachPersistence(input, item, () => input.value);
     } else if (item.type === 'number') {
         input.type = 'number';
@@ -613,6 +617,7 @@ function buildInput(item) {
     } else if (item.type === 'text') {
         input.type = 'text';
         input.value = value || '';
+        if (item.maxLength !== undefined) input.maxLength = item.maxLength;
         attachPersistence(input, item, () => input.value);
     } else {
         input.type = 'checkbox';

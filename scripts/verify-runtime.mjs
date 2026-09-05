@@ -1708,12 +1708,17 @@ try {
     !!filled.threw, JSON.stringify(filled));
 
   // Replacing a key with a same-sized value needs no new space, so the write has to actually
-  // grow the settings blob past the headroom one ballast block leaves behind.
+  // grow the settings blob past the headroom the ballast leaves behind. customCSS is capped at
+  // 20,000 characters, which is ~40 KB of UTF-16 and far more than the few bytes of slack left.
+  const CSS_CAP = 20000;
   const OVERSIZE_CSS = `/*${'q'.repeat(400 * 1024)}*/`;
   const patchUnderQuota = await sendMessage(worker, page, {
     type: 'glp:patch-settings',
     patch: { customCSS: OVERSIZE_CSS }
   });
+  check('settings: an oversized customCSS is truncated to its declared ceiling, not rejected',
+    patchUnderQuota?.settings?.customCSS?.length === CSS_CAP,
+    String(patchUnderQuota?.settings?.customCSS?.length));
   const quotaDiag = await workerDiagnostics(worker, page);
   const quotaFailures = quotaDiag?.storageFailures || [];
   const settingsFailure = quotaFailures.find(entry => entry.key === 'glpEnhancedSettings');
@@ -1726,7 +1731,7 @@ try {
     await page.locator('.glp-toast').allInnerTexts().then(texts => JSON.stringify(texts)));
   check('quota: the engine keeps the change in memory instead of resetting',
     patchUnderQuota?.ok === true
-      && patchUnderQuota?.settings?.customCSS?.length === OVERSIZE_CSS.length
+      && patchUnderQuota?.settings?.customCSS?.length === CSS_CAP
       && (quotaDiag?.enabledFeatures || []).length > 0,
     JSON.stringify({
       ok: patchUnderQuota?.ok,

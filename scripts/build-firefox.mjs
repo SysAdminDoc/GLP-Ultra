@@ -23,7 +23,12 @@ const source = path.join(root, 'extension');
 const outDir = path.join(root, 'dist', 'extension-firefox');
 
 const GECKO_ID = 'glp-ultra@sysadmindoc.github.io';
-const MIN_FIREFOX = '128.0';
+// Tracks the oldest Firefox ESR line still receiving security updates. 128 EOL'd on 2025-09-16,
+// so a floor there supported nobody on a patched browser while still forcing feature detection
+// around <dialog>, popover, :has() and content-visibility, all of which predate 140. The
+// remaining lower line, 115, is the Windows 7/8 extended-support branch and cannot run those
+// anyway. Re-check against https://endoflife.date/firefox when the next ESR ships.
+const MIN_FIREFOX = '140.0';
 
 const manifest = JSON.parse(await readFile(path.join(source, 'manifest.json'), 'utf8'));
 const serviceWorker = manifest.background?.service_worker;

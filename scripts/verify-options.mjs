@@ -102,7 +102,10 @@ try {
   await waitFor(() => page.locator('#reset-page').isDisabled(), value => value === false);
   check('options: changing a control enables page reset', !(await page.locator('#reset-page').isDisabled()));
   await page.locator('#reset-page').click();
-  check('options: page reset restores the default', await enabled.isChecked());
+  // The reset repaints asynchronously; asserting straight after the click made this the one
+  // flaky check in the suite (seen failing once, then passing twice unchanged on 2026-09-05).
+  check('options: page reset restores the default',
+    await waitFor(() => enabled.isChecked(), value => value === true));
   await page.locator('.toast-action').last().click();
   await waitFor(() => enabled.isChecked(), value => value === false);
   check('options: page reset undo restores the prior value', !(await enabled.isChecked()));

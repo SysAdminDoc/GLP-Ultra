@@ -29,6 +29,24 @@ the tracker had no prior scheme.
 
 ### P2
 
+- [ ] P2 — GU-034 Make the last three racy runtime checks wait on engine state instead of the clock
+  Why: with the abort handling in place the suite always reports, but three checks still fail
+  intermittently under load because they measure before the engine has settled. They are not
+  product bugs - each one passes on a quiet machine and the behaviour it asserts is verified
+  elsewhere - but an amber suite trains people to ignore it.
+  Evidence: measured over five consecutive runs on 2026-09-05, three fully green at 254/254 and two
+  with one or two of: `read position: every post after the recorded one is marked new` (measured
+  `total: 7` of 14 rows with `actual: 0`, so the marking pass had not run even after a 12s wait for
+  a first mark), `badge: navigating away from GLP clears the stale unread count` (`stillCounted: 4`,
+  a pagehide-ordering race against the tab-update handler), and `packs: an imported filter pack
+  merges keywords instead of replacing them`.
+  Touches: `scripts/verify-runtime.mjs` only.
+  Acceptance: ten consecutive runs of `node scripts/verify-runtime.mjs` all report the full check
+  count with zero failures on an otherwise loaded machine. Each fix waits for a state the engine
+  publishes (diagnostics, a rendered marker) rather than a fixed timeout, and no assertion is
+  loosened to get there.
+  Complexity: M
+
 - [ ] P2 — GU-013 Local full-text search across threads you have exported or visited
   Why: full-text search over a permanent archive is the single feature Instapaper Premium, Readwise Reader, and Matter Premium all put behind a paywall, and all three charge for it because it needs server-side storage. A local-only reader needs none, so this is a free leapfrog rather than parity.
   Evidence: Instapaper Premium $5.99/mo, Readwise Reader $119.88/yr, Matter Premium $8/mo, all gating full-text search plus permanent archive; the engine already produces structured JSON exports (`thread.export`).

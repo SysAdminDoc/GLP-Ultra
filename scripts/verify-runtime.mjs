@@ -552,10 +552,18 @@ try {
   // Persistence: the storage shim must hand back exactly what the engine stored, or every
   // store silently resets to defaults on the next page load.
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { colorTheme: 'dracula', hideKarmaBar: false } });
-  await page.waitForTimeout(300);
+  // Confirm the write landed before reloading. Reloading 300ms after the message meant that on a
+  // loaded box the engine had not persisted yet, and the reload read back the old theme - the
+  // check then reported a storage bug that was really a race in the test.
+  await waitFor(
+    () => sendMessage(worker, page, { type: 'glp:get-state' }),
+    state => state?.settings?.colorTheme === 'dracula',
+    8000);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1200);
-  const restored = await sendMessage(worker, page, { type: 'glp:get-state' });
+  const restored = await waitFor(
+    () => sendMessage(worker, page, { type: 'glp:get-state' }),
+    state => !!state?.settings,
+    10000);
   check('thread: settings survive a reload', restored?.settings?.colorTheme === 'dracula', restored?.settings?.colorTheme);
   check('thread: a non-default toggle survives a reload', restored?.settings?.hideKarmaBar === false, String(restored?.settings?.hideKarmaBar));
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { colorTheme: 'midnight', hideKarmaBar: true } });
@@ -1181,9 +1189,10 @@ try {
   // Safe mode is the answer to rules the armour cannot outrank, and it must survive the reload
   // that a locked-out reader will inevitably try.
   await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { safeMode: true } });
-  await page.waitForTimeout(400);
-  const stylesheet = await page.evaluate(() =>
-    document.getElementById('glp-enhanced-styles')?.textContent ?? '');
+  const stylesheet = await waitFor(
+    () => page.evaluate(() => document.getElementById('glp-enhanced-styles')?.textContent ?? ''),
+    css => css.includes('Safe mode') && !css.includes('glp-lockout-probe'),
+    8000);
   check('safe mode: the custom CSS is no longer emitted at all',
     !stylesheet.includes('glp-lockout-probe') && stylesheet.includes('Safe mode'),
     `probe present: ${stylesheet.includes('glp-lockout-probe')}`);
@@ -1201,9 +1210,8 @@ try {
     afterReload.posts > 0, JSON.stringify(afterReload));
 
   await sendMessage(worker, page, { type: 'glp:open-settings' });
-  await page.waitForTimeout(400);
   check('safe mode: the panel says why the custom CSS is not applied',
-    await page.locator('#glp-safe-mode-notice').count() === 1);
+    await waitFor(() => page.locator('#glp-safe-mode-notice').count(), value => value === 1, 8000) === 1);
   await page.locator('#glp-enhanced-close-btn').click();
   await page.waitForTimeout(200);
 
@@ -1750,8 +1758,10 @@ try {
     document.getElementById('glp-save-btn')?.click();
     return { attribute, typed, error: null };
   });
-  await page.waitForTimeout(600);
-  const afterPanelSave = await sendMessage(worker, page, { type: 'glp:get-state' });
+  const afterPanelSave = await waitFor(
+    () => sendMessage(worker, page, { type: 'glp:get-state' }),
+    state => (state?.settings?.customCSS?.length ?? 0) > 0,
+    8000);
   check('settings: the panel clamps an oversized value it was handed programmatically',
     panelClamp.error === null
       && panelClamp.attribute === '20000'
@@ -1981,7 +1991,7 @@ try {
   const forcedPage = await context.newPage();
   await forcedPage.goto('https://www.godlikeproductions.com/forum1/message6170474/pg5',
     { waitUntil: 'domcontentloaded' });
-  await forcedPage.waitForTimeout(2000);
+  await settled(() => forcedPage.locator('.msg tr[id^="post_"]').count());
 
   // The ownership block above deliberately leaves scrollProgress off, and 240 earlier checks move
   // other settings around, so state what this page needs rather than inheriting whatever is left.
@@ -2068,7 +2078,7 @@ try {
   // Part one: scrolling records a position. pagehide fires on the reload, which is the real path.
   await readPage.goto('https://www.godlikeproductions.com/forum1/message6170474/pg6',
     { waitUntil: 'domcontentloaded' });
-  await readPage.waitForTimeout(1800);
+  await settled(() => readPage.locator('.msg tr[id^="post_"]').count());
   await readPage.evaluate(() => window.localStorage.removeItem('glpEnhanced.mv3.glpReadPositions'));
   await readPage.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await readPage.waitForTimeout(600);
@@ -2099,20 +2109,50 @@ try {
   // sets lastSeenPost to the last post on the page, and readPositionFor deliberately answers with
   // whichever position is furthest along. Unwatched is also the case this item is about.
   await readPage.close();
+  // Two stores have to agree before a fresh page will read the planted value.
+  //
+  // chrome.storage.local is what gm-shim treats as authoritative, but it applies it from an async
+  // callback while the engine reads localStorage synchronously at document_start - so a page can
+  // boot on the stale value before the mirror lands. And localStorage is per origin, shared by
+  // every open tab, so the position a closing thread page persisted on pagehide is still sitting
+  // there for the next tab to pick up. One run marked five posts new on a thread that had just
+  // been cleared, for exactly that reason.
+  //
+  // `page` is already on a GLP capture, so it shares the origin and can write the page-side copy.
   const plantState = async positions => {
-    await worker.evaluate(async payload => {
-      await chrome.storage.local.set({
-        glpReadPositions: JSON.stringify(payload),
-        glpWatchedThreads: JSON.stringify([])
-      });
-    }, positions);
+    const expected = JSON.stringify(positions);
+    const settledValue = await waitFor(
+      async () => {
+        await worker.evaluate(async payload => {
+          await chrome.storage.local.set({
+            glpReadPositions: payload,
+            glpWatchedThreads: JSON.stringify([])
+          });
+        }, expected);
+        await page.evaluate(({ key, value }) => {
+          window.localStorage.setItem(key, value);
+          window.localStorage.setItem('glpEnhanced.mv3.glpWatchedThreads', '[]');
+        }, { key: READ_POSITION_KEY, value: expected });
+        const stored = await worker.evaluate(async () => {
+          const value = await chrome.storage.local.get('glpReadPositions');
+          return value.glpReadPositions ?? null;
+        });
+        const local = await page.evaluate(key => window.localStorage.getItem(key), READ_POSITION_KEY);
+        return stored === expected && local === expected ? expected : `${stored} | ${local}`;
+      },
+      value => value === expected,
+      8000);
+    return settledValue === expected;
   };
 
-  await plantState({ [READ_THREAD_ID]: 2 });
+  const plantedStore = await plantState({ [READ_THREAD_ID]: 2 });
+  check('read position: a known position can be planted in both stores', plantedStore === true,
+    String(plantedStore));
   const markedPage = await context.newPage();
   await markedPage.goto('https://www.godlikeproductions.com/forum1/message6170474/pg6',
     { waitUntil: 'domcontentloaded' });
-  await markedPage.waitForTimeout(2200);
+  await waitFor(() => markedPage.locator('.glp-new-post').count(), value => value > 0, 12000);
+  await settled(() => markedPage.locator('.msg tr[id^="post_"]').count());
 
   // Expectation comes from the page, not from arithmetic on the row count: GLP reuses a post id
   // across several rows of the same post, so there are 14 matching rows over 6 distinct ordinals
@@ -2144,11 +2184,17 @@ try {
   await markedPage.close();
 
   // A fresh reader has no position, so nothing should be shouting at them.
-  await plantState({});
+  const clearedStore = await plantState({});
+  check('read position: the store can be cleared without a closing page writing back over it',
+    clearedStore === true, String(clearedStore));
   const freshPage = await context.newPage();
   await freshPage.goto('https://www.godlikeproductions.com/forum1/message6170474/pg6',
     { waitUntil: 'domcontentloaded' });
-  await freshPage.waitForTimeout(2000);
+  await waitFor(
+    () => sendMessage(worker, freshPage, { type: 'glp:diagnostics' }),
+    response => response?.diagnostics?.featuresStarted === true,
+    12000);
+  await settled(() => freshPage.locator('.msg tr[id^="post_"]').count());
   const firstVisit = await freshPage.evaluate(() => ({
     newRows: document.querySelectorAll('.glp-new-post').length,
     jumpButton: document.querySelectorAll('[data-glp-thread-tool="first-new"]').length
@@ -2164,6 +2210,14 @@ try {
   await freshPage.close();
 
 
+} catch (error) {
+  // One Playwright timeout, or a browser the OS killed under memory pressure, used to propagate
+  // straight out of here: the summary never printed and every check that had already passed was
+  // lost with it. Six runs died that way at six different points on 2026-09-05, each reporting a
+  // stack trace and nothing about the ~200 checks that had run. Record it as a failure so the run
+  // still reports, and let the exit code below do its job.
+  check('harness: the suite ran to completion without an uncaught error',
+    false, `${error && error.name ? error.name : 'Error'}: ${String(error && error.message ? error.message : error).split('\n')[0]}`);
 } finally {
   if (context) await context.close();
   await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
@@ -2197,6 +2251,23 @@ async function readDownload(download) {
  * deadline passes. Lets a check assert on a settled state without paying a fixed sleep for it,
  * and without turning machine load into a random failure.
  */
+/**
+ * Waits until `read` returns the same value twice in a row, so a measurement is taken against a
+ * page that has stopped changing rather than after a fixed sleep. Returns the settled value, or
+ * the last one seen if it never settles - the caller's assertion still fails in that case.
+ */
+async function settled(read, timeout = 10000, interval = 250) {
+  const deadline = Date.now() + timeout;
+  let previous = await read();
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, interval));
+    const current = await read();
+    if (current === previous && current > 0) return current;
+    previous = current;
+  }
+  return previous;
+}
+
 async function waitFor(read, ready, timeout = 8000, interval = 200) {
   const deadline = Date.now() + timeout;
   let last = await read();

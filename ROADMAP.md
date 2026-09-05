@@ -13,6 +13,13 @@ the tracker had no prior scheme.
 
 ### P0
 
+- [ ] P0 — GU-031 Decide what replaces the deleted MHTML captures, and restore a working verification substrate
+  Why: `captures/forum-feed.mhtml` and `captures/thread-message.mhtml` were deleted from `main` on 2026-09-04 in commits `3b2a45e` and `c2a1e9d`. They were the entire offline verification substrate. `npm run verify:captures` and `npm run verify:runtime` now cannot run on a fresh clone, which takes the selector registry, all 219 runtime checks, and the ad-suppression proof offline at once. This gates the acceptance criteria of GU-002, GU-003, GU-008, GU-010, GU-011, GU-012, GU-015, GU-017, GU-023 and GU-030, every one of which is written against capture replay.
+  Evidence: `git log --oneline` on `origin/main` shows both deletions; `scripts/verify-captures.mjs:14-40` and `scripts/verify-runtime.mjs` read them by path; `package.json` wires both into `npm run verify`. The live site cannot substitute, because current feed and thread routes sit behind a membership contract that automation must not accept (`Roadmap_Blocked.md`).
+  Touches: `captures/`, `scripts/verify-captures.mjs`, `scripts/verify-runtime.mjs`, `package.json`, `README.md`, `.gitignore`.
+  Acceptance: either the two captures are restored (`git show 3b2a45e^:captures/thread-message.mhtml` and `git show c2a1e9d^:captures/forum-feed.mhtml` still hold them) and `npm run verify` passes end to end, or the removal is deliberate and the repo states what replaces them and how a contributor runs the gates without them. Whichever way it goes, `npm run verify` must not silently pass with the capture-dependent gates skipped: make a missing capture a hard failure rather than a no-op loop over an empty list.
+  Complexity: S if restored, L if the substrate has to be rebuilt.
+
 - [ ] P0 — GU-001 Handle `QuotaExceededError` on every localStorage write and reconcile the sanitizer ceilings with the 5 MiB origin limit
   Why: `writeLocal` has no try/catch, and the sanitizers accept more data than the store can hold, so a heavy reader eventually hits a throw that the engine's own catch turns into "everything reset to defaults".
   Evidence: `extension/content/gm-shim.js:46-48` (no try/catch); `src/glp-ultra.user.js:920` (`maxItems = 5000`), `:976`/`:985` (5,000 tags x 2,000-char notes); MDN storage quotas, ~5 MiB per origin. The identical silent-reset failure shape is recorded in CLAUDE.md for 2026-08-06.

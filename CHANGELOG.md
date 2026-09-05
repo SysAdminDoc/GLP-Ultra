@@ -29,6 +29,10 @@
 - **The Firefox build asks for a newer Firefox.** It claimed to support 128, a version that stopped
   getting security updates in September 2025. It now names 140, which is a supported release, and
   the build refuses to ship if that number ever drifts again.
+- **Page content can no longer switch off parts of the reader.** Each injected control checked only
+  whether something with its id already existed, so a post containing markup that reused one of
+  those ids stopped that control appearing, and switching the feature off deleted the post element
+  instead. Every control this script adds is now tagged as its own.
 - **The settings panel now applies the same limits as everything else.** Typing into the panel wrote
   straight to storage without the checks every other route already used, so a value pasted in by a
   script could exceed the new length limits and an emptied number box could store nothing at all.

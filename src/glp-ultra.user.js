@@ -522,6 +522,37 @@
         return node;
     }
 
+    /**
+     * Sets the id on a surface this script created, and records that it owns it.
+     *
+     * Page content can carry any id it likes, including ours. A bare getElementById answers
+     * "does something with this id exist", not "did we build it", so a forum post containing
+     * `<a id="glp-back-to-top">` made the feature skip its own creation - the re-entry guard saw
+     * something already there - and made teardown delete the post's element instead of ours.
+     * Ownership is what those guards always meant.
+     */
+    function ownSurface(node, id) {
+        if (!node) return node;
+        node.id = id;
+        if (node.setAttribute) node.setAttribute('data-glpx-owner', runtimeState.activeFeatureId || 'engine');
+        return node;
+    }
+
+    /**
+     * The surface we own with this id, or null. Deliberately not getElementById: that returns the
+     * first match in document order, so a hostile element placed earlier in the page would hide
+     * ours and the guard would build a second one.
+     */
+    function ownedElement(id) {
+        return document.querySelector(`#${id}[data-glpx-owner]`);
+    }
+
+    function removeOwnedElement(id) {
+        const node = ownedElement(id);
+        if (node) node.remove();
+        return !!node;
+    }
+
     function featureScope(root = document) {
         if (!root || typeof root.querySelectorAll !== 'function') return document;
         // A scoped query does not consider the scope element itself when a selector starts with
@@ -1393,7 +1424,7 @@
     function injectEarlyCSS() {
         const css = generateCSS();
         const style = document.createElement('style');
-        style.id = 'glp-enhanced-styles';
+        ownSurface(style, 'glp-enhanced-styles');
         style.textContent = css;
         (document.head || document.documentElement).appendChild(style);
     }
@@ -4863,7 +4894,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     // SETTINGS UI
     // ============================================
     function createSettingsPanel() {
-        const existing = document.getElementById('glp-enhanced-overlay');
+        const existing = ownedElement('glp-enhanced-overlay');
         if (existing) existing.remove();
         SECTION_ORDER.length = 0;
         loadMutedUsers();
@@ -4872,11 +4903,11 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         loadUserStats();
 
         const overlay = document.createElement('div');
-        overlay.id = 'glp-enhanced-overlay';
+        ownSurface(overlay, 'glp-enhanced-overlay');
         overlay.tabIndex = -1;
 
         const panel = document.createElement('div');
-        panel.id = 'glp-enhanced-settings';
+        ownSurface(panel, 'glp-enhanced-settings');
         panel.setAttribute('role', 'dialog');
         panel.setAttribute('aria-modal', 'true');
         panel.setAttribute('aria-labelledby', 'glp-settings-title');
@@ -5612,7 +5643,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function closeSettings() {
-        const overlay = document.getElementById('glp-enhanced-overlay');
+        const overlay = ownedElement('glp-enhanced-overlay');
         if (overlay) overlay.remove();
     }
 
@@ -6015,10 +6046,10 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function applyStyles() {
-        let styleEl = document.getElementById('glp-enhanced-styles');
+        let styleEl = ownedElement('glp-enhanced-styles');
         if (!styleEl) {
             styleEl = document.createElement('style');
-            styleEl.id = 'glp-enhanced-styles';
+            ownSurface(styleEl, 'glp-enhanced-styles');
             document.head.appendChild(styleEl);
         }
         styleEl.textContent = generateCSS();
@@ -6058,7 +6089,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         }
 
         if (!keepStyles) {
-            document.getElementById('glp-enhanced-styles')?.remove();
+            removeOwnedElement('glp-enhanced-styles');
         }
 
         const removableSelectors = [
@@ -6146,14 +6177,14 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         return [
             { id: 'dom.cleanup', routes: ['all'], fragment: true, init: applyDOMModifications, apply: applyDOMModifications, destroy: destroyDOMModifications },
             { id: 'nav.threadForumLink', routes: ['thread'], init: injectForumLink, apply: injectForumLink, destroy: () => document.querySelectorAll('.glp-forum-link, .glp-nav-gear').forEach(node => node.remove()) },
-            { id: 'nav.forumToolbar', routes: ['feed', 'generic'], init: injectForumToolbar, apply: injectForumToolbar, destroy: () => document.getElementById('glp-forum-toolbar')?.remove() },
-            { id: 'ui.backToTop', routes: ['all'], settingKey: 'backToTopButton', init: initBackToTop, apply: initBackToTop, destroy: () => document.getElementById('glp-back-to-top')?.remove() },
+            { id: 'nav.forumToolbar', routes: ['feed', 'generic'], init: injectForumToolbar, apply: injectForumToolbar, destroy: () => removeOwnedElement('glp-forum-toolbar') },
+            { id: 'ui.backToTop', routes: ['all'], settingKey: 'backToTopButton', init: initBackToTop, apply: initBackToTop, destroy: () => removeOwnedElement('glp-back-to-top') },
             { id: 'media.lightbox', routes: ['thread'], settingKey: 'imageLightbox', init: initGalleryLightbox, apply: initGalleryLightbox, destroy: destroyGalleryLightbox },
             { id: 'ui.noiseBudget', routes: ['thread', 'feed'], settingKey: 'noiseBudget', init: renderNoiseBudget, apply: renderNoiseBudget, destroy: destroyNoiseBudget },
             { id: 'media.actions', routes: ['thread'], settingKey: 'mediaActions', init: initMediaActions, apply: initMediaActions, destroy: destroyMediaActions },
             { id: 'thread.collapsiblePosts', routes: ['thread'], settingKey: 'collapsiblePosts', fragment: true, init: initCollapsiblePosts, apply: initCollapsiblePosts, destroy: () => { document.querySelectorAll('.glp-collapse-indicator').forEach(node => node.remove()); document.querySelectorAll('[data-glp-collapsible]').forEach(node => { delete node.dataset.glpCollapsible; node.closest('tr')?.classList.remove('glp-collapsed'); }); } },
-            { id: 'feed.infiniteScroll', routes: ['feed'], settingKey: 'infiniteScroll', init: initInfiniteScroll, apply: initInfiniteScroll, destroy: () => document.getElementById('glp-infinite-loader')?.remove() },
-            { id: 'thread.infiniteScroll', routes: ['thread'], settingKey: 'infiniteThreadScroll', init: initInfiniteThreadScroll, apply: initInfiniteThreadScroll, destroy: () => document.getElementById('glp-infinite-loader')?.remove() },
+            { id: 'feed.infiniteScroll', routes: ['feed'], settingKey: 'infiniteScroll', init: initInfiniteScroll, apply: initInfiniteScroll, destroy: () => removeOwnedElement('glp-infinite-loader') },
+            { id: 'thread.infiniteScroll', routes: ['thread'], settingKey: 'infiniteThreadScroll', init: initInfiniteThreadScroll, apply: initInfiniteThreadScroll, destroy: () => removeOwnedElement('glp-infinite-loader') },
             { id: 'thread.highlightOPPosts', routes: ['thread'], settingKey: 'highlightOPPosts', fragment: true, init: highlightOPPosts, apply: highlightOPPosts, destroy: () => document.querySelectorAll('.glp-op-post').forEach(node => node.classList.remove('glp-op-post')) },
             { id: 'thread.highlightOPBadges', routes: ['thread'], settingKey: 'highlightOP', init: highlightOPBadges, apply: highlightOPBadges, destroy: () => document.querySelectorAll('.glp-op-badge').forEach(node => node.classList.remove('glp-op-badge')) },
             { id: 'thread.postNumbers', routes: ['thread'], settingKey: 'inlinePostNumbers', fragment: true, init: addPostNumbers, apply: addPostNumbers, destroy: () => document.querySelectorAll('.glp-post-number').forEach(node => node.remove()) },
@@ -6166,9 +6197,9 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             { id: 'feed.pinnedVisibility', routes: ['feed'], fragment: true, init: applyPinnedVisibility, apply: applyPinnedVisibility, destroy: clearPinnedVisibility },
             { id: 'feed.hideThreads', routes: ['feed'], settingKey: 'hideThreadButtons', fragment: true, init: initHideThreadButtons, apply: initHideThreadButtons, destroy: destroyHiddenThreads },
             { id: 'feed.keywordFilters', routes: ['feed'], fragment: true, init: applyKeywordFilters, apply: applyKeywordFilters, destroy: clearKeywordFilters },
-            { id: 'feed.autoRefresh', routes: ['feed'], settingKey: 'autoRefresh', init: initAutoRefresh, apply: initAutoRefresh, destroy: () => { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = null; refreshBar = null; document.getElementById('glp-auto-refresh-bar')?.remove(); } },
+            { id: 'feed.autoRefresh', routes: ['feed'], settingKey: 'autoRefresh', init: initAutoRefresh, apply: initAutoRefresh, destroy: () => { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = null; refreshBar = null; removeOwnedElement('glp-auto-refresh-bar'); } },
             { id: 'users.tags', routes: ['thread', 'feed'], settingKey: 'userTags', init: initUserTags, apply: initUserTags, destroy: () => document.querySelectorAll('.glp-user-tag, .glp-tag-btn, #glp-tag-picker').forEach(node => node.remove()) },
-            { id: 'thread.scrollProgress', routes: ['thread'], settingKey: 'scrollProgress', init: initScrollProgress, apply: initScrollProgress, destroy: () => document.getElementById('glp-scroll-progress')?.remove() },
+            { id: 'thread.scrollProgress', routes: ['thread'], settingKey: 'scrollProgress', init: initScrollProgress, apply: initScrollProgress, destroy: () => removeOwnedElement('glp-scroll-progress') },
             { id: 'feed.threadPreview', routes: ['feed'], settingKey: 'threadPreview', init: initThreadPreview, apply: initThreadPreview, destroy: destroyThreadPreview },
             { id: 'thread.readerMode', routes: ['thread'], settingKey: 'readerMode', fragment: true, init: initReaderMode, apply: initReaderMode, destroy: destroyReaderMode },
             { id: 'thread.quoteDepthBadges', routes: ['thread'], settingKey: 'quoteDepthBadges', fragment: true, init: initQuoteDepthBadges, apply: initQuoteDepthBadges, destroy: () => document.querySelectorAll('.glp-quote-depth').forEach(n => n.remove()) },
@@ -6178,7 +6209,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             { id: 'media.youtube', routes: ['thread'], settingKey: 'youtubeEmbed', fragment: true, init: embedYouTubeLinks, apply: embedYouTubeLinks, destroy: () => document.querySelectorAll('.glp-yt-embed').forEach(node => node.remove()) },
             { id: 'thread.opNav', routes: ['thread'], settingKey: 'opPostNav', init: initOPPostNav, apply: initOPPostNav, destroy: () => document.querySelectorAll('.glp-op-nav').forEach(node => node.remove()) },
             { id: 'thread.collapseAll', routes: ['thread'], settingKey: 'collapseExpandAll', init: initCollapseExpandAll, apply: initCollapseExpandAll, destroy: () => document.querySelectorAll('[data-glp-thread-tool="collapse-all"], [data-glp-thread-tool="expand-all"], [data-glp-thread-tool="collapse-quotes"], [data-glp-thread-tool="search"]').forEach(node => node.remove()) },
-            { id: 'thread.quickSearch', routes: ['thread'], settingKey: 'threadQuickSearch', init: initQuickSearch, apply: initQuickSearch, destroy: () => document.getElementById('glp-quick-search')?.remove() },
+            { id: 'thread.quickSearch', routes: ['thread'], settingKey: 'threadQuickSearch', init: initQuickSearch, apply: initQuickSearch, destroy: () => removeOwnedElement('glp-quick-search') },
             { id: 'thread.watcher', routes: ['thread', 'feed'], settingKey: 'watcherEnabled', init: initWatcher, apply: initWatcher, destroy: destroyWatcher },
             { id: 'users.reputation', routes: ['thread'], settingKey: 'userReputationOverlay', init: applyReputationOverlay, apply: applyReputationOverlay, destroy: destroyReputationOverlay },
             { id: 'thread.export', routes: ['thread'], init: initThreadExport, apply: initThreadExport, destroy: destroyThreadExport },
@@ -6328,10 +6359,10 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         if (!settings.backToTopButton) return;
         // Re-entry guard: this doubles as the `apply` handler, so a second call must not stack
         // another button and another scroll listener on top of the first.
-        if (document.getElementById('glp-back-to-top')) return;
+        if (ownedElement('glp-back-to-top')) return;
 
         const btn = markFeatureOwned(document.createElement('button'));
-        btn.id = 'glp-back-to-top';
+        ownSurface(btn, 'glp-back-to-top');
         btn.title = 'Back to top';
         btn.setAttribute('aria-label', 'Back to top');
         btn.textContent = 'Up';
@@ -6563,10 +6594,10 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function showBacklinkCard(chip) {
-        let card = document.getElementById('glp-backlink-card');
+        let card = ownedElement('glp-backlink-card');
         if (!card) {
             card = document.createElement('div');
-            card.id = 'glp-backlink-card';
+            ownSurface(card, 'glp-backlink-card');
             document.body.appendChild(card);
         }
         card.textContent = chip.dataset.glpExcerpt;
@@ -6577,12 +6608,12 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function hideBacklinkCard() {
-        document.getElementById('glp-backlink-card')?.classList.remove('glp-backlink-card-visible');
+        ownedElement('glp-backlink-card')?.classList.remove('glp-backlink-card-visible');
     }
 
     function destroyQuoteGraph() {
         document.querySelectorAll('.glp-backlinks, .glp-quote-jump').forEach(node => node.remove());
-        document.getElementById('glp-backlink-card')?.remove();
+        removeOwnedElement('glp-backlink-card');
         runtimeState.quoteGraphBound = false;
     }
 
@@ -6802,7 +6833,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     // ============================================
     function initInfiniteScroll() {
         if (!settings.infiniteScroll) return;
-        if (document.getElementById('glp-infinite-loader')) return;
+        if (ownedElement('glp-infinite-loader')) return;
 
         const tbody = document.querySelector('.threads tbody');
         if (!tbody) return;
@@ -6814,7 +6845,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         const basePath = window.location.pathname.replace(/\/pg\d+$/, '');
 
         const loader = document.createElement('div');
-        loader.id = 'glp-infinite-loader';
+        ownSurface(loader, 'glp-infinite-loader');
         loader.textContent = 'Scroll for more...';
         const threadsWrapper = document.querySelector('.threads-wrapper') || tbody.closest('div');
         if (threadsWrapper) threadsWrapper.appendChild(loader);
@@ -7406,7 +7437,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                 const themeDiv = document.createElement('div');
                 themeDiv.className = 'navctrl';
                 const select = document.createElement('select');
-                select.id = 'glp-theme-select';
+                ownSurface(select, 'glp-theme-select');
                 select.title = 'Color Theme';
                 const themeNames = {
                     midnight: 'Midnight',
@@ -7462,10 +7493,10 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     function injectForumToolbar() {
         if (document.querySelector('.msg')) return; // thread page, skip
         const threadsWrapper = document.querySelector('.threads-wrapper') || document.querySelector('.threads');
-        if (!threadsWrapper || document.getElementById('glp-forum-toolbar')) return;
+        if (!threadsWrapper || ownedElement('glp-forum-toolbar')) return;
 
         const bar = markFeatureOwned(document.createElement('div'));
-        bar.id = 'glp-forum-toolbar';
+        ownSurface(bar, 'glp-forum-toolbar');
         bar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 10px;font-size:12px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
 
         // Theme selector
@@ -7475,7 +7506,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         bar.appendChild(themeLabel);
 
         const select = document.createElement('select');
-        select.id = 'glp-theme-select';
+        ownSurface(select, 'glp-theme-select');
         select.title = 'Color Theme';
         const themeNames = {
             midnight: 'Midnight',
@@ -7513,7 +7544,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         const settingsBtn = document.createElement('button');
         settingsBtn.type = 'button';
         settingsBtn.className = 'glp-settings-inline-btn';
-        settingsBtn.id = 'glp-open-settings-btn';
+        ownSurface(settingsBtn, 'glp-open-settings-btn');
         settingsBtn.textContent = 'Settings';
         settingsBtn.title = 'Open GLP Ultra settings';
         settingsBtn.addEventListener('click', createSettingsPanel);
@@ -7527,7 +7558,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     // ============================================
     function initInfiniteThreadScroll() {
         if (!settings.infiniteThreadScroll) return;
-        if (document.getElementById('glp-infinite-loader')) return;
+        if (ownedElement('glp-infinite-loader')) return;
 
         const msgTable = document.querySelector('.msg tbody');
         if (!msgTable) return;
@@ -7543,7 +7574,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         if (!navPages) return;
 
         const loader = document.createElement('div');
-        loader.id = 'glp-infinite-loader';
+        ownSurface(loader, 'glp-infinite-loader');
         loader.textContent = 'Scroll for more replies...';
         const msgWrapper = msgTable.closest('.msg');
         if (msgWrapper) msgWrapper.after(loader);
@@ -7711,14 +7742,14 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function updateHiddenBar(count) {
-        let bar = document.getElementById('glp-hidden-threads-bar');
+        let bar = ownedElement('glp-hidden-threads-bar');
         if (count === 0) {
             if (bar) bar.remove();
             return;
         }
         if (!bar) {
             bar = document.createElement('div');
-            bar.id = 'glp-hidden-threads-bar';
+            ownSurface(bar, 'glp-hidden-threads-bar');
             bar.addEventListener('click', (e) => {
                 const action = e.target.closest('[data-glp-hidden-action]')?.dataset.glpHiddenAction;
                 if (!action) return;
@@ -7856,13 +7887,13 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function updateKeywordFilterStatus(hiddenCount, highlightCount) {
-        let status = document.getElementById('glp-filter-status');
+        let status = ownedElement('glp-filter-status');
         const threads = document.querySelector('.threads');
         if (!threads) return;
 
         if (!status) {
             status = document.createElement('div');
-            status.id = 'glp-filter-status';
+            ownSurface(status, 'glp-filter-status');
             const label = document.createElement('span');
             label.className = 'glp-filter-status-text';
             const clear = document.createElement('button');
@@ -7907,7 +7938,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             delete link.dataset.glpOriginalTitle;
             delete link.dataset.glpHighlighted;
         });
-        document.getElementById('glp-filter-status')?.remove();
+        removeOwnedElement('glp-filter-status');
     }
 
     // ============================================
@@ -7923,7 +7954,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             clearInterval(refreshTimer);
             refreshTimer = null;
         }
-        document.getElementById('glp-auto-refresh-bar')?.remove();
+        removeOwnedElement('glp-auto-refresh-bar');
         refreshBar = null;
 
         if (!settings.autoRefresh) return;
@@ -7932,7 +7963,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         const interval = Math.max(15, settings.autoRefreshInterval) * 1000;
 
         refreshBar = document.createElement('div');
-        refreshBar.id = 'glp-auto-refresh-bar';
+        ownSurface(refreshBar, 'glp-auto-refresh-bar');
         const progress = document.createElement('div');
         progress.className = 'bar';
         refreshBar.appendChild(progress);
@@ -8186,15 +8217,15 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         }
         galleryImages = [];
         galleryIndex = 0;
-        document.getElementById('glp-lightbox')?.remove();
+        removeOwnedElement('glp-lightbox');
     }
 
     function showLightbox(src) {
-        let overlay = document.getElementById('glp-lightbox');
+        let overlay = ownedElement('glp-lightbox');
         if (overlay) overlay.remove();
 
         overlay = document.createElement('div');
-        overlay.id = 'glp-lightbox';
+        ownSurface(overlay, 'glp-lightbox');
         overlay.setAttribute('role', 'dialog');
         overlay.setAttribute('aria-modal', 'true');
         overlay.setAttribute('aria-label', 'Image preview');
@@ -8237,7 +8268,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     function galleryNav(dir) {
         if (galleryImages.length === 0) return;
         galleryIndex = (galleryIndex + dir + galleryImages.length) % galleryImages.length;
-        const overlay = document.getElementById('glp-lightbox');
+        const overlay = ownedElement('glp-lightbox');
         if (!overlay) return;
         const img = overlay.querySelector('img');
         img.src = galleryImages[galleryIndex].src;
@@ -8349,11 +8380,11 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function showTagPicker(username, header) {
-        let picker = document.getElementById('glp-tag-picker');
+        let picker = ownedElement('glp-tag-picker');
         if (picker) picker.remove();
 
         picker = document.createElement('div');
-        picker.id = 'glp-tag-picker';
+        ownSurface(picker, 'glp-tag-picker');
 
         const existing = userTags[username] || null;
 
@@ -8439,10 +8470,10 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     function initScrollProgress() {
         if (!settings.scrollProgress) return;
         if (!document.querySelector('.msg')) return; // thread pages only
-        if (document.getElementById('glp-scroll-progress')) return;
+        if (ownedElement('glp-scroll-progress')) return;
 
         const bar = document.createElement('div');
-        bar.id = 'glp-scroll-progress';
+        ownSurface(bar, 'glp-scroll-progress');
         bar.style.width = '0%';
         document.body.appendChild(bar);
 
@@ -8637,7 +8668,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     function initOPPostNav() {
         if (!settings.opPostNav) return;
         if (!document.querySelector('.msg')) return;
-        if (document.getElementById('glp-op-nav')) return;
+        if (ownedElement('glp-op-nav')) return;
 
         const opPost = document.querySelector('.msg tr[id="post_1"]');
         if (!opPost) return;
@@ -8648,7 +8679,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         const getOPPosts = () => Array.from(document.querySelectorAll(opSelector));
 
         const nav = document.createElement('div');
-        nav.id = 'glp-op-nav';
+        ownSurface(nav, 'glp-op-nav');
         nav.className = 'glp-op-nav';
 
         const prevBtn = document.createElement('button');
@@ -8683,11 +8714,11 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function getThreadToolsBar() {
-        let bar = document.getElementById('glp-thread-tools-bar');
+        let bar = ownedElement('glp-thread-tools-bar');
         if (bar) return bar;
 
         bar = markFeatureOwned(document.createElement('div'));
-        bar.id = 'glp-thread-tools-bar';
+        ownSurface(bar, 'glp-thread-tools-bar');
 
         // `.msgtitle` is a div parented straight to a <tr>, so inserting after it made this bar a
         // child of that <tr> too. A div is not table content: the browser keeps it in the DOM and
@@ -8770,10 +8801,10 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     function initQuickSearch() {
         if (!settings.threadQuickSearch) return;
         if (!document.querySelector('.msg')) return;
-        if (document.getElementById('glp-quick-search')) return;
+        if (ownedElement('glp-quick-search')) return;
 
         const panel = document.createElement('div');
-        panel.id = 'glp-quick-search';
+        ownSurface(panel, 'glp-quick-search');
         const input = document.createElement('input');
         input.type = 'text';
         input.placeholder = 'Search in thread...';
@@ -8829,7 +8860,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function openQuickSearch() {
-        const panel = document.getElementById('glp-quick-search');
+        const panel = ownedElement('glp-quick-search');
         if (!panel) return;
         panel.classList.add('open');
         panel.querySelector('input').focus();
@@ -9082,7 +9113,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
     function watchHostBar() {
         if (runtimeState.route === 'thread') return getThreadToolsBar();
-        return document.getElementById('glp-forum-toolbar');
+        return ownedElement('glp-forum-toolbar');
     }
 
     function renderWatchControls() {
@@ -9127,7 +9158,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             if (!toggle) {
                 toggle = document.createElement('button');
                 toggle.type = 'button';
-                toggle.id = 'glp-watch-toggle';
+                ownSurface(toggle, 'glp-watch-toggle');
                 toggle.dataset.glpThreadTool = 'watch-digest';
                 const label = document.createElement('span');
                 label.textContent = 'Watched';
@@ -9147,7 +9178,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function toggleWatchDigest() {
-        const panel = document.getElementById('glp-watch-digest');
+        const panel = ownedElement('glp-watch-digest');
         if (panel) {
             panel.remove();
             return;
@@ -9157,12 +9188,12 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function renderWatchDigest({ open = false } = {}) {
-        let panel = document.getElementById('glp-watch-digest');
+        let panel = ownedElement('glp-watch-digest');
         if (!panel && !open) return;
 
         if (!panel) {
             panel = document.createElement('div');
-            panel.id = 'glp-watch-digest';
+            ownSurface(panel, 'glp-watch-digest');
             panel.setAttribute('role', 'region');
             panel.setAttribute('aria-label', 'Watched threads');
             panel.addEventListener('click', onWatchDigestClick);
@@ -9236,7 +9267,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         const btn = event.target.closest('[data-watch-action]');
         if (!btn) return;
         const action = btn.dataset.watchAction;
-        if (action === 'close') document.getElementById('glp-watch-digest')?.remove();
+        if (action === 'close') removeOwnedElement('glp-watch-digest');
         else if (action === 'refresh') runWatcherPass({ manual: true }).then(() => renderWatchDigest());
         else if (action === 'read') markWatchedRead(btn.dataset.watchId);
         else if (action === 'unwatch') unwatchThread(btn.dataset.watchId);
@@ -9266,7 +9297,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             watcherTimer = null;
         }
         destroyWatchControls();
-        document.getElementById('glp-watch-digest')?.remove();
+        removeOwnedElement('glp-watch-digest');
         window.dispatchEvent(new CustomEvent('glp:watch-count', { detail: { count: 0 } }));
     }
 
@@ -9486,10 +9517,10 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     }
 
     function showMediaPreview(src, anchorRect) {
-        let panel = document.getElementById('glp-media-preview');
+        let panel = ownedElement('glp-media-preview');
         if (!panel) {
             panel = document.createElement('div');
-            panel.id = 'glp-media-preview';
+            ownSurface(panel, 'glp-media-preview');
             document.body.appendChild(panel);
         }
         panel.replaceChildren();
@@ -9518,7 +9549,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
 
     function hideMediaPreview() {
         mediaHoverTarget = null;
-        const panel = document.getElementById('glp-media-preview');
+        const panel = ownedElement('glp-media-preview');
         if (panel) panel.remove();
     }
 
@@ -10086,7 +10117,7 @@ ${manifest}
             return;
         }
 
-        const bar = runtimeState.route === 'thread' ? getThreadToolsBar() : document.getElementById('glp-forum-toolbar');
+        const bar = runtimeState.route === 'thread' ? getThreadToolsBar() : ownedElement('glp-forum-toolbar');
         if (!bar) return;
 
         const budget = noiseBudget();
@@ -10094,7 +10125,7 @@ ${manifest}
         if (!chip) {
             chip = document.createElement('button');
             chip.type = 'button';
-            chip.id = 'glp-noise-chip';
+            ownSurface(chip, 'glp-noise-chip');
             chip.className = 'glp-toolbar-btn';
             chip.addEventListener('click', toggleNoisePanel);
             bar.appendChild(chip);
@@ -10102,12 +10133,12 @@ ${manifest}
         chip.textContent = budget.total ? `Filtered ${budget.total}` : 'Filtered nothing';
         chip.title = 'What GLP Ultra is keeping off this page';
 
-        if (document.getElementById('glp-noise-panel')) renderNoisePanel();
+        if (ownedElement('glp-noise-panel')) renderNoisePanel();
     }
 
     function toggleNoisePanel() {
-        if (document.getElementById('glp-noise-panel')) {
-            document.getElementById('glp-noise-panel').remove();
+        if (ownedElement('glp-noise-panel')) {
+            ownedElement('glp-noise-panel').remove();
             return;
         }
         renderNoisePanel();
@@ -10115,10 +10146,10 @@ ${manifest}
 
     function renderNoisePanel() {
         const budget = noiseBudget();
-        let panel = document.getElementById('glp-noise-panel');
+        let panel = ownedElement('glp-noise-panel');
         if (!panel) {
             panel = document.createElement('div');
-            panel.id = 'glp-noise-panel';
+            ownSurface(panel, 'glp-noise-panel');
             panel.setAttribute('role', 'region');
             panel.setAttribute('aria-label', 'Noise budget');
             document.body.appendChild(panel);
@@ -10169,8 +10200,8 @@ ${manifest}
     }
 
     function destroyNoiseBudget() {
-        document.getElementById('glp-noise-chip')?.remove();
-        document.getElementById('glp-noise-panel')?.remove();
+        removeOwnedElement('glp-noise-chip');
+        removeOwnedElement('glp-noise-panel');
     }
 
     // ============================================
@@ -10251,7 +10282,7 @@ ${manifest}
     }
 
     function toggleRecoveryShelf() {
-        const existing = document.getElementById('glp-recovery');
+        const existing = ownedElement('glp-recovery');
         if (existing) {
             existing.remove();
             return;
@@ -10261,12 +10292,12 @@ ${manifest}
     }
 
     function renderRecoveryShelf() {
-        document.getElementById('glp-recovery')?.remove();
+        removeOwnedElement('glp-recovery');
         const inventory = recoveryInventory();
         const total = inventory.threads.length + inventory.users.length + inventory.blocked.length + inventory.filters.length;
 
         const panel = document.createElement('div');
-        panel.id = 'glp-recovery';
+        ownSurface(panel, 'glp-recovery');
         panel.setAttribute('role', 'region');
         panel.setAttribute('aria-label', 'GLP Ultra recovery shelf');
 
@@ -10608,7 +10639,7 @@ ${manifest}
      * buttons. They are full inspectors, so hand the screen over and offer the way back.
      */
     function leaveSettingsFor(surface) {
-        const overlay = document.getElementById('glp-enhanced-overlay');
+        const overlay = ownedElement('glp-enhanced-overlay');
         if (!overlay) return false;
         overlay.remove();
         runtimeState.returnToSettings = surface;
@@ -10622,8 +10653,8 @@ ${manifest}
         back.className = 'glp-btn glp-btn-secondary';
         back.textContent = 'Back to settings';
         back.addEventListener('click', () => {
-            document.getElementById('glp-diagnostics')?.remove();
-            document.getElementById('glp-recovery')?.remove();
+            removeOwnedElement('glp-diagnostics');
+            removeOwnedElement('glp-recovery');
             runtimeState.returnToSettings = null;
             createSettingsPanel();
         });
@@ -10632,7 +10663,7 @@ ${manifest}
     }
 
     function toggleDiagnosticsPanel() {
-        const existing = document.getElementById('glp-diagnostics');
+        const existing = ownedElement('glp-diagnostics');
         if (existing) {
             existing.remove();
             return;
@@ -10645,7 +10676,7 @@ ${manifest}
         const report = buildDiagnostics();
 
         const panel = document.createElement('div');
-        panel.id = 'glp-diagnostics';
+        ownSurface(panel, 'glp-diagnostics');
         panel.setAttribute('role', 'region');
         panel.setAttribute('aria-label', 'GLP Ultra diagnostics');
 
@@ -10757,7 +10788,7 @@ ${manifest}
             applyStyles();
             // The nav's theme picker is a plain <select>; nothing repaints it when the theme is
             // changed from the panel, the popup, or another device.
-            const themeSelect = document.getElementById('glp-theme-select');
+            const themeSelect = ownedElement('glp-theme-select');
             if (themeSelect && themeSelect.value !== settings.colorTheme) themeSelect.value = settings.colorTheme;
             if (!settings.enabled) {
                 destroyEnhancedUI({ keepStyles: true });

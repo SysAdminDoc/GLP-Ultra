@@ -34,6 +34,10 @@ for (const [key, capture] of Object.entries(CAPTURES)) {
 }
 
 const CONTRACT_PROOF_URL = 'https://www.godlikeproductions.com/glp-contract-proof';
+// A thread-shaped URL on purpose: classifyRoute() drives which features run, and a made-up path
+// classifies as generic, so every thread-only feature would sit out and the check would pass by
+// never building anything. The route handler matches this exact URL before the capture matcher.
+const HOSTILE_ID_URL = 'https://www.godlikeproductions.com/forum1/message6170474/pg7';
 const AD_PROOF_URL = 'https://www.godlikeproductions.com/glp-ad-proof';
 const AD_PROBE_URLS = [
   'https://cdn.mgid.com/glp-probe.js',
@@ -127,6 +131,18 @@ try {
     }
     if (AD_PROBE_URLS.includes(url)) {
       await route.fulfill({ status: 200, contentType: 'application/javascript', body: 'window.glpAdProbeLoaded = true;' });
+      return;
+    }
+    if (url === HOSTILE_ID_URL) {
+      // The thread capture with two of our own surface ids planted in page content, the way a
+      // forum post carrying markup would. Injected ahead of everything so they are present
+      // before the engine runs.
+      const planted = html.thread.replace(
+        /<body([^>]*)>/i,
+        '<body$1><div id="glp-back-to-top" data-planted="yes">not ours</div>'
+        + '<div id="glp-scroll-progress" data-planted="yes">not ours either</div>'
+      );
+      await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: planted });
       return;
     }
     const key = captureKeyFor(url);
@@ -1885,6 +1901,76 @@ try {
       && clearedAfterNavigation.after === ''
       && clearedAfterNavigation.stillCounted === null,
     JSON.stringify(clearedAfterNavigation));
+
+  // ---------------- Surface ownership ----------------
+  // Re-entry guards used to ask getElementById whether an id existed, which answers "is there
+  // something called this" rather than "did we build it". A forum post carrying our id therefore
+  // stopped the feature mounting, and teardown deleted the post's element instead of ours.
+  const hostilePage = await context.newPage();
+  await hostilePage.goto(HOSTILE_ID_URL, { waitUntil: 'domcontentloaded' });
+  await hostilePage.waitForTimeout(2000);
+
+  // Earlier blocks in this run leave settings wherever they left them, so state both features
+  // explicitly rather than depending on a default surviving 240 checks.
+  const hostileTabIdEarly = await worker.evaluate(async url => {
+    const tabs = await chrome.tabs.query({ url: '*://*.godlikeproductions.com/*' });
+    const match = tabs.find(tab => tab.url === url);
+    return match ? match.id : null;
+  }, HOSTILE_ID_URL);
+  await worker.evaluate(tabId => chrome.tabs.sendMessage(tabId, {
+    type: 'glp:patch-settings',
+    patch: { backToTopButton: true, scrollProgress: true }
+  }), hostileTabIdEarly);
+  await hostilePage.waitForTimeout(800);
+
+  const hostileState = await hostilePage.evaluate(() => {
+    const describe = id => {
+      const all = [...document.querySelectorAll(`#${id}`)];
+      return {
+        total: all.length,
+        planted: all.filter(node => node.dataset.planted === 'yes').length,
+        owned: all.filter(node => node.hasAttribute('data-glpx-owner')).length
+      };
+    };
+    return { backToTop: describe('glp-back-to-top'), scrollProgress: describe('glp-scroll-progress') };
+  });
+  check('ownership: a planted id does not stop the feature building its own surface',
+    hostileState.backToTop.owned === 1 && hostileState.backToTop.planted === 1
+      && hostileState.scrollProgress.owned === 1 && hostileState.scrollProgress.planted === 1,
+    JSON.stringify(hostileState));
+
+  // Now tear both features down and confirm only our own surfaces go.
+  await hostilePage.evaluate(() => {
+    document.dispatchEvent(new CustomEvent('glp-test-noop'));
+  });
+  const hostileTabId = await worker.evaluate(async url => {
+    const tabs = await chrome.tabs.query({ url: '*://*.godlikeproductions.com/*' });
+    const match = tabs.find(tab => tab.url === url);
+    return match ? match.id : null;
+  }, HOSTILE_ID_URL);
+  await worker.evaluate(tabId => chrome.tabs.sendMessage(tabId, {
+    type: 'glp:patch-settings',
+    patch: { backToTopButton: false, scrollProgress: false }
+  }), hostileTabId);
+  await hostilePage.waitForTimeout(800);
+
+  const afterTeardown = await hostilePage.evaluate(() => {
+    const describe = id => {
+      const all = [...document.querySelectorAll(`#${id}`)];
+      return {
+        total: all.length,
+        planted: all.filter(node => node.dataset.planted === 'yes').length,
+        owned: all.filter(node => node.hasAttribute('data-glpx-owner')).length
+      };
+    };
+    return { backToTop: describe('glp-back-to-top'), scrollProgress: describe('glp-scroll-progress') };
+  });
+  check('ownership: teardown removes only the surface we created',
+    afterTeardown.backToTop.owned === 0 && afterTeardown.backToTop.planted === 1
+      && afterTeardown.scrollProgress.owned === 0 && afterTeardown.scrollProgress.planted === 1,
+    JSON.stringify(afterTeardown));
+
+  await hostilePage.close();
 
 
 } finally {

@@ -34,13 +34,6 @@ the tracker had no prior scheme.
   Acceptance: an opt-in check compares `chrome.runtime.getManifest().version` against the latest GitHub release tag at most once a day and shows an "update available" row with a link in the popup and options page. It is off until the user grants the optional host permission, it fetches data and never code, and `npm run check`'s no-remote-code gate still passes.
   Complexity: M
 
-- [ ] P1 — GU-010 Own the elements features guard on, instead of keying off a bare id
-  Why: seven features skip creation when `document.getElementById('<their id>')` matches anything, and remove that same id on teardown. Page content carrying a colliding id kills the feature and lets teardown delete a site element. The correct primitive already exists and is used by only 7 of 41 features.
-  Evidence: `src/glp-ultra.user.js:6202, 6676, 7401, 8304, 8502, 8635` (id guards); `markFeatureOwned` required by `scripts/verify-lifecycle.mjs:41` but present 7 times in the engine; OWASP browser-extension cheat sheet on treating host-page data as untrusted.
-  Touches: `src/glp-ultra.user.js` (the seven guards and their matching `destroy` handlers), `scripts/verify-runtime.mjs`.
-  Acceptance: a capture-replay check injects `<div id="glp-back-to-top">` into post content before startup; the feature still mounts its own surface, teardown removes only the surface it created, and the injected node survives. Repeat for one more of the seven.
-  Complexity: M
-
 - [ ] P1 — GU-011 Support `forced-colors: active`
   Why: the product ships a `highContrast` setting but never handles the OS-level forced-colors mode, where the UA discards `box-shadow` and non-URL `background-image`, so any state signalled that way vanishes. This is the standing blind spot for every restyling extension.
   Evidence: no `forced-colors` occurrence anywhere in `src/glp-ultra.user.js` (only `prefers-reduced-motion` at `:2089`); MDN `forced-colors` media feature.

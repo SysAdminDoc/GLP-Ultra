@@ -140,6 +140,7 @@
         highlightOPPosts: true,
         relativeTimestamps: true,
         inlinePostNumbers: true,
+        newPostMarkers: true,
         postPermalinks: true,
         youtubeEmbed: true,
         opPostNav: true,
@@ -306,6 +307,7 @@
         mediaHoverPreview: 'Hovering a thumbnail or an image link shows the full-size image in a floating panel.',
         mediaHoverPreviewSize: 'Largest share of the viewport a hover preview may cover.',
         userMuteMatchMode: 'How a muted name is matched: exactly, anywhere in the name, or as a regular expression.',
+        newPostMarkers: 'Marks the posts added since you last scrolled through this thread, and adds a jump to the first of them.',
         userNotes: 'Adds a private note field to the tag editor. Notes are stored with the tag and never sent anywhere.',
         userReputationOverlay: 'Counts how often you have seen each poster locally and shows it beside their name. No public scoring, no network calls.',
         userHistoryCap: 'How many posters the local history keeps before the least recently seen are dropped.',
@@ -969,8 +971,9 @@
     //   glpWatchedThreads        25 x  600 =   15 KB
     //   glpUserStats           1000 x 1080 = 1080 KB
     //   glpUserStatsPages       200 x  250 =   50 KB
+    //   glpReadPositions       1000 x   20 =   20 KB
     //                                        -------
-    //                                        3.34 MB, leaving roughly 1.8 MB of head room under
+    //                                        3.36 MB, leaving roughly 1.8 MB of head room under
     //                                        the 5 MiB limit. The settings blob and its
     //                                        pre-upgrade backup live in that head room: ~8 KB
     //                                        each in normal use, and bounded above by the free
@@ -989,7 +992,8 @@
         tagNoteLength: 500,
         userStats: 1000,
         userStatsThreads: 10,
-        userStatsPages: 200
+        userStatsPages: 200,
+        readPositions: 1000
     });
 
     function sanitizeStringList(value, { numeric = false, maxItems = STORE_LIMITS.mutedUsers, maxLength = 160 } = {}) {
@@ -1115,6 +1119,23 @@
                 first: nonNegativeInteger(rawEntry.first),
                 last: nonNegativeInteger(rawEntry.last)
             };
+        });
+        return result;
+    }
+
+    /**
+     * How far the reader got in each thread, as the highest post number they scrolled past.
+     * One number per thread id; anything unparseable is dropped rather than defaulted, because a
+     * wrong position is worse than no position - it hides posts the reader has never seen.
+     */
+    function sanitizeReadPositions(value) {
+        if (!isRecord(value)) return undefined;
+        const result = Object.create(null);
+        Object.entries(value).slice(0, STORE_LIMITS.readPositions).forEach(([rawId, rawPost]) => {
+            const id = cleanImportText(rawId, 40);
+            if (!/^\d+$/.test(id)) return;
+            const post = nonNegativeInteger(rawPost, -1);
+            if (post >= 0) result[id] = post;
         });
         return result;
     }
@@ -4397,6 +4418,23 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
 `;
         }
 
+        css += `
+body.glp-enhanced-active .msg tr.glp-new-post > td {
+    box-shadow: inset 3px 0 0 var(--glpx-accent);
+}
+body.glp-enhanced-active .msg tr.glp-first-new-post > td:first-child {
+    position: relative;
+}
+body.glp-enhanced-active .msg tr.glp-first-new-post > td:first-child::before {
+    content: 'New';
+    position: absolute; top: 2px; left: 2px;
+    padding: 1px 5px;
+    font-size: 10px; font-weight: 700; line-height: 1.5;
+    border-radius: var(--glpx-r-xs);
+    background: var(--glpx-accent); color: #05070c;
+}
+`;
+
         // ---- Forced colors ----
         // Windows High Contrast and its equivalents replace author colours with a small system
         // palette, and while doing it the UA throws away `box-shadow` and every non-URL
@@ -4488,6 +4526,8 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
 
     /* Rows this script dims or tints to mean something keep a marker that survives. */
     .glp-op-post { outline: 2px solid Highlight !important; outline-offset: -2px; }
+    /* The new-post marker is an inset shadow, which forced colours discard outright. */
+    .msg tr.glp-new-post > td { border-left: 3px solid Highlight !important; }
     .glp-muted-post,
     .glp-user-blocked { opacity: 1 !important; text-decoration: line-through; }
 }
@@ -5147,6 +5187,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
                     { key: 'highlightOPPosts', label: 'Highlight OP Replies (Gold Border)' },
                     { key: 'relativeTimestamps', label: 'Relative Timestamps (2h ago)' },
                     { key: 'inlinePostNumbers', label: 'Show Post Numbers (#1, #2...)' },
+                    { key: 'newPostMarkers', label: 'Mark Posts New Since Your Last Visit' },
                     { key: 'postPermalinks', label: 'Click Post # to Copy Link' },
                     { key: 'youtubeEmbed', label: 'Auto-Embed YouTube Links' },
                     { key: 'opPostNav', label: 'OP Post Navigation Buttons' },
@@ -5773,6 +5814,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         loadHiddenThreads();
         loadUserStats();
         loadWatchedThreads();
+        loadReadPositions();
         return {
             format: 'glp-ultra-backup',
             formatVersion: 3,
@@ -5786,7 +5828,8 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             userStatsPages,
             hiddenThreads,
             hiddenThreadTitles,
-            watchedThreads
+            watchedThreads,
+            readPositions
         };
     }
 
@@ -6011,6 +6054,13 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         if (nextWatched !== undefined) {
             watchedThreads = nextWatched;
             saveWatchedThreads();
+            importedStores++;
+        }
+
+        const nextReadPositions = sanitizeReadPositions(candidates.readPositions);
+        if (nextReadPositions !== undefined) {
+            readPositions = nextReadPositions;
+            saveReadPositions();
             importedStores++;
         }
 
@@ -6305,6 +6355,7 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             { id: 'media.youtube', routes: ['thread'], settingKey: 'youtubeEmbed', fragment: true, init: embedYouTubeLinks, apply: embedYouTubeLinks, destroy: () => document.querySelectorAll('.glp-yt-embed').forEach(node => node.remove()) },
             { id: 'thread.opNav', routes: ['thread'], settingKey: 'opPostNav', init: initOPPostNav, apply: initOPPostNav, destroy: () => document.querySelectorAll('.glp-op-nav').forEach(node => node.remove()) },
             { id: 'thread.collapseAll', routes: ['thread'], settingKey: 'collapseExpandAll', init: initCollapseExpandAll, apply: initCollapseExpandAll, destroy: () => document.querySelectorAll('[data-glp-thread-tool="collapse-all"], [data-glp-thread-tool="expand-all"], [data-glp-thread-tool="collapse-quotes"], [data-glp-thread-tool="search"]').forEach(node => node.remove()) },
+            { id: 'thread.newSince', routes: ['thread'], settingKey: 'newPostMarkers', fragment: true, init: initNewPostMarkers, apply: initNewPostMarkers, destroy: destroyNewPostMarkers },
             { id: 'thread.quickSearch', routes: ['thread'], settingKey: 'threadQuickSearch', init: initQuickSearch, apply: initQuickSearch, destroy: () => removeOwnedElement('glp-quick-search') },
             { id: 'thread.watcher', routes: ['thread', 'feed'], settingKey: 'watcherEnabled', init: initWatcher, apply: initWatcher, destroy: destroyWatcher },
             { id: 'users.reputation', routes: ['thread'], settingKey: 'userReputationOverlay', init: applyReputationOverlay, apply: applyReputationOverlay, destroy: destroyReputationOverlay },
@@ -8809,6 +8860,128 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
+    // ---- New since your last visit ----
+    // The position is captured once, before anything is marked, and only advanced by scrolling.
+    // Marking on load instead would clear the highlight the moment the reader arrived, which is
+    // the one moment they need it.
+    let newPostBaseline = 0;
+    let furthestPostSeen = 0;
+    let readPositionThreadId = '';
+
+    function postOrdinal(row) {
+        const value = parseInt(String(row.id || '').replace('post_', ''), 10);
+        return Number.isFinite(value) ? value : 0;
+    }
+
+    /**
+     * `scope` is the registry's scoped root: `document` on a full pass, and the appended fragment
+     * when the mutation observer is feeding in newly loaded posts.
+     *
+     * The distinction matters. Marking rows is safe to do on a fragment; touching the shared
+     * thread toolbar is not. Building the jump button from a fragment pass made this feature the
+     * first thing to call `getThreadToolsBar()`, so it created the bar before the watcher did, and
+     * the watcher's own Watch button was detached out from under a click that was already in
+     * flight. Fragments mark, full passes own the toolbar.
+     */
+    function initNewPostMarkers(scope = document) {
+        if (!settings.newPostMarkers) return;
+        if (!document.querySelector('.msg')) return;
+
+        const meta = currentThreadMeta();
+        if (!meta.id) return;
+
+        if (readPositionThreadId !== meta.id) {
+            // Read the store before taking a baseline from it. Every store here is loaded by the
+            // feature that needs it rather than in one startup pass, and skipping it meant the
+            // baseline was always 0 - nothing ever marked new - while a later save would have
+            // written this thread over every other thread position.
+            loadReadPositions();
+            readPositionThreadId = meta.id;
+            newPostBaseline = readPositionFor(meta.id);
+            furthestPostSeen = 0;
+        }
+
+        const wholeDocument = !scope || scope === document;
+        const root = wholeDocument ? document : scope;
+        const rows = [...root.querySelectorAll('.msg tr[id^="post_"]')];
+        rows.forEach(row => {
+            const ordinal = postOrdinal(row);
+            row.classList.toggle('glp-new-post', ordinal > newPostBaseline && newPostBaseline > 0);
+        });
+
+        if (!wholeDocument) return;
+
+        document.querySelectorAll('.glp-first-new-post').forEach(row => row.classList.remove('glp-first-new-post'));
+        const firstNew = document.querySelector('.msg tr.glp-new-post');
+        if (firstNew) firstNew.classList.add('glp-first-new-post');
+
+        renderJumpToFirstNew(!!firstNew);
+        trackReadProgress();
+    }
+
+    function renderJumpToFirstNew(hasNew) {
+        const existing = document.querySelector('[data-glp-thread-tool="first-new"]');
+        if (!hasNew) {
+            if (existing) existing.remove();
+            return;
+        }
+        if (existing) return;
+        const bar = getThreadToolsBar();
+        if (!bar) return;
+        const btn = markFeatureOwned(document.createElement('button'));
+        btn.type = 'button';
+        btn.dataset.glpThreadTool = 'first-new';
+        btn.textContent = 'First new post';
+        btn.addEventListener('click', () => {
+            const target = document.querySelector('.glp-first-new-post');
+            if (target) target.scrollIntoView({ behavior: settings.reduceMotion ? 'auto' : 'smooth', block: 'start' });
+        });
+        bar.appendChild(btn);
+    }
+
+    // Furthest post scrolled past, not the highest post on the page: opening a long thread and
+    // closing it immediately must not mark the whole thing read.
+    function trackReadProgress() {
+        if (runtimeState.readProgressBound) return;
+        runtimeState.readProgressBound = true;
+
+        const measure = () => {
+            const limit = window.innerHeight;
+            document.querySelectorAll('.msg tr[id^="post_"]').forEach(row => {
+                if (row.getBoundingClientRect().top <= limit) {
+                    const ordinal = postOrdinal(row);
+                    if (ordinal > furthestPostSeen) furthestPostSeen = ordinal;
+                }
+            });
+        };
+
+        const persist = () => {
+            if (!readPositionThreadId || furthestPostSeen <= 0) return;
+            recordReadPosition(readPositionThreadId, furthestPostSeen);
+        };
+
+        measure();
+        addFeatureEventListener(window, 'scroll', () => {
+            if (runtimeState.readProgressTick) return;
+            runtimeState.readProgressTick = true;
+            requestAnimationFrame(() => {
+                runtimeState.readProgressTick = false;
+                measure();
+            });
+        }, { passive: true }, 'read-progress');
+        // pagehide rather than unload: unload is unreliable and blocks the back/forward cache.
+        addFeatureEventListener(window, 'pagehide', persist, undefined, 'read-progress-persist');
+        addFeatureEventListener(document, 'visibilitychange', () => {
+            if (document.hidden) persist();
+        }, undefined, 'read-progress-visibility');
+    }
+
+    function destroyNewPostMarkers() {
+        document.querySelectorAll('.glp-new-post').forEach(row => row.classList.remove('glp-new-post'));
+        document.querySelectorAll('.glp-first-new-post').forEach(row => row.classList.remove('glp-first-new-post'));
+        document.querySelectorAll('[data-glp-thread-tool="first-new"]').forEach(node => node.remove());
+    }
+
     function getThreadToolsBar() {
         let bar = ownedElement('glp-thread-tools-bar');
         if (bar) return bar;
@@ -9034,6 +9207,49 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
     let watchedThreads = [];
     let watcherTimer = null;
     let watcherRunning = false;
+
+    // The read position is one idea with two homes. A watched thread already carries
+    // `lastSeenPost`, which the background checks keep fresh, and every other thread had nowhere
+    // to record it at all - so reopening an unwatched 400-post thread told you nothing. This store
+    // covers the rest, and the accessors below always answer from whichever is furthest along
+    // rather than introducing a second, competing notion of "where I was".
+    let readPositions = Object.create(null);
+
+    function loadReadPositions() {
+        readPositions = sanitizeReadPositions(readFeatureStore('glpReadPositions', {})) || Object.create(null);
+    }
+
+    function saveReadPositions() {
+        // Oldest-first eviction is wrong here: a thread you read once and never returned to is
+        // exactly the one whose position you still want. Trim by lowest post number, which
+        // approximates "shortest thread, least to lose".
+        const ids = Object.keys(readPositions);
+        if (ids.length > STORE_LIMITS.readPositions) {
+            const keep = ids
+                .sort((a, b) => (readPositions[b] || 0) - (readPositions[a] || 0))
+                .slice(0, STORE_LIMITS.readPositions);
+            const trimmed = Object.create(null);
+            keep.forEach(id => { trimmed[id] = readPositions[id]; });
+            readPositions = trimmed;
+        }
+        writeFeatureStore('glpReadPositions', readPositions);
+    }
+
+    function readPositionFor(threadId) {
+        const id = String(threadId || '');
+        if (!id) return 0;
+        const watched = watchedEntryFor(id);
+        return Math.max(readPositions[id] || 0, watched ? (watched.lastSeenPost || 0) : 0);
+    }
+
+    function recordReadPosition(threadId, postNumber) {
+        const id = String(threadId || '');
+        const post = nonNegativeInteger(postNumber, 0);
+        if (!id || post <= (readPositions[id] || 0)) return false;
+        readPositions[id] = post;
+        saveReadPositions();
+        return true;
+    }
 
     function loadWatchedThreads() {
         const parsed = readFeatureStore('glpWatchedThreads', []);

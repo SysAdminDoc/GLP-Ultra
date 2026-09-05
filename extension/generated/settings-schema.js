@@ -90,6 +90,7 @@ window.GLP_SCHEMA = {
     "highlightOPPosts": true,
     "relativeTimestamps": true,
     "inlinePostNumbers": true,
+    "newPostMarkers": true,
     "postPermalinks": true,
     "youtubeEmbed": true,
     "opPostNav": true,
@@ -266,6 +267,7 @@ window.GLP_SCHEMA = {
     "mediaHoverPreview": "Hovering a thumbnail or an image link shows the full-size image in a floating panel.",
     "mediaHoverPreviewSize": "Largest share of the viewport a hover preview may cover.",
     "userMuteMatchMode": "How a muted name is matched: exactly, anywhere in the name, or as a regular expression.",
+    "newPostMarkers": "Marks the posts added since you last scrolled through this thread, and adds a jump to the first of them.",
     "userNotes": "Adds a private note field to the tag editor. Notes are stored with the tag and never sent anywhere.",
     "userReputationOverlay": "Counts how often you have seen each poster locally and shows it beside their name. No public scoring, no network calls.",
     "userHistoryCap": "How many posters the local history keeps before the least recently seen are dropped.",
@@ -747,6 +749,10 @@ window.GLP_SCHEMA = {
           "label": "Show Post Numbers (#1, #2...)"
         },
         {
+          "key": "newPostMarkers",
+          "label": "Mark Posts New Since Your Last Visit"
+        },
+        {
           "key": "postPermalinks",
           "label": "Click Post # to Copy Link"
         },
@@ -1165,6 +1171,7 @@ window.GLP_SCHEMA = {
     "tagNoteLength": 500,
     "userStats": 1000,
     "userStatsThreads": 10,
-    "userStatsPages": 200
+    "userStatsPages": 200,
+    "readPositions": 1000
   }
 };

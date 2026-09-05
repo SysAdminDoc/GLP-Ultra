@@ -27,13 +27,6 @@ the tracker had no prior scheme.
   Acceptance: an opt-in check compares `chrome.runtime.getManifest().version` against the latest GitHub release tag at most once a day and shows an "update available" row with a link in the popup and options page. It is off until the user grants the optional host permission, it fetches data and never code, and `npm run check`'s no-remote-code gate still passes.
   Complexity: M
 
-- [ ] P1 — GU-012 Surface the read position the watcher already records, and extend it past watched threads
-  Why: the data exists and nothing shows it. `lastSeenPost` is tracked per watched thread and drives the unread delta count, but no post is ever marked as new in the page and there is no jump to the first unread. Threads the reader has not explicitly watched record nothing at all, so reopening a 400-post thread gives no idea where you stopped. This is the one table-stakes forum-reader behaviour missing here.
-  Evidence: `src/glp-ultra.user.js:8830, 8872, 8899, 8978-8979` (`lastSeenPost` maintained on `glpWatchedThreads` only), `:1018` (already sanitised as a non-negative integer), `:996` (`sanitizeWatchedThreads`); no in-page rendering of it anywhere. RES ships `readComments` and `newCommentCount`; 4chan X advertises "remember your last read post in a thread".
-  Touches: `src/glp-ultra.user.js` (new registry entry rendering the marker, `lastSeenPost` write path extended to visited threads), settings schema, `extension/content/gm-shim.js` `MIRRORED_KEYS`, backup format.
-  Acceptance: opening a thread, scrolling partway, leaving, and returning marks every post after the recorded position as new and offers a jump to the first one. It works on a thread that was never explicitly watched. The visited-thread store is capped, reconciled with GU-001, and included in a format-3 backup. Reuse `lastSeenPost` rather than adding a second read-position concept.
-  Complexity: M
-
 ### P2
 
 - [ ] P2 — GU-013 Local full-text search across threads you have exported or visited

@@ -29,6 +29,10 @@
 - **The Firefox build asks for a newer Firefox.** It claimed to support 128, a version that stopped
   getting security updates in September 2025. It now names 140, which is a supported release, and
   the build refuses to ship if that number ever drifts again.
+- **Threads remember where you stopped reading.** Reopening a long thread now marks the posts added
+  since you last scrolled through it and offers a jump straight to the first one. It works on any
+  thread, not only ones you explicitly watch, and it follows how far you actually scrolled rather
+  than assuming you read whatever was on screen. Turn it off under Post Enhancements.
 - **Works properly in Windows High Contrast.** That mode strips shadows and background tints, which
   is how this script drew most of its edges, so panels merged into the page, the active sort column
   looked like the others and the progress bars disappeared outright. Everything it adds now keeps a

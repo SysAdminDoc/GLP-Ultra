@@ -27,6 +27,7 @@ const DATA_KEYS = Object.freeze({
     hiddenTitles: 'glpHiddenThreadTitles',
     tags: 'glpUserTags',
     watched: 'glpWatchedThreads',
+    readPositions: 'glpReadPositions',
     stats: 'glpUserStats',
     statsPages: 'glpUserStatsPages'
 });
@@ -167,7 +168,7 @@ const PRESETS = [
 const schema = window.GLP_SCHEMA;
 let settings = {};
 let data = {
-    muted: [], blocked: [], hidden: [], hiddenTitles: {}, tags: {}, watched: [], stats: {}, statsPages: []
+    muted: [], blocked: [], hidden: [], hiddenTitles: {}, tags: {}, watched: [], stats: {}, statsPages: [], readPositions: {}
 };
 let networkBlockEnabled = true;
 let activeSectionTitle = '';
@@ -200,7 +201,8 @@ const STORE_LIMITS = Object.assign({
     tagNoteLength: 500,
     userStats: 1000,
     userStatsThreads: 10,
-    userStatsPages: 200
+    userStatsPages: 200,
+    readPositions: 1000
 }, (window.GLP_SCHEMA && window.GLP_SCHEMA.storeLimits) || {});
 
 function cleanImportText(value, maxLength = 200) {
@@ -324,6 +326,18 @@ function sanitizeUserStats(value) {
     return result;
 }
 
+function sanitizeReadPositions(value) {
+    if (!isRecord(value)) return undefined;
+    const result = Object.create(null);
+    Object.entries(value).slice(0, STORE_LIMITS.readPositions).forEach(([rawId, rawPost]) => {
+        const id = cleanImportText(rawId, 40);
+        if (!/^\d+$/.test(id)) return;
+        const post = Number(rawPost);
+        if (Number.isFinite(post) && post >= 0) result[id] = Math.floor(post);
+    });
+    return result;
+}
+
 function sanitizeUserStatsPages(value) {
     const pages = sanitizeStringList(value, { maxItems: STORE_LIMITS.userStatsPages, maxLength: 240 });
     return pages?.filter(page => /^\/forum\d+\/message\d+(?:\/pg\d+)?$/i.test(page));
@@ -336,6 +350,7 @@ const DATA_SANITIZERS = Object.freeze({
     hiddenTitles: sanitizeHiddenThreadTitles,
     tags: sanitizeUserTags,
     watched: sanitizeWatchedThreads,
+    readPositions: sanitizeReadPositions,
     stats: sanitizeUserStats,
     statsPages: sanitizeUserStatsPages
 });
@@ -483,6 +498,7 @@ async function loadAll() {
         hiddenTitles: sanitizeDataValue('hiddenTitles', parseJSON(stored[DATA_KEYS.hiddenTitles], {})) || {},
         tags: sanitizeDataValue('tags', parseJSON(stored[DATA_KEYS.tags], {})) || {},
         watched: sanitizeDataValue('watched', parseJSON(stored[DATA_KEYS.watched], [])) || [],
+        readPositions: sanitizeDataValue('readPositions', parseJSON(stored[DATA_KEYS.readPositions], {})) || {},
         stats: sanitizeDataValue('stats', parseJSON(stored[DATA_KEYS.stats], {})) || {},
         statsPages: sanitizeDataValue('statsPages', parseJSON(stored[DATA_KEYS.statsPages], [])) || []
     };
@@ -1071,6 +1087,7 @@ function exportAllData() {
         hiddenThreadTitles: data.hiddenTitles,
         userTags: data.tags,
         watchedThreads: data.watched,
+        readPositions: data.readPositions,
         userStats: data.stats,
         userStatsPages: data.statsPages
     });
@@ -1482,6 +1499,7 @@ async function importSettings(file) {
             hiddenTitles: source.hiddenThreadTitles,
             tags: source.userTags,
             watched: source.watchedThreads,
+            readPositions: source.readPositions,
             stats: source.userStats,
             statsPages: source.userStatsPages
         };

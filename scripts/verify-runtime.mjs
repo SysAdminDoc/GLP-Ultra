@@ -2058,6 +2058,111 @@ try {
   await forcedPage.emulateMedia({ forcedColors: 'none' });
   await forcedPage.close();
 
+  // ---------------- Read position ----------------
+  // The thread used here is never watched, which is the half that previously recorded nothing at
+  // all: lastSeenPost only ever existed on the 25 watched entries.
+  const READ_THREAD_ID = '6170474';
+  const READ_POSITION_KEY = 'glpEnhanced.mv3.glpReadPositions';
+  const readPage = await context.newPage();
+
+  // Part one: scrolling records a position. pagehide fires on the reload, which is the real path.
+  await readPage.goto('https://www.godlikeproductions.com/forum1/message6170474/pg6',
+    { waitUntil: 'domcontentloaded' });
+  await readPage.waitForTimeout(1800);
+  await readPage.evaluate(() => window.localStorage.removeItem('glpEnhanced.mv3.glpReadPositions'));
+  await readPage.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await readPage.waitForTimeout(600);
+  await readPage.reload({ waitUntil: 'domcontentloaded' });
+  await readPage.waitForTimeout(1500);
+
+  const recorded = await readPage.evaluate(key => {
+    try {
+      return JSON.parse(window.localStorage.getItem(key) || '{}');
+    } catch (error) {
+      return { error: String(error) };
+    }
+  }, READ_POSITION_KEY);
+  check('read position: scrolling an unwatched thread records how far you got',
+    Number(recorded[READ_THREAD_ID]) > 0, JSON.stringify(recorded));
+
+  // Part two: a known position marks exactly the posts after it. Set it directly so the assertion
+  // does not depend on how tall the capture happens to render.
+  //
+  // Two things make this fiddlier than it looks, and both were seen failing here first.
+  // gm-shim treats chrome.storage.local as authoritative at document_start and pushes it back over
+  // the page copy, so planting into page localStorage is undone by the next load - hence the
+  // worker-side write. And reloading the page fires pagehide, which is exactly when this feature
+  // persists how far the reader got, so a reload races the plant and sometimes overwrites it with
+  // the previous view's position. A brand new page has no previous view to persist.
+  //
+  // The watched list is cleared in the same breath: an earlier block watches this thread, which
+  // sets lastSeenPost to the last post on the page, and readPositionFor deliberately answers with
+  // whichever position is furthest along. Unwatched is also the case this item is about.
+  await readPage.close();
+  const plantState = async positions => {
+    await worker.evaluate(async payload => {
+      await chrome.storage.local.set({
+        glpReadPositions: JSON.stringify(payload),
+        glpWatchedThreads: JSON.stringify([])
+      });
+    }, positions);
+  };
+
+  await plantState({ [READ_THREAD_ID]: 2 });
+  const markedPage = await context.newPage();
+  await markedPage.goto('https://www.godlikeproductions.com/forum1/message6170474/pg6',
+    { waitUntil: 'domcontentloaded' });
+  await markedPage.waitForTimeout(2200);
+
+  // Expectation comes from the page, not from arithmetic on the row count: GLP reuses a post id
+  // across several rows of the same post, so there are 14 matching rows over 6 distinct ordinals
+  // and "total minus two" is not the number of posts after position 2.
+  const marked = await markedPage.evaluate(baseline => {
+    const rows = [...document.querySelectorAll('.msg tr[id^="post_"]')];
+    const ordinal = row => parseInt(String(row.id).replace('post_', ''), 10) || 0;
+    const shouldBeNew = rows.filter(row => ordinal(row) > baseline);
+    const areNew = rows.filter(row => row.classList.contains('glp-new-post'));
+    return {
+      total: rows.length,
+      expected: shouldBeNew.length,
+      actual: areNew.length,
+      missed: shouldBeNew.filter(row => !row.classList.contains('glp-new-post')).map(row => row.id),
+      overreached: areNew.filter(row => ordinal(row) <= baseline).map(row => row.id),
+      firstNew: rows.filter(row => row.classList.contains('glp-first-new-post')).map(ordinal),
+      jumpButton: document.querySelectorAll('[data-glp-thread-tool="first-new"]').length
+    };
+  }, 2);
+  check('read position: every post after the recorded one is marked new, and no earlier one is',
+    marked.expected > 0
+      && marked.actual === marked.expected
+      && marked.missed.length === 0
+      && marked.overreached.length === 0,
+    JSON.stringify(marked));
+  check('read position: the first new post is singled out and offers a jump',
+    marked.firstNew.length === 1 && marked.firstNew[0] === 3 && marked.jumpButton === 1,
+    JSON.stringify({ firstNew: marked.firstNew, jumpButton: marked.jumpButton }));
+  await markedPage.close();
+
+  // A fresh reader has no position, so nothing should be shouting at them.
+  await plantState({});
+  const freshPage = await context.newPage();
+  await freshPage.goto('https://www.godlikeproductions.com/forum1/message6170474/pg6',
+    { waitUntil: 'domcontentloaded' });
+  await freshPage.waitForTimeout(2000);
+  const firstVisit = await freshPage.evaluate(() => ({
+    newRows: document.querySelectorAll('.glp-new-post').length,
+    jumpButton: document.querySelectorAll('[data-glp-thread-tool="first-new"]').length
+  }));
+  check('read position: a thread you have never opened marks nothing new',
+    firstVisit.newRows === 0 && firstVisit.jumpButton === 0, JSON.stringify(firstVisit));
+
+  const readBackup = (await sendMessage(worker, freshPage, { type: 'glp:build-backup' }))?.backup;
+  check('read position: the store travels in a format-3 backup',
+    readBackup?.formatVersion === 3 && !!readBackup && typeof readBackup.readPositions === 'object',
+    JSON.stringify({ formatVersion: readBackup?.formatVersion, hasReadPositions: !!readBackup?.readPositions }));
+
+  await freshPage.close();
+
 
 } finally {
   if (context) await context.close();

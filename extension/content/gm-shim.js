@@ -26,6 +26,7 @@
         'glpHiddenThreadTitles',
         'glpUserTags',
         'glpWatchedThreads',
+        'glpReadPositions',
         'glpUserStats',
         'glpUserStatsPages',
         // The pre-upgrade settings backup is recovery data; mirroring it means clearing site data

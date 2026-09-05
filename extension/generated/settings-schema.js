@@ -1143,5 +1143,16 @@ window.GLP_SCHEMA = {
       "titleBg": "rgba(12,12,16,0.88)",
       "border": "#6f7f9f"
     }
+  },
+  "storeLimits": {
+    "mutedUsers": 2000,
+    "blockedUsers": 2000,
+    "hiddenThreads": 5000,
+    "hiddenThreadTitles": 2000,
+    "userTags": 1000,
+    "tagNoteLength": 500,
+    "userStats": 1000,
+    "userStatsThreads": 10,
+    "userStatsPages": 200
   }
 };

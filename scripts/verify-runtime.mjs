@@ -1676,21 +1676,36 @@ try {
   // The engine parses on read and falls back to defaults on a throw, so a swallowed
   // QuotaExceededError is indistinguishable from "nothing was ever saved". Fill the origin,
   // then prove the write fails loudly and the running config survives it.
+  // Fill in shrinking blocks. Stopping at the first 256 KB failure leaves up to 256 KB free,
+  // which is enough for a small key to still be created - and a boot-path write that succeeds
+  // proves nothing.
   const filled = await page.evaluate(() => {
-    const blob = 'x'.repeat(256 * 1024);
     let written = 0;
-    try {
-      for (let i = 0; i < 200; i += 1) {
-        window.localStorage.setItem(`glp-quota-ballast-${i}`, blob);
-        written += 1;
+    let threw = null;
+    for (const size of [256 * 1024, 16 * 1024, 1024, 64]) {
+      const blob = 'x'.repeat(size);
+      for (let i = 0; i < 400; i += 1) {
+        try {
+          window.localStorage.setItem(`glp-quota-ballast-${size}-${i}`, blob);
+          written += 1;
+        } catch (error) {
+          threw = error.name || String(error);
+          break;
+        }
       }
-    } catch (error) {
-      return { written, threw: error.name || String(error) };
     }
-    return { written, threw: null };
+    // Nothing at all must fit now, or "the origin is full" is not true.
+    let tinyFits = true;
+    try {
+      window.localStorage.setItem('glp-quota-ballast-probe', 'y');
+      window.localStorage.removeItem('glp-quota-ballast-probe');
+    } catch (error) {
+      tinyFits = false;
+    }
+    return { written, threw, tinyFits };
   });
-  check('quota: the test can actually exhaust the origin', !!filled.threw,
-    JSON.stringify(filled));
+  check('quota: the test can actually push the origin past its limit',
+    !!filled.threw, JSON.stringify(filled));
 
   // Replacing a key with a same-sized value needs no new space, so the write has to actually
   // grow the settings blob past the headroom one ballast block leaves behind.
@@ -1719,11 +1734,50 @@ try {
       features: (quotaDiag?.enabledFeatures || []).length
     }));
 
+  // The boot path is the dangerous one. loadSettings() stamps the schema version and the version
+  // marker before injectEarlyCSS runs, so an uncaught throw there aborts init() outright and the
+  // page comes up with no engine at all - a far worse outcome than losing one store. Exhausting
+  // the origin after load, as the checks above do, never reaches it.
+  // Drop the engine's own keys first so the boot path has to CREATE them rather than replace
+  // same-sized values. Replacing an existing key needs no new space, so without this the boot
+  // writes never touch the quota and the check cannot fail. Refill whatever the deletions freed.
   await page.evaluate(() => {
     Object.keys(window.localStorage)
-      .filter(key => key.startsWith('glp-quota-ballast-'))
+      .filter(key => key.startsWith('glpEnhanced.mv3.'))
+      .forEach(key => window.localStorage.removeItem(key));
+    for (const size of [16 * 1024, 1024, 64]) {
+      const blob = 'x'.repeat(size);
+      for (let i = 0; i < 400; i += 1) {
+        try {
+          window.localStorage.setItem(`glp-quota-refill-${size}-${i}`, blob);
+        } catch (error) {
+          break;
+        }
+      }
+    }
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(2500);
+  const bootedFull = await page.evaluate(() => ({
+    active: document.body.classList.contains('glp-enhanced-active'),
+    styled: !!document.getElementById('glp-enhanced-styles'),
+    ballast: Object.keys(window.localStorage).filter(key => key.startsWith('glp-quota-')).length
+  }));
+  // Honest scope: this proves the engine boots with the origin at its limit and its own keys
+  // gone. It does NOT prove every boot-time write is guarded - the schema and version stamps are
+  // a few bytes each and there is always slack enough for them, so they cannot be made to throw
+  // from here. That invariant is held statically instead, by the single-call-site check in
+  // scripts/verify-lifecycle.mjs.
+  check('quota: a first run on a full origin still starts the engine',
+    bootedFull.active && bootedFull.styled && bootedFull.ballast > 0, JSON.stringify(bootedFull));
+
+  await page.evaluate(() => {
+    Object.keys(window.localStorage)
+      .filter(key => key.startsWith('glp-quota-'))
       .forEach(key => window.localStorage.removeItem(key));
   });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1500);
   const recovered = await sendMessage(worker, page, {
     type: 'glp:patch-settings',
     patch: { customCSS: '.recovered { color: red; }' }

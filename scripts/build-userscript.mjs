@@ -178,6 +178,10 @@ try {
   // The extension pages are separate documents and cannot read the injected token layer, so the
   // palette travels with the schema. One source, three surfaces, one theme.
   const palettes = evalObjectLiteral('const THEME_PALETTES = Object.freeze(');
+  // The options page runs in its own document with its own copy of the import sanitizers, so the
+  // storage ceilings have to travel with the schema. Hardcoding them there once already let the
+  // two copies disagree by 5x after the engine's budget was reconciled.
+  const storeLimits = evalObjectLiteral('const STORE_LIMITS = Object.freeze(');
   const sections = extractSections();
 
   if (sections.length === 0) fail('no settings sections were extracted from the engine source');
@@ -208,7 +212,7 @@ try {
     }
   });
 
-  schemaPayload = { version: packageJson.version, defaults, constraints, settingDescriptions, sectionDescriptions, sections, palettes };
+  schemaPayload = { version: packageJson.version, defaults, constraints, settingDescriptions, sectionDescriptions, sections, palettes, storeLimits };
 } catch (error) {
   fail(error.message);
 }

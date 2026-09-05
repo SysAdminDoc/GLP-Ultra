@@ -146,20 +146,37 @@ async function readWatchCounts() {
     return counts && typeof counts === 'object' ? counts : {};
 }
 
-async function setWatchCount(tabId, count) {
-    const counts = await readWatchCounts();
-    if (count > 0) counts[tabId] = count;
-    else delete counts[tabId];
-    await chrome.storage.session.set({ [WATCH_COUNTS_KEY]: counts });
+// Reading, mutating and writing the counts is three awaits long, so two overlapping messages
+// would both read the same starting object and the second write would drop the first tab's
+// entry. Painting has the same problem in reverse: two paints for one tab can resolve out of
+// order and leave the stale text showing. One queue orders every badge operation. It is module
+// state, which the worker loses on restart, and that is correct: it orders work in flight, while
+// the counts themselves live in session storage.
+let badgeQueue = Promise.resolve();
+
+function queueBadgeWork(work) {
+    badgeQueue = badgeQueue.then(work).catch(() => {});
+    return badgeQueue;
 }
 
-async function paintBadge(tabId, onGLP) {
-    const counts = await readWatchCounts();
-    const unread = counts[tabId] || 0;
-    const text = unread > 0 ? String(unread) : (onGLP ? 'on' : '');
-    chrome.action.setBadgeText({ tabId, text }, () => void chrome.runtime.lastError);
-    chrome.action.setBadgeBackgroundColor({ tabId, color: unread > 0 ? '#e6a820' : '#4a90d9' },
-        () => void chrome.runtime.lastError);
+function setWatchCount(tabId, count) {
+    return queueBadgeWork(async () => {
+        const counts = await readWatchCounts();
+        if (count > 0) counts[tabId] = count;
+        else delete counts[tabId];
+        await chrome.storage.session.set({ [WATCH_COUNTS_KEY]: counts });
+    });
+}
+
+function paintBadge(tabId, onGLP) {
+    return queueBadgeWork(async () => {
+        const counts = await readWatchCounts();
+        const unread = counts[tabId] || 0;
+        const text = unread > 0 ? String(unread) : (onGLP ? 'on' : '');
+        chrome.action.setBadgeText({ tabId, text }, () => void chrome.runtime.lastError);
+        chrome.action.setBadgeBackgroundColor({ tabId, color: unread > 0 ? '#e6a820' : '#4a90d9' },
+            () => void chrome.runtime.lastError);
+    });
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

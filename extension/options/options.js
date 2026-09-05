@@ -188,12 +188,27 @@ function isRecord(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+// The engine owns these numbers; the build copies them into the generated schema. Keeping a
+// second hardcoded set here is what let the options-page import path stay at the old 5,000-entry
+// ceilings after the engine's storage budget was reconciled.
+const STORE_LIMITS = Object.assign({
+    mutedUsers: 2000,
+    blockedUsers: 2000,
+    hiddenThreads: 5000,
+    hiddenThreadTitles: 2000,
+    userTags: 1000,
+    tagNoteLength: 500,
+    userStats: 1000,
+    userStatsThreads: 10,
+    userStatsPages: 200
+}, (window.GLP_SCHEMA && window.GLP_SCHEMA.storeLimits) || {});
+
 function cleanImportText(value, maxLength = 200) {
     if (typeof value !== 'string' && typeof value !== 'number') return '';
     return String(value).trim().slice(0, maxLength);
 }
 
-function sanitizeStringList(value, { numeric = false, maxItems = 5000, maxLength = 160 } = {}) {
+function sanitizeStringList(value, { numeric = false, maxItems = STORE_LIMITS.mutedUsers, maxLength = 160 } = {}) {
     if (!Array.isArray(value)) return undefined;
     const seen = new Set();
     const result = [];
@@ -213,7 +228,7 @@ function sanitizeBlockedUsers(value) {
     value.forEach(entry => {
         const source = isRecord(entry) ? entry : { id: entry, name: entry };
         const id = cleanImportText(source.id, 40);
-        if (!/^\d+$/.test(id) || seen.has(id) || result.length >= 5000) return;
+        if (!/^\d+$/.test(id) || seen.has(id) || result.length >= STORE_LIMITS.blockedUsers) return;
         seen.add(id);
         result.push({ id, name: cleanImportText(source.name, 160) || id });
     });
@@ -223,7 +238,8 @@ function sanitizeBlockedUsers(value) {
 function sanitizeHiddenThreadTitles(value) {
     if (!isRecord(value)) return undefined;
     const result = Object.create(null);
-    Object.entries(value).forEach(([id, title]) => {
+    Object.entries(value).slice(0, STORE_LIMITS.hiddenThreadTitles).forEach(([rawId, title]) => {
+        const id = cleanImportText(rawId, 40);
         if (!/^\d+$/.test(id)) return;
         const text = cleanImportText(title, 160);
         if (text) result[id] = text;
@@ -239,7 +255,7 @@ function sanitizeTagColor(value, fallback) {
 function sanitizeUserTags(value) {
     if (!isRecord(value)) return undefined;
     const result = Object.create(null);
-    Object.entries(value).slice(0, 5000).forEach(([rawName, rawTag]) => {
+    Object.entries(value).slice(0, STORE_LIMITS.userTags).forEach(([rawName, rawTag]) => {
         const name = cleanImportText(rawName, 160);
         if (!name || ['__proto__', 'prototype', 'constructor'].includes(name) || !isRecord(rawTag)) return;
         const label = cleanImportText(rawTag.label, 80);
@@ -248,7 +264,7 @@ function sanitizeUserTags(value) {
             bg: sanitizeTagColor(rawTag.bg, 'var(--glpx-accent)'),
             fg: sanitizeTagColor(rawTag.fg, '#fff'),
             label,
-            note: typeof rawTag.note === 'string' ? rawTag.note.trim().slice(0, 2000) : ''
+            note: typeof rawTag.note === 'string' ? rawTag.note.trim().slice(0, STORE_LIMITS.tagNoteLength) : ''
         };
     });
     return result;
@@ -295,12 +311,12 @@ function sanitizeWatchedThreads(value) {
 function sanitizeUserStats(value) {
     if (!isRecord(value)) return undefined;
     const result = Object.create(null);
-    Object.entries(value).slice(0, 5000).forEach(([rawName, rawEntry]) => {
+    Object.entries(value).slice(0, STORE_LIMITS.userStats).forEach(([rawName, rawEntry]) => {
         const name = cleanImportText(rawName, 160);
         if (!name || ['__proto__', 'prototype', 'constructor'].includes(name) || !isRecord(rawEntry)) return;
         result[name] = {
             posts: nonNegativeInteger(rawEntry.posts),
-            threads: sanitizeStringList(rawEntry.threads, { maxItems: 50, maxLength: 80 }) || [],
+            threads: sanitizeStringList(rawEntry.threads, { maxItems: STORE_LIMITS.userStatsThreads, maxLength: 80 }) || [],
             first: nonNegativeInteger(rawEntry.first),
             last: nonNegativeInteger(rawEntry.last)
         };
@@ -309,14 +325,14 @@ function sanitizeUserStats(value) {
 }
 
 function sanitizeUserStatsPages(value) {
-    const pages = sanitizeStringList(value, { maxItems: 200, maxLength: 240 });
+    const pages = sanitizeStringList(value, { maxItems: STORE_LIMITS.userStatsPages, maxLength: 240 });
     return pages?.filter(page => /^\/forum\d+\/message\d+(?:\/pg\d+)?$/i.test(page));
 }
 
 const DATA_SANITIZERS = Object.freeze({
     muted: value => sanitizeStringList(value),
     blocked: sanitizeBlockedUsers,
-    hidden: value => sanitizeStringList(value, { numeric: true, maxItems: 5000, maxLength: 40 }),
+    hidden: value => sanitizeStringList(value, { numeric: true, maxItems: STORE_LIMITS.hiddenThreads, maxLength: 40 }),
     hiddenTitles: sanitizeHiddenThreadTitles,
     tags: sanitizeUserTags,
     watched: sanitizeWatchedThreads,

@@ -929,12 +929,15 @@
     //   glpHiddenThreadTitles  2000 x  175 =  350 KB
     //   glpUserTags            1000 x  840 =  840 KB
     //   glpWatchedThreads        25 x  600 =   15 KB
-    //   glpUserStats           1000 x 1010 = 1010 KB
+    //   glpUserStats           1000 x 1080 = 1080 KB
     //   glpUserStatsPages       200 x  250 =   50 KB
     //                                        -------
-    //                                        3.27 MB, plus the settings blob and its pre-upgrade
-    //                                        backup (~8 KB each), leaving roughly 1.9 MB of head
-    //                                        room under the 5 MiB limit.
+    //                                        3.34 MB, leaving roughly 1.8 MB of head room under
+    //                                        the 5 MiB limit for the settings blob and its
+    //                                        pre-upgrade backup. Those are ~8 KB each in normal
+    //                                        use but are NOT fixed size: `customCSS` is free text
+    //                                        with no ceiling yet, so the head room is real only
+    //                                        until someone pastes a stylesheet into it.
     //
     // Changing any number here changes that sum. STORE_LIMITS.userStats is also the ceiling the
     // `userHistoryCap` setting is allowed to reach, so the two cannot drift apart.
@@ -988,7 +991,8 @@
     function sanitizeHiddenThreadTitles(value) {
         if (!isRecord(value)) return undefined;
         const result = Object.create(null);
-        Object.entries(value).slice(0, STORE_LIMITS.hiddenThreadTitles).forEach(([id, title]) => {
+        Object.entries(value).slice(0, STORE_LIMITS.hiddenThreadTitles).forEach(([rawId, title]) => {
+            const id = cleanImportText(rawId, 40);
             if (!/^\d+$/.test(id)) return;
             const text = cleanImportText(title, 160);
             if (text) result[id] = text;
@@ -1146,26 +1150,38 @@
         if (runtimeState.storageFailures.length > 20) runtimeState.storageFailures.shift();
 
         if (runtimeState.storageFailuresReported.has(key)) return entry;
-        runtimeState.storageFailuresReported.add(key);
         const message = quota
             ? `Local storage is full, so your ${label} could not be saved. Clear some history or hidden threads from Recovery.`
             : `Your ${label} could not be saved to local storage.`;
         try {
+            // Only count it as reported once a toast actually rendered. This can run at
+            // document_start, before document.body exists, and marking it reported there would
+            // spend the one warning on a notification nobody could see.
             showNotification(message, 'error');
+            runtimeState.storageFailuresReported.add(key);
         } catch (notifyError) {
             console.warn(`[GLP Ultra] ${message}`, notifyError);
         }
         return entry;
     }
 
-    function writeFeatureStore(key, value) {
+    /**
+     * The single guarded write. Every GM_setValue in the engine goes through here, including the
+     * boot-time schema and version stamps: an uncaught throw from those runs before
+     * `injectEarlyCSS`, so a full origin used to abort startup entirely rather than lose one store.
+     */
+    function safeSetValue(key, serialized) {
         try {
-            GM_setValue(key, JSON.stringify(value));
+            GM_setValue(key, serialized);
             return true;
         } catch (error) {
             recordStorageFailure(key, error);
             return false;
         }
+    }
+
+    function writeFeatureStore(key, value) {
+        return safeSetValue(key, JSON.stringify(value));
     }
 
     function normalizeThemeValue(value) {
@@ -1238,7 +1254,7 @@
             const value = parseStoredJSON(readStoredValue(key, null), null);
             if (value === null) continue;
             const migrated = transform(value);
-            GM_setValue(targetKey, JSON.stringify(migrated));
+            safeSetValue(targetKey, JSON.stringify(migrated));
             runtimeState.migration.migratedStores.push(targetKey);
             return;
         }
@@ -1263,7 +1279,7 @@
     function backupSettingsBeforeUpgrade(saved, previous) {
         if (!saved || previous === SCRIPT_VERSION) return;
         try {
-            GM_setValue(SETTINGS_BACKUP_KEY, JSON.stringify({
+            safeSetValue(SETTINGS_BACKUP_KEY, JSON.stringify({
                 version: previous || 'unstamped',
                 upgradedTo: SCRIPT_VERSION,
                 savedAt: new Date().toISOString(),
@@ -1327,7 +1343,7 @@
         if (source && (sourceName !== 'glpEnhancedSettings' || schemaVersion < SETTINGS_SCHEMA_VERSION || migratedKeys.length)) {
             saveSettings();
         }
-        GM_setValue(SETTINGS_SCHEMA_KEY, String(SETTINGS_SCHEMA_VERSION));
+        safeSetValue(SETTINGS_SCHEMA_KEY, String(SETTINGS_SCHEMA_VERSION));
         migrateLegacyStores();
     }
 
@@ -1337,7 +1353,7 @@
      */
     function announceVersionChange() {
         const previous = runtimeState.previousVersion;
-        GM_setValue('glpSettingsVersion', SCRIPT_VERSION);
+        safeSetValue('glpSettingsVersion', SCRIPT_VERSION);
         if (!previous || previous === SCRIPT_VERSION) return;
         if (!settings.updateNotices) return;
 
@@ -1352,13 +1368,7 @@
     }
 
     function saveSettings() {
-        try {
-            GM_setValue('glpEnhancedSettings', JSON.stringify(settings));
-            return true;
-        } catch (error) {
-            recordStorageFailure('glpEnhancedSettings', error);
-            return false;
-        }
+        return safeSetValue('glpEnhancedSettings', JSON.stringify(settings));
     }
 
     function resetSettings() {
@@ -10164,7 +10174,7 @@ ${manifest}
         showNotification(`Settings restored from before the ${backup.version} to ${backup.upgradedTo} upgrade.`, 'success', {
             label: 'Undo',
             onClick: () => {
-                if (current) GM_setValue('glpEnhancedSettings', current);
+                if (current) safeSetValue('glpEnhancedSettings', current);
                 loadSettings();
                 applyStyles();
                 runFeatureRegistry('apply');

@@ -18,7 +18,14 @@
 - **The import limits now add up to something that fits.** Each list had its own ceiling, picked on
   its own, and together they allowed far more than a browser will store. They are sized against one
   shared budget that leaves room to spare, and the hidden-thread-title list is capped at all, which
-  it was not before. Poster history now tops out at 1,000 people rather than 5,000.
+  it was not before. Two numbers came down as part of that: poster history tops out at 1,000 people
+  rather than 5,000, and the list of recent threads kept per poster holds 10 rather than 50. The
+  options page had its own copy of these limits and was still using the old ones; it reads the
+  shared set now, so the two cannot drift apart again.
+- **A full store can no longer stop the script from starting.** The version and schema stamps
+  written during startup were not covered by the new error handling, so a browser that was already
+  out of room would abort before any styling ran and the page came up untouched. Every write goes
+  through one guarded path now.
 
 - **The offline verification captures are back.** Both MHTML files were removed from the project on
   2026-09-04, which left the selector registry and the whole runtime replay with nothing to check

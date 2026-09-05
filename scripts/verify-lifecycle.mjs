@@ -82,6 +82,20 @@ requiredHelpers.forEach(name => {
 if (!/function readFeatureStore\s*\(/.test(source) || !/function writeFeatureStore\s*\(/.test(source)) {
     fail('feature storage must go through the typed store adapter');
 }
+
+// localStorage throws QuotaExceededError once the origin is full, and two of these writes run
+// inside loadSettings() before injectEarlyCSS, so an uncaught one aborts init() and the page comes
+// up with no engine rather than losing a single store. There is no way to prove that from the
+// runtime harness - the stamps are a few bytes and the origin always has slack enough for them -
+// so the invariant is held here instead: exactly one call site, inside the guarded writer.
+const setValueCalls = [...source.matchAll(/GM_setValue\s*\(/g)];
+if (setValueCalls.length !== 1) {
+    fail(`expected exactly one GM_setValue call site (inside safeSetValue), found ${setValueCalls.length}; `
+        + 'every engine write must go through safeSetValue so a full origin cannot abort startup');
+} else {
+    const guarded = /function safeSetValue\([^)]*\)\s*\{\s*try\s*\{\s*GM_setValue\s*\(/.test(source);
+    if (!guarded) fail('the single GM_setValue call is not inside the safeSetValue try block');
+}
 if (/GM_(?:get|set)Value\(\s*['"]glp(?:MutedUsers|BlockedUsers|HiddenThreads|HiddenThreadTitles|UserTags|WatchedThreads|UserStats|UserStatsPages)['"]/.test(source)) {
     fail('feature code must not read or write its stores through GM_* directly');
 }

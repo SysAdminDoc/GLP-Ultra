@@ -27,13 +27,6 @@ the tracker had no prior scheme.
   Acceptance: an opt-in check compares `chrome.runtime.getManifest().version` against the latest GitHub release tag at most once a day and shows an "update available" row with a link in the popup and options page. It is off until the user grants the optional host permission, it fetches data and never code, and `npm run check`'s no-remote-code gate still passes.
   Complexity: M
 
-- [ ] P1 — GU-011 Support `forced-colors: active`
-  Why: the product ships a `highContrast` setting but never handles the OS-level forced-colors mode, where the UA discards `box-shadow` and non-URL `background-image`, so any state signalled that way vanishes. This is the standing blind spot for every restyling extension.
-  Evidence: no `forced-colors` occurrence anywhere in `src/glp-ultra.user.js` (only `prefers-reduced-motion` at `:2089`); MDN `forced-colors` media feature.
-  Touches: `src/glp-ultra.user.js` theme/accessibility CSS layer, `scripts/verify-runtime.mjs` or `scripts/verify-options.mjs`.
-  Acceptance: under Playwright's `forcedColors: 'active'`, every injected control keeps a visible border in a system colour, no state is conveyed by background colour alone, and toolbar buttons remain distinguishable from each other. Rules go in the same last-emitted accessibility layer the existing toggles use so they beat the theme.
-  Complexity: M
-
 - [ ] P1 — GU-012 Surface the read position the watcher already records, and extend it past watched threads
   Why: the data exists and nothing shows it. `lastSeenPost` is tracked per watched thread and drives the unread delta count, but no post is ever marked as new in the page and there is no jump to the first unread. Threads the reader has not explicitly watched record nothing at all, so reopening a 400-post thread gives no idea where you stopped. This is the one table-stakes forum-reader behaviour missing here.
   Evidence: `src/glp-ultra.user.js:8830, 8872, 8899, 8978-8979` (`lastSeenPost` maintained on `glpWatchedThreads` only), `:1018` (already sanitised as a non-negative integer), `:996` (`sanitizeWatchedThreads`); no in-page rendering of it anywhere. RES ships `readComments` and `newCommentCount`; 4chan X advertises "remember your last read post in a thread".

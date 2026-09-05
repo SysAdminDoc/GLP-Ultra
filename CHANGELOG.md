@@ -29,6 +29,10 @@
 - **The Firefox build asks for a newer Firefox.** It claimed to support 128, a version that stopped
   getting security updates in September 2025. It now names 140, which is a supported release, and
   the build refuses to ship if that number ever drifts again.
+- **Works properly in Windows High Contrast.** That mode strips shadows and background tints, which
+  is how this script drew most of its edges, so panels merged into the page, the active sort column
+  looked like the others and the progress bars disappeared outright. Everything it adds now keeps a
+  border and marks its state with system colours, so the choice of palette stays yours.
 - **Page content can no longer switch off parts of the reader.** Each injected control checked only
   whether something with its id already existed, so a post containing markup that reused one of
   those ids stopped that control appearing, and switching the feature off deleted the post element

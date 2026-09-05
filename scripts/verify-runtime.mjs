@@ -1548,24 +1548,26 @@ try {
     { key: 'scrollProgress', selector: '#glp-scroll-progress', label: 'scroll progress bar' },
     { key: 'threadQuickSearch', selector: '#glp-quick-search', label: 'quick search panel' }
   ];
+  // waitFor rather than a fixed sleep. A 350ms budget is fine on an idle machine and is not on a
+  // loaded one, and these three checks were the suite's flakiest as a result. The deadline still
+  // fails an assertion that never settles, so a real regression is caught either way.
+  const settles = (selector, expected) =>
+    waitFor(() => page.locator(selector).count(), value => value === expected, 6000);
+
   for (const toggle of TOGGLES) {
     await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { [toggle.key]: false } });
-    await page.waitForTimeout(350);
     check(`apply: the ${toggle.label} goes away when switched off`,
-      await page.locator(toggle.selector).count() === 0);
+      await settles(toggle.selector, 0) === 0);
 
     await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { [toggle.key]: true } });
-    await page.waitForTimeout(350);
     check(`apply: the ${toggle.label} appears without a reload`,
-      await page.locator(toggle.selector).count() === 1);
+      await settles(toggle.selector, 1) === 1);
 
     // A second apply must not stack a duplicate.
     await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { fontSize: 15 } });
     await sendMessage(worker, page, { type: 'glp:patch-settings', patch: { fontSize: 14 } });
-    await page.waitForTimeout(350);
-    check(`apply: repeated applies leave exactly one ${toggle.label}`,
-      await page.locator(toggle.selector).count() === 1,
-      String(await page.locator(toggle.selector).count()));
+    const settled = await settles(toggle.selector, 1);
+    check(`apply: repeated applies leave exactly one ${toggle.label}`, settled === 1, String(settled));
   }
 
   // ---------------- Hidden-tab timers ----------------
@@ -1971,6 +1973,90 @@ try {
     JSON.stringify(afterTeardown));
 
   await hostilePage.close();
+
+  // ---------------- Forced colors ----------------
+  // Windows High Contrast and its equivalents discard box-shadow and every non-URL
+  // background-image, so anything this script signalled with a shadow or a tint disappears. A
+  // dedicated page rather than the shared one: the badge block above navigates the main tab away.
+  const forcedPage = await context.newPage();
+  await forcedPage.goto('https://www.godlikeproductions.com/forum1/message6170474/pg5',
+    { waitUntil: 'domcontentloaded' });
+  await forcedPage.waitForTimeout(2000);
+
+  // The ownership block above deliberately leaves scrollProgress off, and 240 earlier checks move
+  // other settings around, so state what this page needs rather than inheriting whatever is left.
+  const forcedTabId = await worker.evaluate(async () => {
+    const tabs = await chrome.tabs.query({ url: '*://*.godlikeproductions.com/*' });
+    const match = tabs.find(tab => tab.url.endsWith('/pg5'));
+    return match ? match.id : null;
+  });
+  await worker.evaluate(tabId => chrome.tabs.sendMessage(tabId, {
+    type: 'glp:patch-settings',
+    patch: { scrollProgress: true, backToTopButton: true }
+  }), forcedTabId);
+  await forcedPage.waitForTimeout(800);
+
+  const SAMPLED_CONTROLS = ['.glp-toolbar-btn', '.glp-mute-btn', '.glp-post-number', '.glp-quote-jump'];
+  const readBorders = () => forcedPage.evaluate(selectors => {
+    const out = { matches: window.matchMedia('(forced-colors: active)').matches, controls: {} };
+    selectors.forEach(selector => {
+      const node = document.querySelector(selector);
+      if (!node) { out.controls[selector] = null; return; }
+      const style = getComputedStyle(node);
+      out.controls[selector] = {
+        width: parseFloat(style.borderTopWidth) || 0,
+        style: style.borderTopStyle
+      };
+    });
+    return out;
+  }, SAMPLED_CONTROLS);
+
+  const beforeForced = await readBorders();
+  check('forced-colors: the sampled controls are actually present to measure',
+    SAMPLED_CONTROLS.every(selector => beforeForced.controls[selector] !== null),
+    JSON.stringify(beforeForced.controls));
+
+  await forcedPage.emulateMedia({ forcedColors: 'active' });
+  await forcedPage.waitForTimeout(300);
+  const afterForced = await readBorders();
+
+
+  // Positive control: without this the border assertions below would pass in ordinary colours,
+  // proving nothing about forced-colors mode at all.
+  check('forced-colors: emulation actually puts the page in forced-colors mode',
+    beforeForced.matches === false && afterForced.matches === true,
+    JSON.stringify({ before: beforeForced.matches, after: afterForced.matches }));
+
+  // Measured 2026-09-05: all four already carry a 1px border outside forced colours, so this is a
+  // regression guard on that, not evidence the forced-colors layer works. The two checks below
+  // are the ones that fail when the layer is removed.
+  check('forced-colors: every sampled control keeps a visible border',
+    SAMPLED_CONTROLS.every(selector => {
+      const entry = afterForced.controls[selector];
+      return entry && entry.width > 0 && entry.style !== 'none';
+    }),
+    JSON.stringify(afterForced.controls));
+
+  const forcedPanel = await forcedPage.evaluate(async () => {
+    const style = getComputedStyle(document.documentElement);
+    const sheet = document.getElementById('glp-enhanced-styles');
+    return {
+      hasRule: !!sheet && sheet.textContent.includes('forced-colors: active'),
+      scrollBar: (() => {
+        const bar = document.querySelector('#glp-scroll-progress');
+        if (!bar) return null;
+        return parseFloat(getComputedStyle(bar).borderBottomWidth) || 0;
+      })(),
+      root: style.colorScheme
+    };
+  });
+  check('forced-colors: the injected stylesheet carries the forced-colors layer',
+    forcedPanel.hasRule === true, JSON.stringify(forcedPanel));
+  check('forced-colors: the scroll progress track keeps an edge when its fill colour is taken away',
+    forcedPanel.scrollBar !== null && forcedPanel.scrollBar > 0, JSON.stringify(forcedPanel));
+
+  await forcedPage.emulateMedia({ forcedColors: 'none' });
+  await forcedPage.close();
 
 
 } finally {

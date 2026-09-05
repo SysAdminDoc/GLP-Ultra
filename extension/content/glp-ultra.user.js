@@ -4397,6 +4397,102 @@ body.glp-enhanced-active .quoteo { border-left-width: 4px !important; }
 `;
         }
 
+        // ---- Forced colors ----
+        // Windows High Contrast and its equivalents replace author colours with a small system
+        // palette, and while doing it the UA throws away `box-shadow` and every non-URL
+        // `background-image`. Anything this script signalled with a shadow, a gradient or a tinted
+        // background therefore disappears: buttons lose their edges, the active sort column looks
+        // like the inactive ones, and an unread badge reads as ordinary text.
+        //
+        // Not behind the highContrast setting on purpose. That setting is a preference someone
+        // turns on inside the product; this is the operating system telling us it has already
+        // taken the colours away. `forced-color-adjust` is left alone throughout, so the UA keeps
+        // choosing the colours and only the missing structure is put back.
+        css += `
+@media (forced-colors: active) {
+    /* Every control this script adds needs an edge of its own, or the whole toolbar reads as one
+       run of text once the tinted backgrounds are gone. */
+    .glp-btn,
+    .glp-toolbar-btn,
+    .glp-sort-btn,
+    .glp-backlink,
+    .glp-quote-jump,
+    .glp-mute-btn,
+    .glp-block-btn,
+    .glp-tag-btn,
+    .glp-hide-col-btn,
+    .glp-nested-toggle,
+    .glp-media-action,
+    .glp-recovery-row button,
+    #glp-hidden-threads-bar button,
+    #glp-watch-digest button,
+    [data-glp-thread-tool] {
+        border: 1px solid ButtonBorder !important;
+        forced-color-adjust: auto;
+    }
+
+    /* State that was carried by a background tint alone. Highlight is the system's own
+       "this one is selected" colour, so the choice stays the user's. */
+    .glp-sort-btn.glp-sort-active,
+    .glp-toggle-on,
+    .glp-nav-item.glp-nav-active,
+    .glp-section.glp-page-active,
+    .glp-btn-primary {
+        border: 2px solid Highlight !important;
+    }
+    .glp-search-current,
+    .glp-search-match,
+    .glp-keyword-highlight {
+        outline: 2px solid Highlight !important;
+        outline-offset: 1px;
+    }
+    .glp-watch-unread,
+    .glp-post-number,
+    .glp-quote-depth,
+    .glp-user-tag,
+    .glp-op-badge,
+    .glp-hot-badge,
+    #glp-noise-chip {
+        border: 1px solid CanvasText !important;
+    }
+
+    /* Panels float over the page on a shadow. Without one they merge into whatever is behind. */
+    #glp-enhanced-overlay,
+    #glp-enhanced-settings,
+    #glp-diagnostics,
+    #glp-recovery,
+    #glp-lightbox,
+    #glp-quick-search,
+    #glp-op-nav,
+    #glp-forum-toolbar,
+    #glp-tag-picker,
+    #glp-backlink-card,
+    #glp-noise-panel,
+    .glp-toast,
+    .glp-thread-preview {
+        border: 1px solid CanvasText !important;
+        background: Canvas !important;
+        color: CanvasText !important;
+    }
+
+    /* Progress and countdown bars are a coloured strip and nothing else, so in forced colours
+       they vanish entirely. Give the track an edge and paint the fill in a system colour. */
+    #glp-scroll-progress,
+    #glp-auto-refresh-bar {
+        border-bottom: 1px solid CanvasText !important;
+    }
+    #glp-scroll-progress .bar,
+    #glp-auto-refresh-bar .bar {
+        background: Highlight !important;
+    }
+
+    /* Rows this script dims or tints to mean something keep a marker that survives. */
+    .glp-op-post { outline: 2px solid Highlight !important; outline-offset: -2px; }
+    .glp-muted-post,
+    .glp-user-blocked { opacity: 1 !important; text-decoration: line-through; }
+}
+`;
+
         /* The settings surface is a routed control center: one destination at a time, with the
            same rail, toolbar, page hierarchy, card rhythm, and persistent save state as the
            extension options page. This block intentionally comes after the legacy panel rules so

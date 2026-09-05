@@ -701,6 +701,7 @@
         }
     }
 
+    // direct-listener: engine lifetime, paused timers follow the tab for the life of the page.
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     function classifyRoute(pathname = window.location.pathname) {
@@ -734,8 +735,11 @@
     function bindRouteHooks() {
         if (runtimeState.routeHooksBound) return;
         runtimeState.routeHooksBound = true;
+        // direct-listener: route lifecycle, bound once and never torn down.
         window.addEventListener('pageshow', () => runRouteSanity({ forceApply: true }));
+        // direct-listener: route lifecycle.
         window.addEventListener('popstate', () => runRouteSanity());
+        // direct-listener: route lifecycle.
         window.addEventListener('hashchange', () => runRouteSanity({ forceApply: true }));
     }
 
@@ -8404,9 +8408,18 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
             picker.appendChild(save);
         }
 
-        document.addEventListener('click', function dismiss(e) {
-            if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('click', dismiss); }
-        }, { capture: true });
+        // The options object is shared deliberately. removeEventListener matches on the capture
+        // flag, so passing { capture: true } on the add and nothing on the remove meant the
+        // removal never matched and every picker open left another permanent listener behind.
+        const dismissOptions = { capture: true };
+        function dismiss(e) {
+            if (picker.contains(e.target)) return;
+            picker.remove();
+            document.removeEventListener('click', dismiss, dismissOptions);
+        }
+        // direct-listener: opened from a click handler, outside any feature init, so there is no
+        // active feature to own it. It removes itself on the first outside click.
+        document.addEventListener('click', dismiss, dismissOptions);
 
         header.style.position = 'relative';
         header.appendChild(picker);
@@ -9529,9 +9542,9 @@ body.glpx-enabled .glp-toast-stack { display: grid !important; }
         }
         if (runtimeState.mediaHoverBound) return;
         runtimeState.mediaHoverBound = true;
-        document.addEventListener('mouseover', onMediaHoverOver, true);
-        document.addEventListener('mouseout', onMediaHoverOut, true);
-        window.addEventListener('scroll', hideMediaPreview, { passive: true });
+        addFeatureEventListener(document, 'mouseover', onMediaHoverOver, true, 'hover-over');
+        addFeatureEventListener(document, 'mouseout', onMediaHoverOut, true, 'hover-out');
+        addFeatureEventListener(window, 'scroll', hideMediaPreview, { passive: true }, 'hover-scroll');
     }
 
     function destroyMediaHoverPreview() {
@@ -9945,10 +9958,12 @@ ${manifest}
         if (document.head || document.documentElement) {
             injectEarlyCSS();
         } else {
+            // direct-listener: boot.
             document.addEventListener('DOMContentLoaded', injectEarlyCSS);
         }
 
         if (document.readyState === 'loading') {
+            // direct-listener: boot.
             document.addEventListener('DOMContentLoaded', onDOMReady);
         } else {
             onDOMReady();
@@ -9999,6 +10014,7 @@ ${manifest}
         // done against a body with no posts in it, and the real page would never be touched -
         // CSS injected, body flagged active, and not one feature applied.
         if (document.readyState === 'loading' || !document.body) {
+            // direct-listener: boot, once.
             document.addEventListener('DOMContentLoaded', startFeatures, { once: true });
             return;
         }
@@ -10365,6 +10381,7 @@ ${manifest}
         runtimeState.contextHandler = event => {
             runtimeState.lastContext = describeContextTarget(event.target);
         };
+        // direct-listener: engine lifetime, removed in destroyEnhancedUI with a matching capture flag.
         document.addEventListener('contextmenu', runtimeState.contextHandler, true);
     }
 

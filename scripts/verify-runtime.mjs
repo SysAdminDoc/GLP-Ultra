@@ -1859,6 +1859,8 @@ try {
       && clearedAfterNavigation.after === ''
       && clearedAfterNavigation.stillCounted === null,
     JSON.stringify(clearedAfterNavigation));
+
+
 } finally {
   if (context) await context.close();
   await rm(userDataDir, { recursive: true, force: true }).catch(() => {});

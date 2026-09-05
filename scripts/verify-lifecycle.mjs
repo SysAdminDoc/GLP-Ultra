@@ -123,6 +123,52 @@ if (!observer?.[0]) {
     }
 }
 
+// A feature that registers a listener on document or window owns it for the life of the page
+// unless something takes it off again, and the two failure modes are silent: forgetting the
+// removal, or passing options on the add and not the remove so the capture flags do not match and
+// removeEventListener quietly does nothing. The tag picker leaked one permanent capture-phase
+// click listener per open exactly that way. Feature listeners belong on addFeatureEventListener,
+// which registers its own teardown; anything that genuinely has to be direct declares why on a
+// line above, so the exception is visible in review rather than assumed.
+const sourceLines = source.split(/\r?\n/);
+sourceLines.forEach((line, index) => {
+    if (!/\b(?:document|window)\.addEventListener\s*\(/.test(line)) return;
+    const preceding = sourceLines.slice(Math.max(0, index - 5), index).join('\n');
+    if (/direct-listener:/.test(preceding)) return;
+    fail(`line ${index + 1}: ${line.trim().slice(0, 60)} - use addFeatureEventListener so teardown `
+        + 'is registered, or justify it with a "// direct-listener: <reason>" comment above');
+});
+
+// removeEventListener matches on type, callback AND the capture flag. An add that passes
+// { capture: true } and a remove that passes nothing therefore never match, and the removal is a
+// silent no-op - the tag picker leaked one permanent listener per open that way, confirmed in
+// Chromium. This is not observable from the runtime harness: the content script has its own
+// EventTarget.prototype so the page cannot count listeners, and CDP's DOMDebugger.getEventListeners
+// resolves `document` in the main world and reported 0 both before and after a deliberately leaked
+// listener. So require the two calls to pass the SAME third argument. Comparing the text rather
+// than computing the flag is deliberate: the options are often a shared variable, which no static
+// pass can evaluate, and identical text is the only property that guarantees identical flags.
+const listenerCallPattern =
+    /\.(add|remove)EventListener\s*\(\s*(['"])([^'"]+)\2\s*,\s*([A-Za-z_$][\w$.]*)\s*(?:,\s*([^)]*(?:\{[^}]*\})?[^)]*))?\)/g;
+const normalizeOptions = value => (value === undefined ? '' : value.trim().replace(/\s+/g, ' '));
+
+const listenerCalls = [...source.matchAll(listenerCallPattern)];
+const listenerAdds = new Map();
+listenerCalls.filter(match => match[1] === 'add').forEach(match => {
+    listenerAdds.set(`${match[3]}|${match[4]}`, normalizeOptions(match[5]));
+});
+listenerCalls.filter(match => match[1] === 'remove').forEach(match => {
+    const key = `${match[3]}|${match[4]}`;
+    if (!listenerAdds.has(key)) return;
+    const added = listenerAdds.get(key);
+    const removed = normalizeOptions(match[5]);
+    if (added !== removed) {
+        fail(`${match[4]} is added for '${match[3]}' with options \`${added || '(none)'}\` but removed `
+            + `with \`${removed || '(none)'}\`; pass the same argument to both or removeEventListener `
+            + 'may not match the listener at all');
+    }
+});
+
 const directFetches = [...source.matchAll(/\bfetch\s*\(/g)];
 if (directFetches.length !== 1 || !source.includes('response = await fetch(next.url')) {
     fail(`expected one raw fetch inside the queue, found ${directFetches.length}`);

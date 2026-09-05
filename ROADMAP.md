@@ -55,13 +55,6 @@ the tracker had no prior scheme.
   Acceptance: opening a thread, scrolling partway, leaving, and returning marks every post after the recorded position as new and offers a jump to the first one. It works on a thread that was never explicitly watched. The visited-thread store is capped, reconciled with GU-001, and included in a format-3 backup. Reuse `lastSeenPost` rather than adding a second read-position concept.
   Complexity: M
 
-- [ ] P1 — GU-030 Route document- and window-level listeners through the tracked helper, and gate it
-  Why: a confirmed teardown leak. `media.hoverPreview` adds three global listeners on init and its destroy removes only two, so turning the feature off leaves a `scroll` handler on `window` calling `hideMediaPreview()` for the life of the page. The lifecycle gate requires `addFeatureEventListener` to exist but never asserts any feature uses it, and 12 document/window listeners are registered directly against 10 that go through the helper.
-  Evidence: `src/glp-ultra.user.js:9413-9415` (adds `mouseover`, `mouseout`, and `scroll`), `:9420-9421` (removes only `mouseover` and `mouseout`; no `removeEventListener` for `hideMediaPreview` exists anywhere in the file); `scripts/verify-lifecycle.mjs:39` requires the helper's definition only.
-  Touches: `src/glp-ultra.user.js` (`initMediaHoverPreview` and its destroy, plus the other direct global registrations that belong to a toggleable feature), `scripts/verify-lifecycle.mjs`.
-  Acceptance: toggling `media.hoverPreview` off removes every listener it added, provable by counting `getEventListeners`-equivalent state or by asserting the handler no longer fires after teardown. The engine-lifetime listeners (`visibilitychange`, `pageshow`, `popstate`, `hashchange`, `DOMContentLoaded`, `contextmenu`) stay direct and are listed as deliberate exceptions in the gate. The gate fails when a feature registers a document or window listener outside the helper and outside that list.
-  Complexity: M
-
 ### P2
 
 - [ ] P2 — GU-013 Local full-text search across threads you have exported or visited

@@ -192,6 +192,13 @@ update check.
 
 ## Architecture assessment
 
+**Read this section knowing the captures are gone.** `captures/forum-feed.mhtml` and
+`captures/thread-message.mhtml` were deleted from `main` on 2026-09-04 (commits `3b2a45e` and
+`c2a1e9d`), after the code reading below was done. Everything said here about the gates describes
+what they assert when the captures exist; as of 2026-09-05 a fresh clone cannot run
+`npm run verify:captures` or `npm run verify:runtime` at all. Tracked as GU-031, which gates most of
+the acceptance criteria in the roadmap.
+
 **The generated-schema pattern is the best thing here and should not be touched.**
 `scripts/build-userscript.mjs` parses `DEFAULT_SETTINGS`, `SETTING_CONSTRAINTS`, and every
 `createSettingsSection(...)` out of the source, and the build fails when a setting has no panel home.

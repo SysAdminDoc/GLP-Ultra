@@ -5,6 +5,16 @@
 [![platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Firefox%20%7C%20userscript-1f6feb)](#install)
 [![manifest](https://img.shields.io/badge/manifest-v3-8957e5)](extension/manifest.json)
 
+<p align="center">
+  <a href="https://ko-fi.com/X8K126YVER">
+    <img height="42" src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Buy me a coffee on Ko-fi" />
+  </a>
+</p>
+
+<p align="center">
+  <sub><em>If this project helps you, a coffee helps me keep working on it.</em></sub>
+</p>
+
 GLP Ultra turns [Godlike Productions](https://www.godlikeproductions.com/) into a clearer reading experience. It adds responsive dark themes, structured thread cards, local filtering and moderation controls, plus portable thread exports. Chrome, Edge, Firefox, and userscript builds all come from the same source.
 
 Everything runs locally. GLP Ultra loads no remote code, analytics, fonts, or JavaScript libraries.
